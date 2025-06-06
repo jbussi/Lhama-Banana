@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .confirmation-container {
+        padding: 40px 20px;
+        background-color: var(--cor-fundo-branco);
+        border-radius: 10px;
+        box-shadow: 0 4px 15px var(--cor-sombra);
+        text-align: center;
+        max-width: 700px;
+        margin: 40px auto;
+    }
+    .confirmation-container h2 {
+        color: var(--cor-principal-turquesa);
+        font-size: 2.5em;
+        margin-bottom: 20px;
+    }
+    .confirmation-container .icon {
+        font-size: 4em; /* Placeholder for a nice checkmark icon */
+        color: #28a745; /* Green for success */
+        margin-bottom: 20px;
+    }
+    .confirmation-container p {
+        font-size: 1.2em;
+        color: var(--cor-texto-cinza);
+        margin-bottom: 15px;
+        line-height: 1.6;
+    }
+    .confirmation-container .order-details {
+        margin-top: 20px;
+        margin-bottom: 30px;
+        padding: 15px;
+        background-color: #f9f9f9;
+        border-radius: 8px;
+        text-align: left;
+    }
+    .order-details p {
+        font-size: 1.1em;
+    }
+    .order-details strong {
+        color: var(--cor-texto-preto);
+    }
+    .actions a {
+        background-color: var(--cor-secundaria-amarelo);
+        color: var(--cor-texto-preto);
+        padding: 12px 25px;
+        text-decoration: none;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 1.1em;
+        margin: 0 10px;
+        transition: background-color 0.3s ease;
+        display: inline-block;
+        margin-top: 10px;
+    }
+    .actions a:hover {
+        background-color: #E6C300;
+    }
+</style>
+
+<div class="confirmation-container">
+    <!-- Você pode adicionar um ícone de checkmark aqui -->
+    <!-- Exemplo com texto, idealmente seria um SVG ou Font Icon -->
+    <div class="icon">✔</div> 
+    <h2>Pedido Realizado com Sucesso!</h2>
+    
+    {# Simulação de dados de pedido para visualização #}
+    <p>Obrigado por comprar na LhamaBanana, Visitante (Demo)!</p>
+    <p>Seu pedido <strong style="color: var(--cor-principal-turquesa);">#DEMO123</strong> foi recebido e está sendo processado.</p>
+    <p>Enviamos um e-mail de confirmação com os detalhes do seu pedido e informações para pagamento (se aplicável).</p>
+
+    <div class="order-details">
+        <h4>Detalhes do Pedido:</h4>
+        <p><strong>Número do Pedido:</strong> DEMO123</p>
+        <p><strong>Data:</strong> 15/05/2025 13:00</p> {# Data estática #}
+        <p><strong>Valor Total:</strong> R$ 199.80</p> {# Valor estático #}
+        <p><strong>Status:</strong> Processando</p> {# Status estático #}
+    </div>
+
+    <div class="actions">
+        <a href="{{ url_for("loja") }}">Continuar Comprando</a>
+        <a href="{{ url_for("perfil") }}#order-history">Ver Meus Pedidos</a>
+    </div>
+</div>
+
+{% endblock %}
+

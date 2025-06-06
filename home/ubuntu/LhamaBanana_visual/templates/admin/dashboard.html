@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .admin-dashboard-container {
+        padding: 20px;
+    }
+    .admin-dashboard-container h2 {
+        text-align: center;
+        font-size: 2.5em;
+        margin-bottom: 30px;
+        color: var(--cor-principal-turquesa);
+    }
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .stat-card {
+        background-color: var(--cor-fundo-branco);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px var(--cor-sombra);
+        text-align: center;
+    }
+    .stat-card h3 {
+        font-size: 1.3em;
+        color: var(--cor-texto-preto);
+        margin-bottom: 10px;
+    }
+    .stat-card .stat-value {
+        font-size: 2em;
+        font-weight: bold;
+        color: var(--cor-principal-turquesa);
+    }
+    .recent-orders-section h3 {
+        font-size: 1.8em;
+        color: var(--cor-texto-preto);
+        margin-bottom: 15px;
+        border-bottom: 2px solid var(--cor-secundaria-amarelo);
+        padding-bottom: 5px;
+    }
+    .orders-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+    }
+    .orders-table th, .orders-table td {
+        border: 1px solid var(--cor-detalhe-cinza-claro);
+        padding: 10px;
+        text-align: left;
+    }
+    .orders-table th {
+        background-color: #f2f2f2;
+        color: var(--cor-texto-cinza);
+    }
+    /* Basic styling for flashed messages in admin */
+    .alert-admin {
+        padding: 15px;
+        margin-bottom: 20px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        color: #fff;
+    }
+    .alert-admin.alert-success { background-color: #28a745; }
+    .alert-admin.alert-danger { background-color: #dc3545; }
+    .alert-admin.alert-warning { background-color: #ffc107; color: #000;}
+    .alert-admin.alert-info { background-color: #17a2b8; }
+</style>
+
+<div class="admin-dashboard-container">
+    <h2>Painel Administrativo LhamaBanana</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert-admin alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% if insights %}
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Total de Usuários</h3>
+            <p class="stat-value">{{ insights.total_users }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>Total de Produtos</h3>
+            <p class="stat-value">{{ insights.total_products }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>Total de Pedidos</h3>
+            <p class="stat-value">{{ insights.total_orders }}</p>
+        </div>
+        <div class="stat-card">
+            <h3>Receita Total</h3>
+            <p class="stat-value">R$ {{ "%.2f"|format(insights.total_revenue|float) }}</p>
+        </div>
+    </div>
+
+    <div class="recent-orders-section">
+        <h3>Últimos Pedidos</h3>
+        {% if insights.recent_orders %}
+            <table class="orders-table">
+                <thead>
+                    <tr>
+                        <th>ID Pedido</th>
+                        <th>Usuário</th>
+                        <th>Data</th>
+                        <th>Valor Total</th>
+                        <th>Status</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in insights.recent_orders %}
+                    <tr>
+                        <td>{{ order.id }}</td>
+                        <td>{{ order.user.username }} (ID: {{ order.user_id }})</td>
+                        <td>{{ order.created_at.strftime("%d/%m/%Y %H:%M") }}</td>
+                        <td>R$ {{ "%.2f"|format(order.total_amount|float) }}</td>
+                        <td>{{ order.status }}</td>
+                        <td><a href="#">Ver Detalhes</a></td> {# Placeholder for order detail view #}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>Nenhum pedido recente encontrado.</p>
+        {% endif %}
+    </div>
+    
+    {# Placeholder for Top Selling Products #}
+    {# <div class="top-products-section">
+        <h3>Produtos Mais Vendidos</h3>
+        {% if insights.top_products %}
+            <ul>
+            {% for product_name, total_sold in insights.top_products %}
+                <li>{{ product_name }} - {{ total_sold }} unidades vendidas</li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <p>Nenhuma informação de produtos mais vendidos disponível.</p>
+        {% endif %}
+    </div> #}
+    {% else %}
+        <p>Não foi possível carregar os insights. Verifique a configuração.</p>
+    {% endif %}
+
+    <p style="margin-top: 30px; text-align: center;"><a href="{{ url_for('user.index_page') }}">Voltar para o Site</a></p>
+
+</div>
+{% endblock %}
+

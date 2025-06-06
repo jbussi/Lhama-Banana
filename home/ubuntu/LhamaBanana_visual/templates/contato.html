@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .contact-section {
+        padding: 30px 15px;
+        background-color: var(--cor-fundo-branco);
+        border-radius: 10px;
+        box-shadow: 0 4px 8px var(--cor-sombra);
+    }
+    .contact-section h2 {
+        text-align: center;
+        font-size: 2.2em;
+        margin-bottom: 25px;
+        color: var(--cor-principal-turquesa);
+    }
+    .contact-info p, .contact-form p {
+        font-size: 1.1em;
+        margin-bottom: 15px;
+        color: var(--cor-texto-cinza);
+    }
+    .contact-info strong {
+        color: var(--cor-texto-preto);
+    }
+    .contact-form label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: bold;
+        color: var(--cor-texto-cinza);
+    }
+    .contact-form input[type="text"],
+    .contact-form input[type="email"],
+    .contact-form textarea {
+        width: 100%;
+        padding: 12px;
+        margin-bottom: 15px;
+        border: 1px solid var(--cor-detalhe-cinza-claro);
+        border-radius: 5px;
+        box-sizing: border-box; /* Para incluir padding e border na largura total */
+        font-size: 1em;
+    }
+    .contact-form textarea {
+        min-height: 150px;
+        resize: vertical;
+    }
+    .contact-form button[type="submit"] {
+        background-color: var(--cor-principal-turquesa);
+        color: var(--cor-fundo-branco);
+        padding: 15px 30px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1.1em;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+    .contact-form button[type="submit"]:hover {
+        background-color: #2DAA9D; /* Um tom mais escuro de turquesa */
+    }
+    .contact-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 30px;
+    }
+    .contact-info, .contact-form-container {
+        flex: 1;
+        min-width: 300px; /* Para quebrar em telas menores */
+    }
+
+    @media (max-width: 768px) {
+        .contact-container {
+            flex-direction: column;
+        }
+    }
+</style>
+
+<section class="contact-section">
+    <h2>Entre em Contato com a LhamaBanana!</h2>
+    <p>Adoraríamos ouvir você! Tem alguma dúvida, sugestão ou só quer dar um oi? Use o formulário abaixo ou nossos canais de contato.</p>
+
+    <div class="contact-container">
+        <div class="contact-info">
+            <h3>Nossas Informações</h3>
+            <p><strong>Email:</strong> <a href="mailto:contato@lhamabanana.com.br">contato@lhamabanana.com.br</a></p>
+            <p><strong>Telefone/WhatsApp:</strong> (XX) XXXXX-XXXX (Em breve!)</p>
+            <p><strong>Horário de Atendimento:</strong> Segunda a Sexta, das 9h às 18h.</p>
+            <p>Siga-nos nas redes sociais para ficar por dentro das novidades e promoções!</p>
+            <!-- Adicionar ícones de redes sociais aqui -->
+        </div>
+
+        <div class="contact-form-container">
+            <h3>Mande uma Mensagem</h3>
+            <form action="#" method="post" class="contact-form">
+                <div>
+                    <label for="name">Seu Nome:</label>
+                    <input type="text" id="name" name="name" required>
+                </div>
+                <div>
+                    <label for="email">Seu Email:</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div>
+                    <label for="subject">Assunto:</label>
+                    <input type="text" id="subject" name="subject" required>
+                </div>
+                <div>
+                    <label for="message">Sua Mensagem:</label>
+                    <textarea id="message" name="message" required></textarea>
+                </div>
+                <button type="submit">Enviar Mensagem</button>
+            </form>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
+

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .about-section {
+        padding: 30px 15px;
+        background-color: var(--cor-fundo-branco);
+        border-radius: 10px;
+        box-shadow: 0 4px 8px var(--cor-sombra);
+        line-height: 1.8;
+    }
+    .about-section h2 {
+        text-align: center;
+        font-size: 2.2em;
+        margin-bottom: 25px;
+        color: var(--cor-principal-turquesa);
+    }
+    .about-section p {
+        font-size: 1.1em;
+        margin-bottom: 15px;
+        color: var(--cor-texto-cinza);
+    }
+    .about-section .highlight {
+        color: var(--cor-principal-turquesa);
+        font-weight: bold;
+    }
+    .team-gallery {
+        display: flex;
+        justify-content: space-around;
+        flex-wrap: wrap;
+        gap: 20px;
+        margin-top: 30px;
+        text-align: center;
+    }
+    .team-member img {
+        width: 150px; /* Ajuste o tamanho conforme necessário */
+        height: 150px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 3px solid var(--cor-secundaria-amarelo);
+        margin-bottom: 10px;
+    }
+    .team-member h4 {
+        color: var(--cor-texto-preto);
+        font-size: 1.2em;
+    }
+</style>
+
+<section class="about-section">
+    <h2>Nossa História: De um Sonho Fofo à LhamaBanana</h2>
+    <p>A LhamaBanana nasceu do amor por noites tranquilas, manhãs alegres e, claro, pijamas incrivelmente confortáveis! Somos uma pequena empresa familiar com uma grande paixão: criar peças que abracem seus sonhos e os de quem você mais ama.</p>
+    <p>Tudo começou quando nós, mães e pais, buscávamos pijamas para nossos filhos que fossem mais do que apenas roupas de dormir. Queríamos algo que estimulasse a imaginação, que fosse <span class="highlight">divertido, seguro e feito com carinho</span>. E por que uma lhama e bananas? Bem, quem não ama a simpatia das lhamas e a energia contagiante das bananas? Juntamos esses dois universos para criar uma marca com uma identidade única, leve e cheia de personalidade!</p>
+    <p>Nossa missão é simples: levar <span class="highlight">conforto, qualidade e um toque de magia</span> para a hora de dormir de toda a família. Desde os pijaminhas para os bebês que acabaram de chegar, passando pelos conjuntos mãe e filha (e pai e filho, por que não?) que fortalecem laços, até os pijamas para adultos que merecem relaxar com estilo.</p>
+    <p>Cada peça da LhamaBanana é pensada nos mínimos detalhes, desde a escolha dos tecidos macios e respiráveis até as estampas exclusivas que contam pequenas histórias. Acreditamos que um bom pijama pode transformar o humor e preparar o corpo e a mente para um descanso revigorante.</p>
+    <p>Convidamos você a fazer parte da nossa família LhamaBanana. Explore nossas coleções e encontre o pijama perfeito para criar memórias afetivas e noites de sono maravilhosas!</p>
+
+    <div class="team-gallery">
+        <div class="team-member">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Mascote LhamaBanana como fundador">
+            <h4>Lhama "Banana" da Silva</h4>
+            <p>Fundadora e CEO (Chief Eating Officer de Bananas)</p>
+        </div>
+        <!-- Adicionar mais membros da equipe ou fotos ilustrativas se desejar -->
+    </div>
+</section>
+
+{% endblock %}
+

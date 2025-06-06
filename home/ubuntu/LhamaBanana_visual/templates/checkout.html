@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .checkout-container {
+        padding: 20px;
+        background-color: var(--cor-fundo-branco);
+        border-radius: 10px;
+        box-shadow: 0 4px 8px var(--cor-sombra);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 30px;
+    }
+    .checkout-container h2 {
+        width: 100%;
+        text-align: center;
+        font-size: 2.2em;
+        margin-bottom: 25px;
+        color: var(--cor-principal-turquesa);
+    }
+    .order-summary-section, .shipping-payment-section {
+        flex: 1;
+        min-width: 300px; /* Ensure responsiveness */
+    }
+    .order-summary-section h3, .shipping-payment-section h3 {
+        font-size: 1.5em;
+        color: var(--cor-texto-preto);
+        margin-bottom: 15px;
+        border-bottom: 2px solid var(--cor-secundaria-amarelo);
+        padding-bottom: 5px;
+    }
+    .summary-item, .address-selection p, .payment-info p {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        font-size: 1.1em;
+    }
+    .summary-item span:first-child {
+        color: var(--cor-texto-cinza);
+    }
+    .summary-item span:last-child {
+        font-weight: bold;
+    }
+    .total-final strong {
+        font-size: 1.3em;
+        color: var(--cor-principal-turquesa);
+    }
+    .address-card {
+        border: 1px solid var(--cor-detalhe-cinza-claro);
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 10px;
+        cursor: pointer;
+    }
+    .address-card.selected {
+        border-color: var(--cor-principal-turquesa);
+        background-color: #e8f5e9; /* Light green to indicate selection */
+    }
+    .coupon-form input[type="text"] {
+        padding: 10px;
+        border: 1px solid var(--cor-detalhe-cinza-claro);
+        border-radius: 4px;
+        margin-right: 10px;
+        width: calc(70% - 10px);
+    }
+    .coupon-form button {
+        padding: 10px 15px;
+        background-color: var(--cor-principal-turquesa);
+        color: var(--cor-fundo-branco);
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .place-order-btn {
+        background-color: var(--cor-secundaria-amarelo);
+        color: var(--cor-texto-preto);
+        padding: 15px 30px;
+        text-decoration: none;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 1.2em;
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+        display: block;
+        width: 100%;
+        margin-top: 20px;
+        text-align: center;
+    }
+    .place-order-btn:hover {
+        background-color: #E6C300;
+    }
+    .form-group select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--cor-detalhe-cinza-claro);
+        border-radius: 4px;
+        margin-bottom: 15px;
+    }
+</style>
+
+<div class="checkout-container">
+    <h2>Finalizar Compra</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}" style="width:100%; text-align:center; padding:10px; margin-bottom:15px; border-radius:5px; color: #fff; background-color: {{ '#28a745' if category == 'success' else '#dc3545' if category == 'error' else '#ffc107' if category == 'warning' else '#17a2b8' }};">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="order-summary-section">
+        <h3>Resumo do Pedido</h3>
+        {% for item_info in cart_items %}
+            <div class="summary-item">
+                <span>{{ item_info.product.name }} (x{{ item_info.quantity }})</span>
+                <span>R$ {{ "%.2f"|format(item_info.item_total|float) }}</span>
+            </div>
+        {% endfor %}
+        <hr>
+        <div class="summary-item">
+            <span>Subtotal:</span>
+            <span>R$ {{ "%.2f"|format(order_total|float) }}</span>
+        </div>
+        {% if discount > 0 %}
+        <div class="summary-item">
+            <span>Desconto ({{ coupon_code }}):</span>
+            <span style="color: green;">- R$ {{ "%.2f"|format(discount|float) }}</span>
+        </div>
+        {% endif %}
+        <div class="summary-item total-final">
+            <span><strong>Total:</strong></span>
+            <span><strong>R$ {{ "%.2f"|format(final_total|float) }}</strong></span>
+        </div>
+        <hr>
+        <h4>Aplicar Cupom de Desconto</h4>
+        <form action="#" method="POST" class="coupon-form">
+            <input type="text" name="coupon_code" placeholder="Digite seu cupom" value="{{ coupon_code if coupon_code }}">
+            <button type="submit">Aplicar</button>
+        </form>
+    </div>
+
+    <div class="shipping-payment-section">
+        <form action="#" method="POST">
+            <h3>Endereço de Entrega</h3>
+            {% if user_addresses %}
+                <div class="form-group">
+                    <label for="address_id">Selecione o Endereço:</label>
+                    <select name="address_id" id="address_id" required>
+                        <option value="">-- Selecione um endereço --</option>
+                        {% for addr in user_addresses %}
+                            <option value="{{ addr.id }}">
+                                {{ addr.nickname + " - " if addr.nickname else "" }}{{ addr.street }}, {{ addr.number }} - {{ addr.city }} 
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <p><a href="{{ url_for('perfil') }}#addresses">Gerenciar ou adicionar novo endereço</a></p>
+            {% else %}
+                <p>Você não possui endereços cadastrados. <a href="{{ url_for('perfil') }}#addresses">Adicione um endereço</a> para continuar.</p>
+            {% endif %}
+
+            <h3>Forma de Pagamento</h3>
+            <div class="payment-info">
+                <p>No momento, estamos trabalhando para integrar diversas formas de pagamento.</p>
+                <p>Por enquanto, o pagamento será combinado após a finalização do pedido (Ex: PIX, Transferência).</p>
+                <p><strong>Detalhes para pagamento serão enviados para seu e-mail.</strong></p>
+            </div>
+            
+            {% if user_addresses and cart_items %}
+                <button type="submit" class="place-order-btn">Finalizar Pedido</button>
+            {% else %}
+                 <button type="submit" class="place-order-btn" disabled>Finalizar Pedido</button>
+                 <p style="text-align:center; margin-top:10px; color:red;">Adicione itens ao carrinho e/ou um endereço para continuar.</p>
+            {% endif %}
+        </form>
+    </div>
+</div>
+{% endblock %}
+

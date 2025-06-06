@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .profile-container {
+        padding: 20px;
+        background-color: var(--cor-fundo-branco);
+        border-radius: 10px;
+        box-shadow: 0 4px 8px var(--cor-sombra);
+    }
+    .profile-container h2 {
+        text-align: center;
+        font-size: 2.2em;
+        margin-bottom: 25px;
+        color: var(--cor-principal-turquesa);
+    }
+    .profile-section {
+        margin-bottom: 30px;
+        padding: 20px;
+        border: 1px solid var(--cor-detalhe-cinza-claro);
+        border-radius: 8px;
+    }
+    .profile-section h3 {
+        font-size: 1.5em;
+        color: var(--cor-texto-preto);
+        margin-bottom: 15px;
+        border-bottom: 2px solid var(--cor-secundaria-amarelo);
+        padding-bottom: 5px;
+    }
+    .profile-info p, .order-history p, .address-list p {
+        font-size: 1.1em;
+        margin-bottom: 10px;
+        color: var(--cor-texto-cinza);
+    }
+    .profile-info strong {
+        color: var(--cor-texto-preto);
+    }
+    .edit-button, .add-address-button, .view-order-button {
+        background-color: var(--cor-principal-turquesa);
+        color: var(--cor-fundo-branco);
+        padding: 10px 20px;
+        text-decoration: none;
+        border-radius: 5px;
+        font-weight: bold;
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+        display: inline-block;
+        margin-top: 10px;
+    }
+    .edit-button:hover, .add-address-button:hover, .view-order-button:hover {
+        background-color: #2DAA9D;
+    }
+    .order-item, .address-item {
+        border-bottom: 1px dashed var(--cor-detalhe-cinza-claro);
+        padding-bottom: 10px;
+        margin-bottom: 10px;
+    }
+    .order-item:last-child, .address-item:last-child {
+        border-bottom: none;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+    .form-group input[type=\"text\"], .form-group input[type=\"email\"] {
+        width: calc(100% - 22px); /* Consider padding and border */
+        padding: 10px;
+        margin-bottom: 10px;
+        border: 1px solid var(--cor-detalhe-cinza-claro);
+        border-radius: 4px;
+    }
+</style>
+
+<div class="profile-container">
+    <h2>Meu Perfil</h2>
+
+    <!-- Seção de Informações Pessoais -->
+    <section class="profile-section" id="personal-info">
+        <h3>Minhas Informações</h3>
+        <!-- Conteúdo dinâmico aqui (ex: vindo do backend) -->
+        <div class="profile-info">
+            <p><strong>Nome:</strong> Maria da Silva (Exemplo)</p>
+            <p><strong>Email:</strong> maria.silva@exemplo.com (Exemplo)</p>
+            <p><strong>Telefone:</strong> (XX) XXXXX-XXXX (Exemplo)</p>
+        </div>
+        <button class="edit-button" onclick="toggleEditForm('edit-personal-info-form')">
+        
+        <form id="edit-personal-info-form" style="display:none; margin-top:15px;">
+            <div class="form-group">
+                <label for="name">Nome:</label>
+                <input type="text" id="name" name="name" value="Maria da Silva">
+            </div>
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" value="maria.silva@exemplo.com">
+            </div>
+            <div class="form-group">
+                <label for="phone">Telefone:</label>
+                <input type="text" id="phone" name="phone" value="(XX) XXXXX-XXXX">
+            </div>
+            <button type="submit" class="edit-button">Salvar Alterações</button>
+        </form>
+    </section>
+
+    <!-- Seção de Histórico de Pedidos -->
+    <section class="profile-section" id="order-history">
+        <h3>Meus Pedidos</h3>
+        <div class="order-history">
+            <!-- Exemplo de Pedido - Conteúdo dinâmico aqui -->
+            <div class="order-item">
+                <p><strong>Pedido #12345</strong> - Data: 10/05/2025</p>
+                <p>Status: Enviado</p>
+                <p>Total: R$ 149,90</p>
+                <a href="#" class="view-order-button">Ver Detalhes</a>
+            </div>
+            <div class="order-item">
+                <p><strong>Pedido #12300</strong> - Data: 01/04/2025</p>
+                <p>Status: Entregue</p>
+                <p>Total: R$ 79,90</p>
+                <a href="#" class="view-order-button">Ver Detalhes</a>
+            </div>
+            <!-- Adicionar mais pedidos conforme o histórico do usuário -->
+            <p>Você ainda não fez nenhum pedido. <a href="{{ url_for('loja') }}">Que tal começar agora?</a></p>
+        </div>
+    </section>
+
+    <!-- Seção de Endereços -->
+    <section class="profile-section" id="addresses">
+        <h3>Meus Endereços</h3>
+        <div class="address-list">
+            <!-- Exemplo de Endereço - Conteúdo dinâmico aqui -->
+            <div class="address-item">
+                <p><strong>Casa</strong></p>
+                <p>Rua das Bananeiras, 123, Vila da Lhama</p>
+                <p>Cidade Alegre - BA, CEP: 40000-000</p>
+                <button class="edit-button" style="margin-right:10px;">Editar</button> <button class="edit-button" style="background-color: #c9302c;">Excluir</button>
+            </div>
+            <!-- Adicionar mais endereços -->
+        </div>
+        <button class="add-address-button" onclick="toggleEditForm('add-address-form')">Adicionar Novo Endereço</button>
+        <form id="add-address-form" style="display:none; margin-top:15px;">
+            <h4>Novo Endereço</h4>
+            <div class="form-group">
+                <label for="address_nickname">Apelido (ex: Casa, Trabalho):</label>
+                <input type="text" id="address_nickname" name="address_nickname">
+            </div>
+            <div class="form-group">
+                <label for="street">Rua/Avenida:</label>
+                <input type="text" id="street" name="street">
+            </div>
+            <div class="form-group">
+                <label for="number">Número:</label>
+                <input type="text" id="number" name="number">
+            </div>
+            <div class="form-group">
+                <label for="complement">Complemento:</label>
+                <input type="text" id="complement" name="complement">
+            </div>
+            <div class="form-group">
+                <label for="neighborhood">Bairro:</label>
+                <input type="text" id="neighborhood" name="neighborhood">
+            </div>
+            <div class="form-group">
+                <label for="city">Cidade:</label>
+                <input type="text" id="city" name="city">
+            </div>
+            <div class="form-group">
+                <label for="state">Estado:</label>
+                <input type="text" id="state" name="state">
+            </div>
+            <div class="form-group">
+                <label for="zipcode">CEP:</label>
+                <input type="text" id="zipcode" name="zipcode">
+            </div>
+            <button type="submit" class="edit-button">Salvar Endereço</button>
+        </form>
+    </section>
+
+</div>
+
+<script>
+function toggleEditForm(formId) {
+    var form = document.getElementById(formId);
+    if (form.style.display === "none") {
+        form.style.display = "block";
+    } else {
+        form.style.display = "none";
+    }
+}
+</script>
+
+{% endblock %}
+

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-text">
+    <h1>Noites tranquilas, sorrisos garantidos!</h1>
+    <p>Somos uma marca feita por famílias, para famílias. Aqui você encontra qualidade, conforto e muito carinho em cada detalhe.</p>
+    <button class="btn-collection" type="button" aria-label="Ver coleção">
+      <!-- Ícone lhama simples -->
+      <svg class="btn-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+        <circle cx="32" cy="32" r="30" fill="#f9a825"/>
+        <path d="M20 40c0-6 8-6 8-12s-4-8-4-8 4 0 8 6" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+      Ver Coleção
+    </button>
+  </div>
+  <div class="hero-image">
+    <img src="{{ url_for('static', filename='img/carrossel/img2.jpeg') }}" alt="A felicidade de usar LhamaBanana!">
+  </div>
+</section>
+
+
+{% endblock %}
+
+{% block scripts %}
+{% endblock %}
+

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LhamaBanana</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='img/logo.png') }}" type="image/x-icon">
+</head>
+<body>
+    <header>
+            <nav>
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo LhamaBanana" id="logo">
+                    <h1>LhamaBanana</h1>
+                </div>
+                                
+                <ul class="nav-links">
+                    <li><a href="{{ url_for('home') }}" class="{{ 'active' if request.endpoint == 'home' }}">Home</a></li>
+                    <li><a href="{{ url_for('loja') }}" class="{{ 'active' if request.endpoint == 'loja' }}">Loja</a></li>
+                    <li><a href="{{ url_for('sobre_nos') }}" class="{{ 'active' if request.endpoint == 'sobre_nos' }}">Sobre Nós</a></li>
+                    <li><a href="{{ url_for('contato') }}" class="{{ 'active' if request.endpoint == 'contato' }}">Contato</a></li>
+                </ul>
+                
+                <div class="nav-icons">
+                    <a href="{{ url_for('perfil') }}" aria-label="Perfil">
+                        <img src="{{ url_for('static', filename='img/perfil.svg') }}" alt="Perfil" class="icone-hover">
+                    </a>
+                    <a href="{{ url_for('carrinho') }}" aria-label="Carrinho">
+                        <img src="{{ url_for('static', filename='img/carrinho.svg') }}" alt="Carrinho" class="icone-hover">
+                    </a>
+                </div>
+
+                <button class="menu-toggle" aria-label="Menu">
+                    <span class="bar1"></span>
+                    <span class="bar2"></span>
+                    <span class="bar3"></span>
+                </button>
+                
+            </nav>
+    </header>
+
+    <main>
+        {% block content %}
+        {% endblock %}
+        {% block scripts %}
+        {% endblock %}
+    </main>
+
+<footer>
+    <div class="footer-container">
+        <div class="footer-left">
+            <p>&copy; 2025 LhamaBanana. Todos os direitos reservados.</p>
+            <p>Feito por João Paulo Bussi</p>
+            <p>Jundiaí - SP | Atendimento: Seg a Sex, 9h às 18h</p>
+            <p><a href="#" class="footer-link">Política de Privacidade</a></p>
+        </div>
+        <div class="footer-right">
+            <a href="https://www.instagram.com/lhamabanana_/" target="_blank" aria-label="Instagram">
+                <img src="{{ url_for('static', filename='img/instagram.svg') }}" alt="Instagram" class="icone-hover">
+            </a>
+            <a href="https://api.whatsapp.com/send/?phone=5511997480702&text&type=phone_number&app_absent=0" target="_blank" aria-label="WhatsApp">
+                <img src="{{ url_for('static', filename='img/whatsapp.svg') }}" alt="WhatsApp" class="icone-hover">
+            </a>
+            <a href="https://www.facebook.com/lhamabanan/" target="_blank" aria-label="Facebook">
+                <img src="{{ url_for('static', filename='img/facebook.svg') }}" alt="Facebook" class="icone-hover">
+            </a>
+        </div>
+    </div>
+    <div class="back-to-top">
+        <a href="#">↑ Voltar ao topo</a>
+    </div>
+</footer>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
