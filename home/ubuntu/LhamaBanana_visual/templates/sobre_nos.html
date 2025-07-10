@@ -1,68 +1,278 @@
 {% extends "base.html" %}
 
+{% block title %}Sobre Nós - LhamaBanana{% endblock %}
+
 {% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <style>
+    
+    .page-title {
+        text-align: center;
+        margin: 2rem 0 3rem;
+        color: #2ab7a9;
+        font-size: 2.5rem;
+        font-weight: 700;
+        position: relative;
+        padding-bottom: 1rem;
+    }
+    
+    .page-title:after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80px;
+        height: 4px;
+        background: #f9d71c;
+        border-radius: 2px;
+    }
+    
+    .about-container {
+        max-width: 1200px;
+        margin: 0 auto 4rem;
+        padding: 0 1rem;
+    }
+    
     .about-section {
-        padding: 30px 15px;
-        background-color: var(--cor-fundo-branco);
-        border-radius: 10px;
-        box-shadow: 0 4px 8px var(--cor-sombra);
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        padding: 2.5rem;
+        margin-bottom: 2rem;
         line-height: 1.8;
     }
+    
     .about-section h2 {
-        text-align: center;
-        font-size: 2.2em;
-        margin-bottom: 25px;
-        color: var(--cor-principal-turquesa);
+        color: #2ab7a9;
+        margin-bottom: 1.5rem;
+        font-size: 2rem;
+        position: relative;
+        padding-bottom: 0.5rem;
     }
+    
+    .about-section h2:after {
+        content: '';
+        display: block;
+        width: 60px;
+        height: 4px;
+        background: #ffd700;
+        margin-top: 0.5rem;
+    }
+    
     .about-section p {
-        font-size: 1.1em;
-        margin-bottom: 15px;
-        color: var(--cor-texto-cinza);
+        color: #555;
+        margin-bottom: 1.2rem;
+        font-size: 1.1rem;
     }
-    .about-section .highlight {
-        color: var(--cor-principal-turquesa);
-        font-weight: bold;
+    
+    .highlight {
+        color: #2ab7a9;
+        font-weight: 600;
     }
+    
     .team-gallery {
-        display: flex;
-        justify-content: space-around;
-        flex-wrap: wrap;
-        gap: 20px;
-        margin-top: 30px;
-        text-align: center;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 2rem;
+        margin: 3rem 0;
     }
+    
+    .team-member {
+        text-align: center;
+        padding: 1.5rem;
+        background: #f9f9f9;
+        border-radius: 10px;
+        transition: transform 0.3s ease;
+    }
+    
+    .team-member:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+    
     .team-member img {
-        width: 150px; /* Ajuste o tamanho conforme necessário */
+        width: 150px;
         height: 150px;
         border-radius: 50%;
         object-fit: cover;
-        border: 3px solid var(--cor-secundaria-amarelo);
-        margin-bottom: 10px;
+        border: 4px solid #fff;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1rem;
     }
+    
     .team-member h4 {
-        color: var(--cor-texto-preto);
-        font-size: 1.2em;
+        color: #333;
+        margin: 0.8rem 0 0.3rem;
+        font-size: 1.3rem;
+    }
+    
+    .team-member p.role {
+        color: #2ab7a9;
+        font-weight: 500;
+        margin-bottom: 1rem;
+    }
+    
+    .social-links {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+    }
+    
+    .social-links a {
+        color: #666;
+        font-size: 1.2rem;
+        transition: color 0.3s ease;
+    }
+    
+    .social-links a:hover {
+        color: #2ab7a9;
+    }
+    
+    .values-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 2rem;
+        margin: 3rem 0;
+    }
+    
+    .value-card {
+        background: #f9f9f9;
+        padding: 2rem;
+        border-radius: 10px;
+        text-align: center;
+        transition: transform 0.3s ease;
+    }
+    
+    .value-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+    
+    .value-card i {
+        font-size: 2.5rem;
+        color: #2ab7a9;
+        margin-bottom: 1rem;
+        display: inline-block;
+    }
+    
+    .value-card h3 {
+        color: #333;
+        margin-bottom: 1rem;
+    }
+    
+    @media (max-width: 768px) {
+        .page-header {
+            padding: 3rem 1rem;
+        }
+        
+        .about-section {
+            padding: 1.5rem;
+        }
+        
+        .team-gallery, .values-grid {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
 
-<section class="about-section">
-    <h2>Nossa História: De um Sonho Fofo à LhamaBanana</h2>
-    <p>A LhamaBanana nasceu do amor por noites tranquilas, manhãs alegres e, claro, pijamas incrivelmente confortáveis! Somos uma pequena empresa familiar com uma grande paixão: criar peças que abracem seus sonhos e os de quem você mais ama.</p>
-    <p>Tudo começou quando nós, mães e pais, buscávamos pijamas para nossos filhos que fossem mais do que apenas roupas de dormir. Queríamos algo que estimulasse a imaginação, que fosse <span class="highlight">divertido, seguro e feito com carinho</span>. E por que uma lhama e bananas? Bem, quem não ama a simpatia das lhamas e a energia contagiante das bananas? Juntamos esses dois universos para criar uma marca com uma identidade única, leve e cheia de personalidade!</p>
-    <p>Nossa missão é simples: levar <span class="highlight">conforto, qualidade e um toque de magia</span> para a hora de dormir de toda a família. Desde os pijaminhas para os bebês que acabaram de chegar, passando pelos conjuntos mãe e filha (e pai e filho, por que não?) que fortalecem laços, até os pijamas para adultos que merecem relaxar com estilo.</p>
-    <p>Cada peça da LhamaBanana é pensada nos mínimos detalhes, desde a escolha dos tecidos macios e respiráveis até as estampas exclusivas que contam pequenas histórias. Acreditamos que um bom pijama pode transformar o humor e preparar o corpo e a mente para um descanso revigorante.</p>
-    <p>Convidamos você a fazer parte da nossa família LhamaBanana. Explore nossas coleções e encontre o pijama perfeito para criar memórias afetivas e noites de sono maravilhosas!</p>
 
-    <div class="team-gallery">
-        <div class="team-member">
-            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Mascote LhamaBanana como fundador">
-            <h4>Lhama "Banana" da Silva</h4>
-            <p>Fundadora e CEO (Chief Eating Officer de Bananas)</p>
+
+<div class="container">
+    <h1 class="page-title">Sobre Nós</h1>
+    
+    <div class="about-container">
+        <section class="about-section">
+            <h2>Nossa História</h2>
+        <p>Olá! Somos a <span class="highlight">LhamaBanana</span>, uma marca que nasceu da paixão por moda divertida, conforto inigualável e, é claro, lhamas fofinhas! 🦙✨</p>
+        
+        <p>Tudo começou em 2020, quando nossa fundadora, Ana, estava procurando por uma camiseta estampada com lhamas para presentear uma amiga. Para sua surpresa, não encontrou muitas opções que combinassem qualidade, estilo e um toque de humor. Foi aí que surgiu a ideia: <span class="highlight">por que não criar uma marca que une moda casual a estampas únicas de lhamas e frutas tropicais?</span></p>
+        
+        <p>Com um pequeno investimento inicial e muito amor pelo que fazemos, demos vida à LhamaBanana. Começamos com uma pequena coleção de camisetas e, em pouco tempo, nossa comunidade de clientes apaixonados por lhamas começou a crescer!</p>
+    </section>
+    
+    <section class="about-section">
+        <h2>Nossos Valores</h2>
+        <div class="values-grid">
+            <div class="value-card">
+                <i class="fas fa-star"></i>
+                <h3>Qualidade Premium</h3>
+                <p>Usamos apenas os melhores tecidos para garantir conforto e durabilidade em cada peça.</p>
+            </div>
+            <div class="value-card">
+                <i class="fas fa-palette"></i>
+                <h3>Design Exclusivo</h3>
+                <p>Nossas estampas são criadas por artistas independentes, garantindo peças únicas e cheias de personalidade.</p>
+            </div>
+            <div class="value-card">
+                <i class="fas fa-leaf"></i>
+                <h3>Sustentabilidade</h3>
+                <p>Comprometidos com o meio ambiente, utilizamos materiais ecológicos e processos de produção responsáveis.</p>
+            </div>
         </div>
-        <!-- Adicionar mais membros da equipe ou fotos ilustrativas se desejar -->
-    </div>
-</section>
+    </section>
+    
+    <section class="about-section">
+        <h2>Nossa Equipe</h2>
+        <p>Conheça as mentes criativas por trás da LhamaBanana:</p>
+        
+        <div class="team-gallery">
+            <div class="team-member">
+                <img src="https://source.unsplash.com/random/300x300/?portrait,woman,brazilian" alt="Ana Silva">
+                <h4>Ana Silva</h4>
+                <p class="role">Fundadora & CEO</p>
+                <p>A mente criativa por trás da LhamaBanana, Ana adora desenhar novas estampas e cuidar de suas plantinhas.</p>
+                <div class="social-links">
+                    <a href="#"><i class="fab fa-instagram"></i></a>
+                    <a href="#"><i class="fab fa-linkedin"></i></a>
+                    <a href="#"><i class="fab fa-twitter"></i></a>
+                </div>
+            </div>
+            
+            <div class="team-member">
+                <img src="https://source.unsplash.com/random/300x300/?portrait,man,brazilian" alt="Carlos Mendes">
+                <h4>Carlos Mendes</h4>
+                <p class="role">Diretor de Operações</p>
+                <p>Garante que tudo funcione perfeitamente, dos pedidos à logística. Nosso mestre da organização!</p>
+                <div class="social-links">
+                    <a href="#"><i class="fab fa-instagram"></i></a>
+                    <a href="#"><i class="fab fa-linkedin"></i></a>
+                </div>
+            </div>
+            
+            <div class="team-member">
+                <img src="https://source.unsplash.com/random/300x300/?portrait,woman,brazilian,young" alt="Juliana Costa">
+                <h4>Juliana Costa</h4>
+                <p class="role">Designer Chefe</p>
+                <p>Transforma ideias em estampas incríveis. Ama café forte e suas duas lhamas de estimação, Paco e Lola.</p>
+                <div class="social-links">
+                    <a href="#"><i class="fab fa-instagram"></i></a>
+                    <a href="#"><i class="fab fa-behance"></i></a>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <section class="about-section">
+        <h2>Venha nos Visitar!</h2>
+        <p>Nossa loja física fica no coração de São Paulo e está cheia de surpresas! Aqui você encontra nossa coleção completa, itens exclusivos e um cantinho especial para tirar fotos com nossos adoráveis amigos de pelúcia.</p>
+        
+        <div class="cta-buttons" style="margin-top: 2rem; text-align: center;">
+            <a href="{{ url_for('contato') }}" class="btn" style="background-color: #2ab7a9; color: white; padding: 0.8rem 2rem; border-radius: 50px; text-decoration: none; display: inline-block; margin: 0 0.5rem; transition: all 0.3s ease;">Entre em Contato</a>
+            <a href="{{ url_for('loja') }}" class="btn" style="background-color: #f9d71c; color: #333; padding: 0.8rem 2rem; border-radius: 50px; text-decoration: none; display: inline-block; margin: 0 0.5rem; transition: all 0.3s ease;">Ver Loja Online</a>
+        </div>
+    </section>
+    
+    <section class="about-section">
+        <h2>Junte-se à Nossa Jornada!</h2>
+        <p>Seja bem-vindo à nossa família de amantes de lhamas! Aqui, cada peça conta uma história e cada cliente vira um amigo. Explore nossa coleção e descubra o porquê de sermos a marca favorita de quem ama moda com personalidade.</p>
+        
+        <p style="text-align: center; margin-top: 2rem;">
+            <a href="{{ url_for('loja') }}" class="btn btn-primary" style="background-color: #2ab7a9; color: white; padding: 0.8rem 2rem; border-radius: 50px; text-decoration: none; display: inline-block; transition: all 0.3s ease;">
+                <i class="fas fa-shopping-cart"></i> Conheça Nossa Loja
+            </a>
+        </p>
+    </section>
+</div>
 
 {% endblock %}
-

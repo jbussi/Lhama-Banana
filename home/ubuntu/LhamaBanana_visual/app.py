@@ -66,13 +66,56 @@ def perfil():
     # Simulação de perfil - apenas visual
     return render_template('perfil.html', user="Visitante (Demo)", user_data={"username": "Visitante", "email": "demo@exemplo.com"})
 
-@app.route('/login')
-def login():
-    return render_template('login.html')
+# Rota para testar o CSS
+@app.route('/test_css')
+def test_css():
+    return app.send_static_file('css/profile.css')
 
 @app.route('/register')
 def register():
     return render_template('register.html')
+
+@app.route('/login')
+def login():
+    return render_template('login.html')
+
+@app.route('/produto/<int:id>')
+def produto(id):
+    # Busca o produto pelo ID
+    produto_encontrado = next((p for p in produtos if p['id'] == id), None)
+    if not produto_encontrado:
+        # Se não encontrar o produto, redireciona para a loja
+        return redirect(url_for('loja'))
+    
+    # Dados de exemplo para o produto
+    produto_detalhado = {
+        **produto_encontrado,
+        'description': produto_encontrado.get('description', 'Este é um produto incrível com estampa de lhama, feito com materiais de alta qualidade e muito conforto. Perfeito para quem ama estilo e conforto.'),
+        'category': produto_encontrado.get('category', 'Infantil'),
+        'codigo': f'PROD{id:04d}',
+        'colors': ['Azul', 'Vermelho', 'Verde'],
+        'sizes': ['P', 'M', 'G', 'GG'],
+        'reviews': [
+            {'user': 'Cliente Satisfeito', 'rating': 5, 'comment': 'Adorei o produto!', 'date': '10/07/2024'},
+            {'user': 'Comprador Feliz', 'rating': 4, 'comment': 'Muito bom, recomendo!', 'date': '09/07/2024'}
+        ],
+        'images': [
+            produto_encontrado['image'],
+            'img/produto1_2.jpg',
+            'img/produto1_3.jpg'
+        ],
+        'old_price': produto_encontrado.get('old_price', float(produto_encontrado['price']) * 1.2),  # 20% mais caro como preço antigo
+        'discount': 20,  # 20% de desconto
+        'stock': 50,  # Quantidade em estoque
+        'tags': ['lhamas', 'infantil', 'conforto'],
+        'material': 'Algodão 100%',
+        'cor': 'Varia conforme o modelo',
+        'tamanho': 'P, M, G, GG',
+        'peso': '200g',
+        'composicao': '95% Algodão, 5% Elastano',
+        'instrucoes': 'Lavar na máquina com água fria, não usar alvejante, secar à sombra'
+    }
+    return render_template('produto.html', produto=produto_detalhado)
 
 @app.route('/carrinho')
 def carrinho():
@@ -140,4 +183,4 @@ def admin():
     return render_template('admin/dashboard.html', insights=insights, user="Admin (Demo)")
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=8080, debug=True)

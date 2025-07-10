@@ -1,122 +1,258 @@
-{% extends "base.html" %}
+{% extends "base_auth.html" %}
+
+{% block title %}Criar Conta{% endblock %}
 
 {% block content %}
-<style>
-    .auth-container {
-        max-width: 450px; /* Slightly wider for more fields */
-        margin: 50px auto;
-        padding: 30px;
-        background-color: var(--cor-fundo-branco);
-        border-radius: 10px;
-        box-shadow: 0 4px 15px var(--cor-sombra);
-        text-align: center;
-    }
-    .auth-container h2 {
-        color: var(--cor-principal-turquesa);
-        margin-bottom: 25px;
-        font-size: 2em;
-    }
-    .form-group {
-        margin-bottom: 15px; /* Adjusted margin */
-        text-align: left;
-    }
-    .form-group label {
-        display: block;
-        margin-bottom: 8px;
-        font-weight: bold;
-        color: var(--cor-texto-cinza);
-    }
-    .form-group input[type="text"],
-    .form-group input[type="email"],
-    .form-group input[type="password"] {
-        width: 100%;
-        padding: 12px;
-        border: 1px solid var(--cor-detalhe-cinza-claro);
-        border-radius: 5px;
-        box-sizing: border-box;
-        font-size: 1em;
-    }
-    .auth-button {
-        background-color: var(--cor-principal-turquesa);
-        color: var(--cor-fundo-branco);
-        padding: 12px 25px;
-        border: none;
-        border-radius: 8px;
-        font-size: 1.1em;
-        font-weight: bold;
-        cursor: pointer;
-        transition: background-color 0.3s ease;
-        width: 100%;
-        margin-top: 10px; /* Added margin-top */
-    }
-    .auth-button:hover {
-        background-color: #2DAA9D;
-    }
-    .switch-auth p {
-        margin-top: 20px;
-        font-size: 0.95em;
-    }
-    .switch-auth a {
-        color: var(--cor-principal-turquesa);
-        font-weight: bold;
-        text-decoration: none;
-    }
-    .switch-auth a:hover {
-        text-decoration: underline;
-    }
-    .error-message {
-        color: red;
-        margin-bottom: 15px;
-        font-size: 0.9em;
-    }
-</style>
-
-<div class="auth-container">
-    <h2>Crie sua Conta LhamaBanana</h2>
+    <h2>Crie sua conta</h2>
+    
     {% if error %}
-        <p class="error-message">{{ error }}</p>
+        <div class="error-message">
+            <i class="fas fa-exclamation-circle"></i>
+            <span>{{ error }}</span>
+        </div>
     {% endif %}
+    
     <form method="POST" action="{{ url_for('register') }}">
         <div class="form-group">
-            <label for="username">Nome de Usuário:</label>
-            <input type="text" id="username" name="username" required>
+            <label for="username">Nome de Usuário</label>
+            <i class="fas fa-user"></i>
+            <input type="text" id="username" name="username" placeholder="Escolha um nome de usuário" required>
         </div>
+        
         <div class="form-group">
-            <label for="email">Email:</label>
-            <input type="email" id="email" name="email" required>
+            <label for="email">E-mail</label>
+            <i class="fas fa-envelope"></i>
+            <input type="email" id="email" name="email" placeholder="seu@email.com" required>
         </div>
+        
         <div class="form-group">
-            <label for="password">Senha:</label>
-            <input type="password" id="password" name="password" required>
+            <label for="password">Senha</label>
+            <i class="fas fa-lock"></i>
+            <input type="password" id="password" name="password" placeholder="Crie uma senha forte" required 
+                   pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" 
+                   title="A senha deve conter pelo menos 8 caracteres, incluindo letras maiúsculas, minúsculas e números.">
+            <span class="toggle-password" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: #666;">
+                <i class="fas fa-eye" style="font-size: 14px;"></i>
+            </span>
+            <small style="display: block; margin-top: 5px; color: #666; font-size: 0.8rem;">
+                Mínimo de 8 caracteres, incluindo letras maiúsculas, minúsculas e números.
+            </small>
         </div>
+        
         <div class="form-group">
-            <label for="confirm_password">Confirme a Senha:</label> 
-            <input type="password" id="confirm_password" name="confirm_password" required>
+            <label for="confirm_password">Confirme a Senha</label>
+            <i class="fas fa-lock"></i>
+            <input type="password" id="confirm_password" name="confirm_password" placeholder="Digite a senha novamente" required>
+            <span class="toggle-password" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: #666;">
+                <i class="fas fa-eye" style="font-size: 14px;"></i>
+            </span>
         </div>
-        <button type="submit" class="auth-button">Cadastrar</button>
+        
+        <div class="form-group" style="margin: 8px 0 12px; padding-left: 5px;">
+            <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer; font-size: 0.8rem; line-height: 1.3; color: #555;">
+                <input type="checkbox" name="terms" required style="margin-right: 8px; width: 14px; height: 14px; margin-top: -2px;">
+                <span>Concordo com os Termos de Uso e Política de Privacidade</span>
+            </label>
+        </div>
+        
+        <button type="submit" class="auth-button">
+            Criar Conta <i class="fas fa-user-plus"></i>
+        </button>
     </form>
-    <div class="switch-auth">
-        <p>Já tem uma conta? <a href="{{ url_for('login') }}">Faça login aqui!</a></p>
+    
+    <!-- Botão de registro com Google temporariamente desativado -->
+    <!-- <div class="divider">
+        <span>ou</span>
     </div>
-</div>
-
-<script>
-    // Optional: Add JavaScript for client-side password confirmation check
-    const password = document.getElementById("password");
-    const confirm_password = document.getElementById("confirm_password");
-
-    function validatePassword(){
-        if(password.value != confirm_password.value) {
-            confirm_password.setCustomValidity("As senhas não coincidem!");
-        } else {
-            confirm_password.setCustomValidity('');
+    
+    <button type="button" class="auth-button google-register" style="background-color: #4285F4; margin-top: 20px; opacity: 0.6; cursor: not-allowed;" title="Cadastro com Google em breve">
+        <i class="fab fa-google" style="margin-right: 10px;"></i> Cadastrar com Google (Em breve)
+    </button> -->
+    
+    <div class="switch-auth">
+        <p>Já tem uma conta? <a href="{{ url_for('login') }}">Faça login</a></p>
+    </div>
+    
+    <style>
+        .divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 25px 0;
+            color: #999;
+            font-size: 0.9rem;
         }
-    }
-    if (password && confirm_password) {
-        password.onchange = validatePassword;
-        confirm_password.onkeyup = validatePassword;
-    }
-</script>
-
+        
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .divider:not(:empty)::before {
+            margin-right: 1em;
+        }
+        
+        .divider:not(:empty)::after {
+            margin-left: 1em;
+        }
+        
+        /* Estilo para indicar força da senha */
+        .password-strength {
+            height: 4px;
+            background: #eee;
+            margin-top: 8px;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .password-strength::before {
+            content: '';
+            display: block;
+            height: 100%;
+            width: 0;
+            background: #ff4444;
+            transition: width 0.3s ease, background 0.3s ease;
+        }
+        
+        .password-strength.weak::before {
+            width: 33%;
+            background: #ff4444;
+        }
+        
+        .password-strength.medium::before {
+            width: 66%;
+            background: #ffbb33;
+        }
+        
+        .password-strength.strong::before {
+            width: 100%;
+            background: #00C851;
+        }
+    </style>
+    
+    <script>
+        // Aguarda o carregamento completo do DOM
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elementos do formulário
+            const form = document.querySelector('form');
+            const password = document.getElementById('password');
+            const confirmPassword = document.getElementById('confirm_password');
+            
+            // Adiciona o indicador de força da senha
+            if (password) {
+                const passwordStrength = document.createElement('div');
+                passwordStrength.className = 'password-strength';
+                password.parentNode.insertBefore(passwordStrength, password.nextSibling);
+                
+                // Validação de senha em tempo real
+                password.addEventListener('input', function() {
+                    const strength = checkPasswordStrength(this.value);
+                    updatePasswordStrengthIndicator(strength, passwordStrength);
+                    validatePasswords();
+                });
+                
+                // Configura os botões de mostrar/ocultar senha
+                const togglePasswords = document.querySelectorAll('.toggle-password');
+                togglePasswords.forEach(toggle => {
+                    toggle.addEventListener('click', function() {
+                        const input = this.previousElementSibling;
+                        const icon = this.querySelector('i');
+                        if (input && icon) {
+                            const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+                            input.setAttribute('type', type);
+                            icon.classList.toggle('fa-eye');
+                            icon.classList.toggle('fa-eye-slash');
+                        }
+                    });
+                });
+            }
+            
+            // Validação de confirmação de senha
+            if (confirmPassword) {
+                confirmPassword.addEventListener('input', validatePasswords);
+            }
+            
+            // Validação de formulário
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    if (!validateForm()) {
+                        e.preventDefault();
+                        return false;
+                    }
+                    return true;
+                });
+            }
+            
+            // Código de registro com Google removido temporariamente
+            // Para implementar, será necessário configurar o OAuth do Google
+            
+            // Funções auxiliares
+            function validateForm() {
+                const username = document.getElementById('username');
+                const email = document.getElementById('email');
+                const terms = document.querySelector('input[name="terms"]');
+                
+                if (!username.value || !email.value || !password.value || !confirmPassword.value) {
+                    alert('Por favor, preencha todos os campos obrigatórios.');
+                    return false;
+                }
+                
+                if (!terms.checked) {
+                    alert('Você precisa aceitar os Termos de Serviço e Política de Privacidade.');
+                    return false;
+                }
+                
+                if (password.value !== confirmPassword.value) {
+                    alert('As senhas não coincidem.');
+                    return false;
+                }
+                
+                return true;
+            }
+            
+            function checkPasswordStrength(password) {
+                let strength = 0;
+                
+                // Verifica o comprimento
+                if (password.length >= 8) strength += 1;
+                
+                // Verifica se contém letras minúsculas e maiúsculas
+                if (password.match(/([a-z].*[A-Z])|([A-Z].*[a-z])/)) strength += 1;
+                
+                // Verifica se contém números
+                if (password.match(/([0-9])/)) strength += 1;
+                
+                // Verifica se contém caracteres especiais
+                if (password.match(/([!,%,&,@,#,$,^,*,?,_,~])/)) strength += 1;
+                
+                return strength;
+            }
+            
+            function updatePasswordStrengthIndicator(strength, indicator) {
+                indicator.className = 'password-strength';
+                
+                if (strength > 0) {
+                    if (strength <= 2) {
+                        indicator.classList.add('weak');
+                    } else if (strength === 3) {
+                        indicator.classList.add('medium');
+                    } else {
+                        indicator.classList.add('strong');
+                    }
+                }
+            }
+            
+            function validatePasswords() {
+                if (password && confirmPassword) {
+                    if (password.value !== confirmPassword.value) {
+                        confirmPassword.setCustomValidity("As senhas não coincidem");
+                    } else {
+                        confirmPassword.setCustomValidity('');
+                    }
+                }
+            }
+        });
+    </script>
 {% endblock %}
-

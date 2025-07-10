@@ -1,94 +1,121 @@
-{% extends "base.html" %}
+{% extends "base_auth.html" %}
+
+{% block title %}Login{% endblock %}
 
 {% block content %}
-<style>
-    .auth-container {
-        max-width: 400px;
-        margin: 50px auto;
-        padding: 30px;
-        background-color: var(--cor-fundo-branco);
-        border-radius: 10px;
-        box-shadow: 0 4px 15px var(--cor-sombra);
-        text-align: center;
-    }
-    .auth-container h2 {
-        color: var(--cor-principal-turquesa);
-        margin-bottom: 25px;
-        font-size: 2em;
-    }
-    .form-group {
-        margin-bottom: 20px;
-        text-align: left;
-    }
-    .form-group label {
-        display: block;
-        margin-bottom: 8px;
-        font-weight: bold;
-        color: var(--cor-texto-cinza);
-    }
-    .form-group input[type="text"],
-    .form-group input[type="email"],
-    .form-group input[type="password"] {
-        width: 100%;
-        padding: 12px;
-        border: 1px solid var(--cor-detalhe-cinza-claro);
-        border-radius: 5px;
-        box-sizing: border-box;
-        font-size: 1em;
-    }
-    .auth-button {
-        background-color: var(--cor-principal-turquesa);
-        color: var(--cor-fundo-branco);
-        padding: 12px 25px;
-        border: none;
-        border-radius: 8px;
-        font-size: 1.1em;
-        font-weight: bold;
-        cursor: pointer;
-        transition: background-color 0.3s ease;
-        width: 100%;
-    }
-    .auth-button:hover {
-        background-color: #2DAA9D;
-    }
-    .switch-auth p {
-        margin-top: 20px;
-        font-size: 0.95em;
-    }
-    .switch-auth a {
-        color: var(--cor-principal-turquesa);
-        font-weight: bold;
-        text-decoration: none;
-    }
-    .switch-auth a:hover {
-        text-decoration: underline;
-    }
-    .error-message {
-        color: red;
-        margin-bottom: 15px;
-        font-size: 0.9em;
-    }
-</style>
-
-<div class="auth-container">
-    <h2>Login LhamaBanana</h2>
+    <h2>Bem-vindo de volta!</h2>
+    
     {% if error %}
-        <p class="error-message">{{ error }}</p>
+        <div class="error-message">
+            <i class="fas fa-exclamation-circle"></i>
+            <span>{{ error }}</span>
+        </div>
     {% endif %}
+    
     <form method="POST" action="{{ url_for('login') }}">
         <div class="form-group">
-            <label for="username">Usuário:</label>
-            <input type="text" id="username" name="username" required>
+            <label for="username">Usuário</label>
+            <i class="fas fa-user"></i>
+            <input type="text" id="username" name="username" placeholder="Digite seu usuário" required>
         </div>
+        
         <div class="form-group">
-            <label for="password">Senha:</label>
-            <input type="password" id="password" name="password" required>
+            <label for="password">Senha</label>
+            <i class="fas fa-lock"></i>
+            <input type="password" id="password" name="password" placeholder="Digite sua senha" required>
         </div>
-        <button type="submit" class="auth-button">Entrar</button>
+        
+        <!-- Link de 'Esqueceu a senha' temporariamente desativado -->
+        <!-- <div class="form-group" style="text-align: right; margin-bottom: 5px;">
+            <a href="#" style="font-size: 0.9rem; color: #666; cursor: not-allowed;" title="Funcionalidade em desenvolvimento">Esqueceu a senha?</a>
+        </div> -->
+        
+        <button type="submit" class="auth-button">
+            Entrar <i class="fas fa-arrow-right"></i>
+        </button>
     </form>
-    <div class="switch-auth">
-        <p>Não tem uma conta? <a href="{{ url_for('register') }}">Cadastre-se aqui!</a></p>
+    
+    <!-- Botão de login com Google temporariamente desativado -->
+    <!-- <div class="divider">
+        <span>ou</span>
     </div>
-</div>
-{% endblock %}
+    
+    <button type="button" class="auth-button google-login" style="background-color: #4285F4; margin-top: 20px; opacity: 0.6; cursor: not-allowed;" title="Login com Google em breve">
+        <i class="fab fa-google" style="margin-right: 10px;"></i> Login com Google (Em breve)
+    </button> -->
+    
+    <div class="switch-auth">
+        <p>Não tem uma conta? <a href="{{ url_for('register') }}">Cadastre-se</a></p>
+    </div>
+    
+    <style>
+        .divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            margin: 25px 0;
+            color: #999;
+            font-size: 0.9rem;
+        }
+        
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .divider:not(:empty)::before {
+            margin-right: 1em;
+        }
+        
+        .divider:not(:empty)::after {
+            margin-left: 1em;
+        }
+    </style>
+    
+    <script>
+        // Aguarda o carregamento completo do DOM
+        document.addEventListener('DOMContentLoaded', function() {
+            // Validação de formulário
+            const form = document.querySelector('form');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    const username = document.getElementById('username');
+                    const password = document.getElementById('password');
+                    
+                    if (!username.value || !password.value) {
+                        e.preventDefault();
+                        alert('Por favor, preencha todos os campos.');
+                        return false;
+                    }
+                    return true;
+                });
+            }
 
+            // Configura o botão de mostrar/ocultar senha se existir
+            const togglePassword = document.querySelector('.toggle-password');
+            if (togglePassword) {
+                togglePassword.addEventListener('click', function() {
+                    const password = document.getElementById('password');
+                    const icon = this.querySelector('i');
+                    
+                    if (password && icon) {
+                        if (password.type === 'password') {
+                            password.type = 'text';
+                            icon.classList.remove('fa-eye');
+                            icon.classList.add('fa-eye-slash');
+                        } else {
+                            password.type = 'password';
+                            icon.classList.remove('fa-eye-slash');
+                            icon.classList.add('fa-eye');
+                        }
+                    }
+                });
+            }
+            
+            // Código de login com Google removido temporariamente
+        // Para implementar, será necessário configurar o OAuth do Google    }
+        });
+    </script>
+{% endblock %}

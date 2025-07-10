@@ -1,117 +1,416 @@
 {% extends "base.html" %}
 
+{% block title %}Contato - LhamaBanana{% endblock %}
+
 {% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <style>
-    .contact-section {
-        padding: 30px 15px;
-        background-color: var(--cor-fundo-branco);
-        border-radius: 10px;
-        box-shadow: 0 4px 8px var(--cor-sombra);
-    }
-    .contact-section h2 {
+    
+    .page-title {
         text-align: center;
-        font-size: 2.2em;
-        margin-bottom: 25px;
-        color: var(--cor-principal-turquesa);
+        margin: 2rem 0 3rem;
+        color: #2ab7a9;
+        font-size: 2.5rem;
+        font-weight: 700;
+        position: relative;
+        padding-bottom: 1rem;
     }
-    .contact-info p, .contact-form p {
-        font-size: 1.1em;
-        margin-bottom: 15px;
-        color: var(--cor-texto-cinza);
+    
+    .page-title:after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80px;
+        height: 4px;
+        background: #f9d71c;
+        border-radius: 2px;
     }
-    .contact-info strong {
-        color: var(--cor-texto-preto);
+    
+    .contact-container {
+        max-width: 1200px;
+        margin: 0 auto 4rem;
+        padding: 0 1rem;
     }
-    .contact-form label {
+    
+    .contact-section {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        padding: 2.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .contact-section h2 {
+        color: #2ab7a9;
+        margin-bottom: 1.5rem;
+        font-size: 2rem;
+        position: relative;
+        padding-bottom: 0.5rem;
+    }
+    
+    .contact-section h2:after {
+        content: '';
         display: block;
-        margin-bottom: 8px;
-        font-weight: bold;
-        color: var(--cor-texto-cinza);
+        width: 60px;
+        height: 4px;
+        background: #ffd700;
+        margin-top: 0.5rem;
     }
-    .contact-form input[type="text"],
-    .contact-form input[type="email"],
-    .contact-form textarea {
+    
+    .contact-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 3rem;
+        margin-top: 2rem;
+    }
+    
+    .contact-info {
+        padding-right: 2rem;
+    }
+    
+    .info-item {
+        display: flex;
+        margin-bottom: 1.5rem;
+        align-items: flex-start;
+    }
+    
+    .info-icon {
+        background: #f0f9f8;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 1.2rem;
+        color: #2ab7a9;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+    }
+    
+    .info-content h3 {
+        color: #333;
+        margin: 0 0 0.3rem;
+        font-size: 1.2rem;
+    }
+    
+    .info-content p, 
+    .info-content a {
+        color: #666;
+        margin: 0;
+        line-height: 1.6;
+        text-decoration: none;
+        transition: color 0.3s ease;
+    }
+    
+    .info-content a:hover {
+        color: #2ab7a9;
+    }
+    
+    .social-links {
+        display: flex;
+        gap: 1rem;
+        margin-top: 0.5rem;
+    }
+    
+    .social-links a {
+        color: #666;
+        font-size: 1.2rem;
+        transition: color 0.3s ease;
+    }
+    
+    .social-links a:hover {
+        color: #2ab7a9;
+    }
+    
+    .contact-form {
+        background: #f9f9f9;
+        padding: 2rem;
+        border-radius: 10px;
+    }
+    
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #555;
+    }
+    
+    .form-control {
         width: 100%;
-        padding: 12px;
-        margin-bottom: 15px;
-        border: 1px solid var(--cor-detalhe-cinza-claro);
-        border-radius: 5px;
-        box-sizing: border-box; /* Para incluir padding e border na largura total */
-        font-size: 1em;
+        padding: 0.8rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 1rem;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
     }
-    .contact-form textarea {
+    
+    .form-control:focus {
+        border-color: #2ab7a9;
+        box-shadow: 0 0 0 3px rgba(42, 183, 169, 0.2);
+        outline: none;
+    }
+    
+    textarea.form-control {
         min-height: 150px;
         resize: vertical;
     }
-    .contact-form button[type="submit"] {
-        background-color: var(--cor-principal-turquesa);
-        color: var(--cor-fundo-branco);
-        padding: 15px 30px;
+    
+    .btn-submit {
+        background: #2ab7a9;
+        color: white;
         border: none;
-        border-radius: 8px;
-        font-size: 1.1em;
-        font-weight: bold;
+        padding: 0.8rem 2rem;
+        font-size: 1rem;
+        border-radius: 6px;
         cursor: pointer;
-        transition: background-color 0.3s ease;
+        display: inline-flex;
+        align-items: center;
+        transition: background-color 0.3s ease, transform 0.2s ease;
     }
-    .contact-form button[type="submit"]:hover {
-        background-color: #2DAA9D; /* Um tom mais escuro de turquesa */
+    
+    .btn-submit:hover {
+        background: #239a8e;
+        transform: translateY(-2px);
     }
-    .contact-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 30px;
+    
+    .btn-submit i {
+        margin-right: 0.5rem;
     }
-    .contact-info, .contact-form-container {
-        flex: 1;
-        min-width: 300px; /* Para quebrar em telas menores */
+    
+    .map-container {
+        margin-top: 3rem;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
     }
-
-    @media (max-width: 768px) {
-        .contact-container {
+    
+    .map-container iframe {
+        width: 100%;
+        height: 400px;
+        border: none;
+        display: block;
+    }
+    
+    @media (max-width: 992px) {
+        .contact-grid {
+            grid-template-columns: 1fr;
+            gap: 2rem;
+        }
+        
+        .contact-info {
+            padding-right: 0;
+        }
+        
+        .map-container iframe {
+            height: 300px;
+        }
+    }
+    
+    @media (max-width: 576px) {
+        .page-header {
+            padding: 3rem 1rem;
+        }
+        
+        .contact-section {
+            padding: 1.5rem;
+        }
+        
+        .info-item {
             flex-direction: column;
         }
+        
+        .info-icon {
+            margin-bottom: 0.8rem;
+        }
+    }
+    
+    .alert {
+        padding: 15px 20px;
+        margin-bottom: 25px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 0.95rem;
+        position: relative;
+        padding-left: 50px;
+    }
+    
+    .alert:before {
+        content: '';
+        position: absolute;
+        left: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-family: 'Font Awesome 6 Free';
+        font-weight: 900;
+        font-size: 1.2rem;
+    }
+    
+    .alert-success {
+        color: #0f5132;
+        background-color: #d1e7dd;
+        border: 1px solid #badbcc;
+    }
+    
+    .alert-success:before {
+        content: '\f00c';
+        color: #0f5132;
+    }
+    
+    .alert-error {
+        color: #842029;
+        background-color: #f8d7da;
+        border: 1px solid #f5c2c7;
+    }
+    
+    .alert-error:before {
+        content: '\f06a';
+        color: #842029;
+    }
+    
+    .required-field:after {
+        content: ' *';
+        color: #e74c3c;
     }
 </style>
 
-<section class="contact-section">
-    <h2>Entre em Contato com a LhamaBanana!</h2>
-    <p>Adoraríamos ouvir você! Tem alguma dúvida, sugestão ou só quer dar um oi? Use o formulário abaixo ou nossos canais de contato.</p>
 
+
+<div class="container">
+    <h1 class="page-title">Entre em Contato</h1>
+    
     <div class="contact-container">
-        <div class="contact-info">
-            <h3>Nossas Informações</h3>
-            <p><strong>Email:</strong> <a href="mailto:contato@lhamabanana.com.br">contato@lhamabanana.com.br</a></p>
-            <p><strong>Telefone/WhatsApp:</strong> (XX) XXXXX-XXXX (Em breve!)</p>
-            <p><strong>Horário de Atendimento:</strong> Segunda a Sexta, das 9h às 18h.</p>
-            <p>Siga-nos nas redes sociais para ficar por dentro das novidades e promoções!</p>
-            <!-- Adicionar ícones de redes sociais aqui -->
+        <section class="contact-section">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="contact-grid">
+            <div class="contact-info">
+                <h2>Informações de Contato</h2>
+                <p>Estamos à disposição para esclarecer suas dúvidas, ouvir sugestões ou receber seu feedback. Entre em contato conosco pelo formulário ou utilize um dos canais abaixo:</p>
+                
+                <div class="info-item">
+                    <div class="info-icon">
+                        <i class="fas fa-envelope"></i>
+                    </div>
+                    <div class="info-content">
+                        <h3>E-mail</h3>
+                        <a href="mailto:contato@lhamabanana.com.br">contato@lhamabanana.com.br</a>
+                    </div>
+                </div>
+                
+                <div class="info-item">
+                    <div class="info-icon">
+                        <i class="fas fa-phone-alt"></i>
+                    </div>
+                    <div class="info-content">
+                        <h3>Telefone/WhatsApp</h3>
+                        <a href="https://wa.me/5511987654321">(11) 98765-4321</a>
+                    </div>
+                </div>
+                
+                <div class="info-item">
+                    <div class="info-icon">
+                        <i class="fas fa-map-marker-alt"></i>
+                    </div>
+                    <div class="info-content">
+                        <h3>Endereço</h3>
+                        <p>Rua das Lhamas Felizes, 123<br>Vila Banana, São Paulo/SP<br>CEP: 01234-567</p>
+                    </div>
+                </div>
+                
+                <div class="info-item">
+                    <div class="info-icon">
+                        <i class="far fa-clock"></i>
+                    </div>
+                    <div class="info-content">
+                        <h3>Horário de Atendimento</h3>
+                        <p>Segunda a Sexta: 9h às 18h<br>Sábado: 9h às 13h</p>
+                    </div>
+                </div>
+                
+                <div class="info-item">
+                    <div class="info-icon">
+                        <i class="fas fa-share-alt"></i>
+                    </div>
+                    <div class="info-content">
+                        <h3>Redes Sociais</h3>
+                        <div class="social-links">
+                            <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                            <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+                            <a href="#" aria-label="Pinterest"><i class="fab fa-pinterest-p"></i></a>
+                            <a href="#" aria-label="YouTube"><i class="fab fa-youtube"></i></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="contact-form-container">
+                <h2>Envie uma Mensagem</h2>
+                <p>Preencha o formulário abaixo e entraremos em contato o mais breve possível.</p>
+                
+                <form class="contact-form" method="POST" action="{{ url_for('contato') }}">
+                    <div class="form-group">
+                        <label for="nome" class="required-field">Nome Completo</label>
+                        <input type="text" id="nome" name="nome" required class="form-control" placeholder="Seu nome completo">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="email" class="required-field">E-mail</label>
+                        <input type="email" id="email" name="email" required class="form-control" placeholder="seu@email.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="telefone">Telefone</label>
+                        <input type="text" id="telefone" name="telefone" class="form-control" placeholder="(00) 00000-0000">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="assunto" class="required-field">Assunto</label>
+                        <select id="assunto" name="assunto" required class="form-control">
+                            <option value="" disabled selected>Selecione o assunto</option>
+                            <option value="Dúvida">Dúvida</option>
+                            <option value="Sugestão">Sugestão</option>
+                            <option value="Reclamação">Reclamação</option>
+                            <option value="Elogio">Elogio</option>
+                            <option value="Outro">Outro</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="mensagem" class="required-field">Mensagem</label>
+                        <textarea id="mensagem" name="mensagem" required class="form-control" placeholder="Escreva sua mensagem aqui..."></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn-submit">
+                        <i class="fas fa-paper-plane"></i> Enviar Mensagem
+                    </button>
+                </form>
+            </div>
         </div>
-
-        <div class="contact-form-container">
-            <h3>Mande uma Mensagem</h3>
-            <form action="#" method="post" class="contact-form">
-                <div>
-                    <label for="name">Seu Nome:</label>
-                    <input type="text" id="name" name="name" required>
-                </div>
-                <div>
-                    <label for="email">Seu Email:</label>
-                    <input type="email" id="email" name="email" required>
-                </div>
-                <div>
-                    <label for="subject">Assunto:</label>
-                    <input type="text" id="subject" name="subject" required>
-                </div>
-                <div>
-                    <label for="message">Sua Mensagem:</label>
-                    <textarea id="message" name="message" required></textarea>
-                </div>
-                <button type="submit">Enviar Mensagem</button>
-            </form>
+        
+        <div class="map-container">
+            <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3657.197490294925!2d-46.65868298502218!3d-23.56134956747542!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x94ce59ceb1eb771f%3A0x904f1a401b2ca7c5!2sAv.%20Paulista%2C%201000%20-%20Bela%20Vista%2C%20S%C3%A3o%20Paulo%20-%20SP%2C%2001310-100!5e0!3m2!1spt-BR!2sbr!4v1620000000000!5m2!1spt-BR!2sbr" 
+                    allowfullscreen="" 
+                    loading="lazy"
+                    referrerpolicy="no-referrer-when-downgrade">
+            </iframe>
         </div>
-    </div>
-</section>
+        </div>
+    </section>
+</div>
 
 {% endblock %}
-

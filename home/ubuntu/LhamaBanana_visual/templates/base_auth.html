@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LhamaBanana - {% block title %}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='img/logo.png') }}" type="image/x-icon">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .auth-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-image: url("{{ url_for('static', filename='img/background-hero.png') }}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .auth-page::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.85);
+            z-index: -1;
+        }
+
+        /* Estilo da lua com banana */
+        .auth-page::after {
+            content: '';
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 200px;
+            height: 200px;
+            background-image: url("{{ url_for('static', filename='img/banana-lua.png') }}");
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: left top;
+            z-index: 0;
+            opacity: 0.95;
+            animation: cintilacao 3s ease-in-out infinite;
+            mix-blend-mode: screen;
+            filter: 
+                drop-shadow(0 0 10px rgba(255, 255, 200, 0.8))
+                drop-shadow(0 0 20px rgba(255, 240, 150, 0.6))
+                drop-shadow(0 0 30px rgba(255, 230, 100, 0.4))
+                brightness(1.2) saturate(1.2);
+        }
+
+        @keyframes pulse {
+            0% {
+                filter: drop-shadow(0 0 15px rgba(255, 255, 200, 0.7)) 
+                        drop-shadow(0 0 30px rgba(255, 240, 150, 0.5))
+                        brightness(1.1) contrast(1.1);
+            }
+            100% {
+                filter: drop-shadow(0 0 20px rgba(255, 255, 220, 0.8)) 
+                        drop-shadow(0 0 40px rgba(255, 245, 170, 0.6))
+                        brightness(1.2) contrast(1.2);
+            }
+        }
+
+        .auth-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 450px;
+            position: relative;
+            z-index: 1;
+            animation: fadeInUp 0.6s ease-out;
+        }
+
+        .auth-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(90deg, var(--cor-principal-turquesa), var(--cor-secundaria-amarelo));
+            border-radius: 15px 15px 0 0;
+        }
+
+        .auth-logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .auth-logo img {
+            height: 80px;
+            margin-bottom: 10px;
+        }
+
+        .auth-logo h1 {
+            color: var(--cor-principal-turquesa);
+            margin: 10px 0 5px;
+            font-size: 2.2rem;
+            font-family: 'Fredoka', sans-serif;
+        }
+
+        .auth-container h2 {
+            color: var(--cor-texto-cinza);
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 1.8rem;
+            font-family: 'Fredoka', sans-serif;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--cor-texto-cinza);
+            font-size: 0.95rem;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="email"],
+        .form-group input {
+            width: 100%;
+            padding: 0 15px 0 40px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            background-color: #fff;
+            box-sizing: border-box;
+            height: 46px;
+            line-height: 1.2;
+            margin: 0;
+        }
+
+        .form-group input:focus {
+            border-color: var(--cor-principal-turquesa);
+            box-shadow: 0 0 0 3px rgba(64, 224, 208, 0.2);
+            outline: none;
+            background-color: white;
+        }
+
+        .form-group i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+            transition: all 0.3s ease;
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            pointer-events: none;
+        }
+
+        .auth-button {
+            background: var(--cor-principal-turquesa);
+            color: white;
+            border: none;
+            padding: 14px 25px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .auth-button i {
+            margin-left: 10px;
+            font-size: 1.1rem;
+        }
+
+        .auth-button:hover {
+            background: #20c9b9;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(64, 224, 208, 0.3);
+        }
+
+        .auth-button:hover i {
+            transform: translateX(5px);
+        }
+
+        .switch-auth {
+            margin-top: 25px;
+            text-align: center;
+            font-size: 0.95rem;
+            color: #666;
+        }
+
+        .switch-auth a {
+            color: var(--cor-principal-turquesa);
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .switch-auth a::after {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 2px;
+            bottom: -2px;
+            left: 0;
+            background-color: var(--cor-principal-turquesa);
+            transition: width 0.3s ease;
+        }
+
+        .switch-auth a:hover::after {
+            width: 100%;
+        }
+
+        .error-message {
+            background-color: #ffebee;
+            color: #d32f2f;
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            border-left: 4px solid #d32f2f;
+            display: flex;
+            align-items: center;
+        }
+
+        .error-message i {
+            margin-right: 10px;
+            font-size: 1.1rem;
+        }
+
+        /* Animações */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes cintilacao {
+            0% { 
+                transform: scale(1) rotate(0deg);
+                filter: 
+                    drop-shadow(0 0 10px rgba(255, 255, 200, 0.8))
+                    drop-shadow(0 0 20px rgba(255, 240, 150, 0.6))
+                    drop-shadow(0 0 30px rgba(255, 230, 100, 0.4))
+                    brightness(1.2) saturate(1.2);
+            }
+            50% { 
+                transform: scale(1.05) rotate(1deg);
+                filter: 
+                    drop-shadow(0 0 15px rgba(255, 255, 200, 0.9))
+                    drop-shadow(0 0 25px rgba(255, 240, 150, 0.7))
+                    drop-shadow(0 0 35px rgba(255, 230, 100, 0.5))
+                    brightness(1.3) saturate(1.3);
+            }
+            100% { 
+                transform: scale(1) rotate(0deg);
+                filter: 
+                    drop-shadow(0 0 10px rgba(255, 255, 200, 0.8))
+                    drop-shadow(0 0 20px rgba(255, 240, 150, 0.6))
+                    drop-shadow(0 0 30px rgba(255, 230, 100, 0.4))
+                    brightness(1.2) saturate(1.2);
+            }
+        }
+
+        /* Responsividade */
+        @media (max-width: 768px) {
+            .auth-container {
+                padding: 30px 25px;
+            }
+
+            .auth-logo img {
+                height: 70px;
+            }
+
+            .auth-logo h1 {
+                font-size: 2rem;
+            }
+
+            .auth-container h2 {
+                font-size: 1.6rem;
+                margin-bottom: 25px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .auth-page {
+                padding: 15px;
+            }
+
+            .auth-container {
+                padding: 25px 20px;
+            }
+
+            .auth-logo img {
+                height: 60px;
+            }
+
+            .auth-logo h1 {
+                font-size: 1.8rem;
+            }
+
+            .auth-container h2 {
+                font-size: 1.4rem;
+                margin-bottom: 20px;
+            }
+
+            .form-group input[type="text"],
+            .form-group input[type="email"],
+            .form-group input[type="password"] {
+                padding: 12px 15px 12px 40px;
+            }
+
+            .form-group i {
+                top: 38px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-page">
+        <div class="auth-container">
+            <div class="auth-logo">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="LhamaBanana">
+                <h1>LhamaBanana</h1>
+            </div>
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    <script>
+        // Efeito de foco nos campos do formulário
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputs = document.querySelectorAll('input[type="text"], input[type="email"], input[type="password"]');
+            
+            inputs.forEach(input => {
+                // Adiciona classe quando o campo recebe foco
+                input.addEventListener('focus', function() {
+                    this.parentNode.classList.add('focused');
+                });
+                
+                // Remove a classe quando o campo perde o foco, mas só se estiver vazio
+                input.addEventListener('blur', function() {
+                    if (this.value === '') {
+                        this.parentNode.classList.remove('focused');
+                    }
+                });
+                
+                // Verifica se o campo já tem valor ao carregar a página
+                if (input.value !== '') {
+                    input.parentNode.classList.add('focused');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

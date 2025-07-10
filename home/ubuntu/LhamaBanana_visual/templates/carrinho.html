@@ -1,163 +1,587 @@
 {% extends "base.html" %}
 
+{% block title %}Carrinho de Compras - LhamaBanana{% endblock %}
+
 {% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <style>
-    .cart-container {
-        padding: 20px;
-        background-color: var(--cor-fundo-branco);
-        border-radius: 10px;
-        box-shadow: 0 4px 8px var(--cor-sombra);
+    /* Estilos Gerais */
+    body {
+        background-color: #f8f9fa;
+        color: #2d3436;
+        line-height: 1.6;
     }
-    .cart-container h2 {
+    
+    .page-header {
         text-align: center;
-        font-size: 2.2em;
-        margin-bottom: 25px;
-        color: var(--cor-principal-turquesa);
+        margin-bottom: 3rem;
+        padding: 0 1.5rem;
     }
+    
+    .page-title {
+        color: #2ab7a9;
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin-bottom: 0.8rem;
+        position: relative;
+        display: inline-block;
+    }
+    
+    .page-title:after {
+        content: '';
+        position: absolute;
+        bottom: -10px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80px;
+        height: 4px;
+        background: #f9d71c;
+        border-radius: 2px;
+    }
+    
+    .page-subtitle {
+        color: #6c757d;
+        font-size: 1.1rem;
+        margin-top: 1rem;
+    }
+    
+    .cart-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 50px 15px 60px;
+    }
+    .cart-header {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr 1fr auto;
+        padding: 1rem 0;
+        font-weight: 600;
+        color: #2d3436;
+        border-bottom: 2px solid #e9ecef;
+        margin-bottom: 1.5rem;
+    }
+    
+    .cart-items {
+        margin-bottom: 2.5rem;
+    }
+    
     .cart-item {
-        display: flex;
+        display: grid;
+        grid-template-columns: 100px 2fr 1fr 1fr 1fr auto;
         align-items: center;
-        border-bottom: 1px solid var(--cor-detalhe-cinza-claro);
-        padding: 15px 0;
-        margin-bottom: 15px;
+        gap: 1.5rem;
+        padding: 1.5rem 0;
+        border-bottom: 1px solid #e9ecef;
+        transition: all 0.2s ease;
     }
+    
+    .cart-item:hover {
+        background-color: rgba(42, 183, 169, 0.03);
+    }
+    
     .cart-item:last-child {
         border-bottom: none;
     }
-    .cart-item img {
+    .cart-item-image {
         width: 100px;
         height: 100px;
         object-fit: cover;
-        border-radius: 5px;
-        margin-right: 20px;
-    }
-    .item-details {
-        flex-grow: 1;
-    }
-    .item-details h3 {
-        font-size: 1.3em;
-        margin: 0 0 5px 0;
-        color: var(--cor-texto-preto);
-    }
-    .item-details p {
-        margin: 3px 0;
-        font-size: 1em;
-    }
-    .item-quantity input[type="number"] {
-        width: 60px;
-        padding: 8px;
-        text-align: center;
-        border: 1px solid var(--cor-detalhe-cinza-claro);
-        border-radius: 4px;
-        margin-right: 10px;
-    }
-    .update-btn, .remove-btn {
-        padding: 8px 15px;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        font-weight: bold;
-        transition: background-color 0.3s ease;
-    }
-    .update-btn {
-        background-color: var(--cor-principal-turquesa);
-        color: var(--cor-fundo-branco);
-    }
-    .update-btn:hover {
-        background-color: #2DAA9D;
-    }
-    .remove-btn {
-        background-color: #d9534f; /* Vermelho para remoção */
-        color: var(--cor-fundo-branco);
-        margin-left: 10px;
-    }
-    .remove-btn:hover {
-        background-color: #c9302c;
-    }
-    .cart-summary {
-        margin-top: 30px;
-        padding: 20px;
-        background-color: #f9f9f9;
         border-radius: 8px;
-        text-align: right;
+        transition: transform 0.3s ease;
     }
+    
+    .cart-item-image:hover {
+        transform: scale(1.05);
+    }
+    
+    .cart-item-details h3 {
+        font-size: 1.1rem;
+        margin: 0 0 0.5rem 0;
+        color: #2d3436;
+    }
+    
+    .cart-item-details p {
+        margin: 0.2rem 0;
+        color: #6c757d;
+        font-size: 0.95rem;
+    }
+    
+    .cart-item-category {
+        color: #2ab7a9;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 0.5rem;
+        display: inline-block;
+    }
+    
+    .cart-item-price {
+        font-weight: 600;
+        color: #2ab7a9;
+        font-size: 1.1rem;
+    }
+    .quantity-selector {
+        display: flex;
+        align-items: center;
+    }
+    
+    .quantity-btn {
+        width: 36px;
+        height: 36px;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        color: #6c757d;
+        font-size: 1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+    }
+    
+    .quantity-btn:hover {
+        background: #e9ecef;
+        color: #2d3436;
+    }
+    
+    .quantity-input {
+        width: 50px;
+        height: 36px;
+        text-align: center;
+        border: 1px solid #dee2e6;
+        border-left: none;
+        border-right: none;
+        font-size: 0.95rem;
+        font-weight: 500;
+    }
+    
+    .update-btn, .remove-btn {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .update-btn {
+        background-color: #2ab7a9;
+        color: white;
+        margin-right: 0.5rem;
+    }
+    
+    .update-btn:hover {
+        background-color: #1f9c8f;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(42, 183, 169, 0.2);
+    }
+    
+    .remove-btn {
+        background-color: #f8f9fa;
+        color: #dc3545;
+        border: 1px solid #f1f1f1;
+    }
+    
+    .remove-btn:hover {
+        background-color: #f8d7da;
+        transform: translateY(-1px);
+    }
+    .cart-summary-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        margin-top: 2rem;
+    }
+    
+    .coupon-section {
+        background: #fff;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 15px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e9ecef;
+    }
+    
+    .coupon-section h3 {
+        font-size: 1.25rem;
+        margin-bottom: 1rem;
+        color: #2d3436;
+    }
+    
+    .coupon-form {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .coupon-input {
+        flex: 1;
+        padding: 0.75rem 1rem;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        font-size: 0.95rem;
+    }
+    
+    .apply-coupon-btn {
+        background: #2ab7a9;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 0 1.5rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .apply-coupon-btn:hover {
+        background: #1f9c8f;
+        transform: translateY(-1px);
+    }
+    
+    .cart-summary {
+        background: #fff;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 15px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e9ecef;
+    }
+    
     .cart-summary h3 {
-        font-size: 1.5em;
-        color: var(--cor-texto-preto);
-        margin-bottom: 15px;
+        font-size: 1.5rem;
+        color: #2d3436;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #e9ecef;
     }
-    .cart-summary p {
-        font-size: 1.2em;
-        margin: 10px 0;
+    
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.8rem;
+        font-size: 1rem;
+    }
+    
+    .summary-label {
+        color: #6c757d;
+    }
+    
+    .summary-value {
+        font-weight: 500;
+        color: #2d3436;
+    }
+    
+    .summary-total {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #2ab7a9;
+        margin: 1.5rem 0;
+        padding-top: 1rem;
+        border-top: 1px solid #e9ecef;
     }
     .checkout-btn {
-        background-color: var(--cor-secundaria-amarelo);
-        color: var(--cor-texto-preto);
-        padding: 15px 30px;
-        text-decoration: none;
-        border-radius: 8px;
-        font-weight: bold;
-        font-size: 1.2em;
+        background-color: #2ab7a9;
+        color: white;
+        width: 100%;
+        padding: 1rem;
+        text-align: center;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 1.05rem;
         border: none;
         cursor: pointer;
-        transition: background-color 0.3s ease;
-        display: inline-block;
-        margin-top: 10px;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
     }
+    
     .checkout-btn:hover {
-        background-color: #E6C300;
+        background-color: #1f9c8f;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(42, 183, 169, 0.3);
     }
-    .empty-cart-message {
+    
+    .continue-shopping {
+        display: inline-block;
+        margin-top: 1.5rem;
+        color: #2ab7a9;
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.2s;
+    }
+    
+    .continue-shopping:hover {
+        color: #1f9c8f;
+        text-decoration: underline;
+    }
+    
+    .empty-cart {
         text-align: center;
-        font-size: 1.2em;
-        padding: 30px;
+        padding: 4rem 2rem;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 2px 15px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e9ecef;
+    }
+    
+    .empty-cart-icon {
+        font-size: 4rem;
+        color: #e9ecef;
+        margin-bottom: 1.5rem;
+    }
+    
+    .empty-cart h2 {
+        color: #2d3436;
+        margin-bottom: 1rem;
+        font-size: 1.8rem;
+    }
+    
+    .empty-cart p {
+        color: #6c757d;
+        margin-bottom: 2rem;
+        font-size: 1.05rem;
+    }
+    
+    .btn-shop-now {
+        background-color: #f9d71c;
+        color: #2d3436;
+        padding: 0.8rem 2rem;
+        border-radius: 6px;
+        font-weight: 600;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s ease;
+    }
+    
+    .btn-shop-now:hover {
+        background-color: #f0cc18;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(249, 215, 28, 0.3);
+        color: #2d3436;
+        text-decoration: none;
     }
 </style>
 
 <div class="cart-container">
-    <h2>Meu Carrinho de Compras</h2>
+    <div class="page-header">
+        <h1 class="page-title">Meu Carrinho</h1>
+        <p class="page-subtitle">Revise seus itens antes de finalizar a compra</p>
+    </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }}">{{ message }}</div>
-            {% endfor %}
+            <div class="mb-4">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="close" data-dismiss="alert" aria-label="Fechar">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                {% endfor %}
+            </div>
         {% endif %}
     {% endwith %}
 
     {% if cart_items %}
-        {% for item in cart_items %}
-        <div class="cart-item">
-            <img src="{{ url_for('static', filename=item.image if item.image else 'img/placeholder.png') }}" alt="{{ item.name }}">
-            <div class="item-details">
-                <h3>{{ item.name }}</h3>
-                <p>Preço Unitário: R$ {{ "%.2f"|format(item.price|float) }}</p>
-                <p>Subtotal: R$ {{ "%.2f"|format(item.item_total|float) }}</p>
-            </div>
-            <div class="item-quantity">
-                <form action="#" method="POST" style="display: inline;">
-                    <input type="number" name="quantity" value="{{ item.quantity }}" min="0">
-                    <button type="submit" class="update-btn">Atualizar</button>
-                </form>
-                <form action="#" method="POST" style="display: inline;">
-                    <button type="submit" class="remove-btn">Remover</button>
-                </form>
-            </div>
+        <div class="cart-header d-none d-md-grid">
+            <div>Produto</div>
+            <div class="text-center">Preço</div>
+            <div class="text-center">Quantidade</div>
+            <div class="text-center">Subtotal</div>
+            <div></div>
         </div>
-        {% endfor %}
+        
+        <div class="cart-items">
+            {% for item in cart_items %}
+            <div class="cart-item">
+                <div class="cart-item-image-container">
+                    <img src="{{ url_for('static', filename=item.image if item.image else 'img/placeholder.png') }}" 
+                         alt="{{ item.name }}" 
+                         class="cart-item-image">
+                </div>
+                
+                <div class="cart-item-details">
+                    <h3>{{ item.name }}</h3>
+                    <span class="cart-item-category">{{ item.category }}</span>
+                    <p class="d-md-none">
+                        <span class="text-muted">Preço: </span>
+                        <span class="cart-item-price">R$ {{ "%.2f"|format(item.price|float) }}</span>
+                    </p>
+                </div>
+                
+                <div class="cart-item-price text-md-center d-none d-md-block">
+                    R$ {{ "%.2f"|format(item.price|float) }}
+                </div>
+                
+                <div class="cart-item-quantity">
+                    <div class="quantity-selector">
+                        <button type="button" class="quantity-btn minus" onclick="updateQuantity({{ loop.index0 }}, -1)">-</button>
+                        <input type="number" class="quantity-input" 
+                               value="{{ item.quantity }}" 
+                               min="1" 
+                               max="{{ item.stock if item.stock else 10 }}"
+                               onchange="updateQuantityInput({{ loop.index0 }}, this.value)">
+                        <button type="button" class="quantity-btn plus" onclick="updateQuantity({{ loop.index0 }}, 1)">+</button>
+                    </div>
+                </div>
+                
+                <div class="cart-item-subtotal text-md-center">
+                    <span class="d-md-none text-muted">Subtotal: </span>
+                    <strong>R$ {{ "%.2f"|format(item.item_total|float) }}</strong>
+                </div>
+                
+                <div class="cart-item-actions">
+                    <button type="button" class="remove-btn" onclick="removeItem({{ loop.index0 }})" title="Remover">
+                        <i class="far fa-trash-alt"></i>
+                        <span class="d-md-none">Remover</span>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
 
-        <div class="cart-summary">
-            <h3>Resumo do Pedido</h3>
-            <p>Total Parcial: <strong>R$ {{ "%.2f"|format(total_price|float) }}</strong></p>
-            <!-- Adicionar informações de frete e cupons aqui futuramente -->
-            <a href="{{ url_for('checkout') }}" class="checkout-btn">Finalizar Compra</a>
+        <div class="cart-summary-container">
+            <div class="coupon-section">
+                <h3>Aplicar Cupom de Desconto</h3>
+                <p class="text-muted mb-3">Digite o código do cupom se você tiver um.</p>
+                <form class="coupon-form" id="couponForm">
+                    <input type="text" class="coupon-input" placeholder="Código do cupom">
+                    <button type="submit" class="apply-coupon-btn">Aplicar</button>
+                </form>
+            </div>
+            
+            <div class="cart-summary">
+                <h3>Resumo do Pedido</h3>
+                
+                <div class="summary-row">
+                    <span class="summary-label">Subtotal</span>
+                    <span class="summary-value">R$ {{ "%.2f"|format(total_price|float) }}</span>
+                </div>
+                
+                <div class="summary-row">
+                    <span class="summary-label">Frete</span>
+                    <span class="summary-value">A calcular</span>
+                </div>
+                
+                <div class="summary-row">
+                    <span class="summary-label">Desconto</span>
+                    <span class="summary-value">- R$ 0,00</span>
+                </div>
+                
+                <div class="summary-row summary-total">
+                    <span>Total</span>
+                    <span>R$ {{ "%.2f"|format(total_price|float) }}</span>
+                </div>
+                
+                <button class="checkout-btn" onclick="window.location.href='{{ url_for('checkout') }}'">
+                    <i class="fas fa-credit-card"></i> Finalizar Compra
+                </button>
+                
+                <div class="text-center">
+                    <a href="{{ url_for('loja') }}" class="continue-shopping">
+                        <i class="fas fa-arrow-left"></i> Continuar Comprando
+                    </a>
+                </div>
+            </div>
         </div>
     {% else %}
-        <div class="empty-cart-message">
-            <p>Seu carrinho está vazio. Que tal adicionar alguns pijamas fofinhos?</p>
-            <a href="{{ url_for('loja') }}" class="cta-button" style="background-color: var(--cor-secundaria-amarelo); color: var(--cor-texto-preto);">Ir para a Loja</a>
+        <div class="empty-cart">
+            <div class="empty-cart-icon">
+                <i class="fas fa-shopping-cart"></i>
+            </div>
+            <h2>Seu carrinho está vazio</h2>
+            <p>Navegue pela nossa loja e adicione itens incríveis ao seu carrinho!</p>
+            <a href="{{ url_for('loja') }}" class="btn-shop-now">
+                <i class="fas fa-shopping-bag"></i> Ir para a Loja
+            </a>
         </div>
     {% endif %}
 </div>
+
+<script>
+    // Função para atualizar a quantidade de um item
+    function updateQuantity(index, change) {
+        const input = document.querySelectorAll('.quantity-input')[index];
+        let value = parseInt(input.value) + change;
+        const max = parseInt(input.getAttribute('max'));
+        const min = parseInt(input.getAttribute('min'));
+        
+        if (value < min) value = min;
+        if (value > max) value = max;
+        
+        input.value = value;
+        
+        // Aqui você pode adicionar uma chamada AJAX para atualizar o carrinho
+        updateCartItem(index, value);
+    }
+    
+    // Função para atualizar a quantidade via input
+    function updateQuantityInput(index, value) {
+        const input = document.querySelectorAll('.quantity-input')[index];
+        const max = parseInt(input.getAttribute('max'));
+        const min = parseInt(input.getAttribute('min'));
+        
+        if (value < min) value = min;
+        if (value > max) value = max;
+        
+        input.value = value;
+        
+        // Aqui você pode adicionar uma chamada AJAX para atualizar o carrinho
+        updateCartItem(index, value);
+    }
+    
+    // Função para remover um item do carrinho
+    function removeItem(index) {
+        if (confirm('Tem certeza que deseja remover este item do carrinho?')) {
+            // Aqui você pode adicionar uma chamada AJAX para remover o item do carrinho
+            console.log('Removendo item', index);
+            // Após remover, você pode recarregar a página ou atualizar o DOM
+            window.location.reload();
+        }
+    }
+    
+    // Função para atualizar um item no carrinho (simulação)
+    function updateCartItem(index, quantity) {
+        console.log(`Atualizando item ${index} para quantidade ${quantity}`);
+        // Aqui você faria uma chamada AJAX para atualizar o carrinho
+        // Exemplo com fetch API:
+        /*
+        fetch('/atualizar-carrinho', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                itemIndex: index,
+                quantity: quantity
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Atualizar o subtotal e total na página
+                window.location.reload();
+            }
+        });
+        */
+    }
+    
+    // Adicionar evento de submit para o formulário de cupom
+    document.getElementById('couponForm')?.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const couponCode = this.querySelector('input[type="text"]').value;
+        if (couponCode.trim() !== '') {
+            // Aqui você pode adicionar uma chamada AJAX para validar o cupom
+            alert(`Cupom ${couponCode} aplicado com sucesso!`);
+            // Atualizar os valores na página
+        }
+    });
+</script>
 {% endblock %}
 

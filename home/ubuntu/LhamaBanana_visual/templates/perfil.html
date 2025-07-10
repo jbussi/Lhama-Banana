@@ -1,195 +1,406 @@
 {% extends "base.html" %}
 
+{% block title %}Meu Perfil - LhamaBanana{% endblock %}
+
 {% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <style>
-    .profile-container {
-        padding: 20px;
-        background-color: var(--cor-fundo-branco);
-        border-radius: 10px;
-        box-shadow: 0 4px 8px var(--cor-sombra);
-    }
-    .profile-container h2 {
-        text-align: center;
-        font-size: 2.2em;
-        margin-bottom: 25px;
-        color: var(--cor-principal-turquesa);
-    }
-    .profile-section {
-        margin-bottom: 30px;
-        padding: 20px;
-        border: 1px solid var(--cor-detalhe-cinza-claro);
-        border-radius: 8px;
-    }
-    .profile-section h3 {
-        font-size: 1.5em;
-        color: var(--cor-texto-preto);
-        margin-bottom: 15px;
-        border-bottom: 2px solid var(--cor-secundaria-amarelo);
-        padding-bottom: 5px;
-    }
-    .profile-info p, .order-history p, .address-list p {
-        font-size: 1.1em;
-        margin-bottom: 10px;
-        color: var(--cor-texto-cinza);
-    }
-    .profile-info strong {
-        color: var(--cor-texto-preto);
-    }
-    .edit-button, .add-address-button, .view-order-button {
-        background-color: var(--cor-principal-turquesa);
-        color: var(--cor-fundo-branco);
-        padding: 10px 20px;
-        text-decoration: none;
-        border-radius: 5px;
-        font-weight: bold;
-        border: none;
-        cursor: pointer;
-        transition: background-color 0.3s ease;
-        display: inline-block;
-        margin-top: 10px;
-    }
-    .edit-button:hover, .add-address-button:hover, .view-order-button:hover {
-        background-color: #2DAA9D;
-    }
-    .order-item, .address-item {
-        border-bottom: 1px dashed var(--cor-detalhe-cinza-claro);
-        padding-bottom: 10px;
-        margin-bottom: 10px;
-    }
-    .order-item:last-child, .address-item:last-child {
-        border-bottom: none;
-    }
-    .form-group label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: bold;
-    }
-    .form-group input[type=\"text\"], .form-group input[type=\"email\"] {
-        width: calc(100% - 22px); /* Consider padding and border */
-        padding: 10px;
-        margin-bottom: 10px;
-        border: 1px solid var(--cor-detalhe-cinza-claro);
-        border-radius: 4px;
-    }
-</style>
-
-<div class="profile-container">
-    <h2>Meu Perfil</h2>
-
-    <!-- Seção de Informações Pessoais -->
-    <section class="profile-section" id="personal-info">
-        <h3>Minhas Informações</h3>
-        <!-- Conteúdo dinâmico aqui (ex: vindo do backend) -->
-        <div class="profile-info">
-            <p><strong>Nome:</strong> Maria da Silva (Exemplo)</p>
-            <p><strong>Email:</strong> maria.silva@exemplo.com (Exemplo)</p>
-            <p><strong>Telefone:</strong> (XX) XXXXX-XXXX (Exemplo)</p>
-        </div>
-        <button class="edit-button" onclick="toggleEditForm('edit-personal-info-form')">
+        /* Estilos específicos da página de perfil */
+        .profile-page {
+            max-width: 100%;
+            margin: 2rem 0;
+            padding: 0;
+        }
         
-        <form id="edit-personal-info-form" style="display:none; margin-top:15px;">
-            <div class="form-group">
-                <label for="name">Nome:</label>
-                <input type="text" id="name" name="name" value="Maria da Silva">
+        /* Cabeçalho do perfil */
+        .profile-header {
+            background: linear-gradient(135deg, #40e0d0, #2ab7a9);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .profile-avatar {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            margin: 0 auto 1rem;
+            border: 4px solid white;
+            position: relative;
+            overflow: hidden;
+            background: #f0f0f0;
+        }
+        
+        .profile-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .change-avatar-btn {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            background: #40e0d0;
+            border: 2px solid white;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: white;
+        }
+        
+        .profile-name {
+            font-size: 1.8rem;
+            margin: 0.5rem 0;
+            font-weight: 600;
+        }
+        
+        .profile-email {
+            color: rgba(255,255,255,0.9);
+            margin-bottom: 1rem;
+        }
+        
+        /* Seções do perfil */
+        .profile-sections {
+            padding: 2rem;
+            background: white;
+            border-radius: 0 0 12px 12px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+        }
+        
+        .profile-section {
+            margin-bottom: 2.5rem;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.8rem;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .section-header h2 {
+            font-size: 1.4rem;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .section-header i {
+            color: #40e0d0;
+        }
+        
+        /* Botões */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            font-size: 0.95rem;
+            text-decoration: none;
+        }
+        
+        .btn i {
+            font-size: 0.9em;
+        }
+        
+        .btn-primary {
+            background: #40e0d0;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #2ab7a9;
+            transform: translateY(-2px);
+        }
+        
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #40e0d0;
+            color: #40e0d0;
+        }
+        
+        .btn-outline:hover {
+            background: rgba(64, 224, 208, 0.1);
+        }
+        
+        /* Estado vazio */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: #666;
+            background: #fafafa;
+            border-radius: 8px;
+            border: 1px dashed #ddd;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            color: #ddd;
+            margin-bottom: 1rem;
+        }
+        
+        .empty-state h3 {
+            color: #444;
+            margin-bottom: 0.5rem;
+        }
+        
+        /* Responsividade */
+        @media (max-width: 768px) {
+            .profile-page {
+                padding: 1rem;
+            }
+            
+            .profile-sections {
+                padding: 1rem;
+            }
+            
+            .section-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    
+<div class="profile-page">
+    <div class="profile-container">
+        <!-- Cabeçalho do Perfil -->
+        <div class="profile-header">
+            <div class="profile-avatar">
+                <img src="{{ url_for('static', filename='img/avatar-placeholder.png') }}" alt="Foto de perfil" id="profile-pic">
+                <button class="change-avatar-btn" id="change-avatar-btn">
+                    <i class="fas fa-camera"></i>
+                </button>
+                <input type="file" id="profile-pic-input" accept="image/*" style="display: none;">
             </div>
-            <div class="form-group">
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="email" value="maria.silva@exemplo.com">
-            </div>
-            <div class="form-group">
-                <label for="phone">Telefone:</label>
-                <input type="text" id="phone" name="phone" value="(XX) XXXXX-XXXX">
-            </div>
-            <button type="submit" class="edit-button">Salvar Alterações</button>
-        </form>
-    </section>
-
-    <!-- Seção de Histórico de Pedidos -->
-    <section class="profile-section" id="order-history">
-        <h3>Meus Pedidos</h3>
-        <div class="order-history">
-            <!-- Exemplo de Pedido - Conteúdo dinâmico aqui -->
-            <div class="order-item">
-                <p><strong>Pedido #12345</strong> - Data: 10/05/2025</p>
-                <p>Status: Enviado</p>
-                <p>Total: R$ 149,90</p>
-                <a href="#" class="view-order-button">Ver Detalhes</a>
-            </div>
-            <div class="order-item">
-                <p><strong>Pedido #12300</strong> - Data: 01/04/2025</p>
-                <p>Status: Entregue</p>
-                <p>Total: R$ 79,90</p>
-                <a href="#" class="view-order-button">Ver Detalhes</a>
-            </div>
-            <!-- Adicionar mais pedidos conforme o histórico do usuário -->
-            <p>Você ainda não fez nenhum pedido. <a href="{{ url_for('loja') }}">Que tal começar agora?</a></p>
+            <h1>Olá, <span id="user-name">Usuário</span>!</h1>
+            <p class="member-since">Membro desde <span id="join-date">Janeiro 2023</span></p>
         </div>
-    </section>
 
-    <!-- Seção de Endereços -->
-    <section class="profile-section" id="addresses">
-        <h3>Meus Endereços</h3>
-        <div class="address-list">
-            <!-- Exemplo de Endereço - Conteúdo dinâmico aqui -->
-            <div class="address-item">
-                <p><strong>Casa</strong></p>
-                <p>Rua das Bananeiras, 123, Vila da Lhama</p>
-                <p>Cidade Alegre - BA, CEP: 40000-000</p>
-                <button class="edit-button" style="margin-right:10px;">Editar</button> <button class="edit-button" style="background-color: #c9302c;">Excluir</button>
-            </div>
-            <!-- Adicionar mais endereços -->
+        <div class="profile-sections">
+            <!-- Seção de Informações Pessoais -->
+            <section class="profile-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-user"></i> Informações Pessoais</h2>
+                    <button class="btn btn-outline" id="edit-personal-info">
+                        <i class="fas fa-edit"></i> Editar
+                    </button>
+                </div>
+                
+                <div class="info-grid" id="personal-info-view">
+                    <div class="info-item">
+                        <span class="info-label">Nome Completo</span>
+                        <p class="info-value" id="full-name">Maria da Silva</p>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">E-mail</span>
+                        <p class="info-value" id="email">maria@exemplo.com</p>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">CPF</span>
+                        <p class="info-value" id="cpf">123.456.789-00</p>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Data de Nascimento</span>
+                        <p class="info-value" id="birthdate">15/05/1990</p>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Telefone</span>
+                        <p class="info-value" id="phone">(11) 98765-4321</p>
+                    </div>
+                </div>
+
+                <!-- Formulário de Edição (inicialmente oculto) -->
+                <form id="personal-info-form" class="info-grid" style="display: none;">
+                    <div class="form-group">
+                        <label for="edit-full-name">Nome Completo</label>
+                        <input type="text" id="edit-full-name" class="edit-input" value="Maria da Silva">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-email">E-mail</label>
+                        <input type="email" id="edit-email" class="edit-input" value="maria@exemplo.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-cpf">CPF</label>
+                        <input type="text" id="edit-cpf" class="edit-input" value="123.456.789-00">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-birthdate">Data de Nascimento</label>
+                        <input type="date" id="edit-birthdate" class="edit-input" value="1990-05-15">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-phone">Telefone</label>
+                        <input type="tel" id="edit-phone" class="edit-input" value="11987654321">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-personal-edit">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="save-personal-info">Salvar Alterações</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Seção de Endereços -->
+            <section class="profile-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-map-marker-alt"></i> Meus Endereços</h2>
+                    <button class="btn btn-outline" id="add-address-btn">
+                        <i class="fas fa-plus"></i> Novo Endereço
+                    </button>
+                </div>
+
+                <!-- Lista de Endereços -->
+                <div class="addresses-grid" id="addresses-list">
+                    <!-- Endereço de exemplo 1 -->
+                    <div class="address-card">
+                        <h4><i class="fas fa-home"></i> Casa</h4>
+                        <p>Rua das Flores, 123</p>
+                        <p>Apto 101, Bloco B</p>
+                        <p>Jardim Primavera, São Paulo - SP</p>
+                        <p>CEP: 01234-567</p>
+                        <p>Telefone: (11) 98765-4321</p>
+                        <div class="address-actions">
+                            <button class="btn btn-outline btn-sm edit-address" data-id="1">
+                                <i class="fas fa-edit"></i> Editar
+                            </button>
+                            <button class="btn btn-outline btn-sm remove-address" data-id="1">
+                                <i class="fas fa-trash"></i> Remover
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Endereço de exemplo 2 -->
+                    <div class="address-card">
+                        <h4><i class="fas fa-briefcase"></i> Trabalho</h4>
+                        <p>Avenida Paulista, 1000</p>
+                        <p>Sala 1500, 15º andar</p>
+                        <p>Bela Vista, São Paulo - SP</p>
+                        <p>CEP: 01310-100</p>
+                        <p>Telefone: (11) 98765-1234</p>
+                        <div class="address-actions">
+                            <button class="btn btn-outline btn-sm edit-address" data-id="2">
+                                <i class="fas fa-edit"></i> Editar
+                            </button>
+                            <button class="btn btn-outline btn-sm remove-address" data-id="2">
+                                <i class="fas fa-trash"></i> Remover
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Formulário de Novo Endereço (inicialmente oculto) -->
+                <form id="new-address-form" style="display: none;">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="address-type">Tipo de Endereço</label>
+                            <select id="address-type" class="edit-input">
+                                <option value="home">Casa</option>
+                                <option value="work">Trabalho</option>
+                                <option value="other">Outro</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="address-cep">CEP</label>
+                            <input type="text" id="address-cep" class="edit-input" placeholder="00000-000">
+                        </div>
+                        <div class="form-group">
+                            <label for="address-street">Rua</label>
+                            <input type="text" id="address-street" class="edit-input" placeholder="Nome da rua">
+                        </div>
+                        <div class="form-group">
+                            <label for="address-number">Número</label>
+                            <input type="text" id="address-number" class="edit-input" placeholder="Número">
+                        </div>
+                        <div class="form-group">
+                            <label for="address-complement">Complemento</label>
+                            <input type="text" id="address-complement" class="edit-input" placeholder="Apto, bloco, etc.">
+                        </div>
+                        <div class="form-group">
+                            <label for="address-neighborhood">Bairro</label>
+                            <input type="text" id="address-neighborhood" class="edit-input" placeholder="Bairro">
+                        </div>
+                        <div class="form-group">
+                            <label for="address-city">Cidade</label>
+                            <input type="text" id="address-city" class="edit-input" placeholder="Cidade">
+                        </div>
+                        <div class="form-group">
+                            <label for="address-state">Estado</label>
+                            <select id="address-state" class="edit-input">
+                                <option value="">Selecione...</option>
+                                <option value="AC">Acre</option>
+                                <option value="AL">Alagoas</option>
+                                <option value="AP">Amapá</option>
+                                <option value="AM">Amazonas</option>
+                                <option value="BA">Bahia</option>
+                                <option value="CE">Ceará</option>
+                                <option value="DF">Distrito Federal</option>
+                                <option value="ES">Espírito Santo</option>
+                                <option value="GO">Goiás</option>
+                                <option value="MA">Maranhão</option>
+                                <option value="MT">Mato Grosso</option>
+                                <option value="MS">Mato Grosso do Sul</option>
+                                <option value="MG">Minas Gerais</option>
+                                <option value="PA">Pará</option>
+                                <option value="PB">Paraíba</option>
+                                <option value="PR">Paraná</option>
+                                <option value="PE">Pernambuco</option>
+                                <option value="PI">Piauí</option>
+                                <option value="RJ">Rio de Janeiro</option>
+                                <option value="RN">Rio Grande do Norte</option>
+                                <option value="RS">Rio Grande do Sul</option>
+                                <option value="RO">Rondônia</option>
+                                <option value="RR">Roraima</option>
+                                <option value="SC">Santa Catarina</option>
+                                <option value="SP">São Paulo</option>
+                                <option value="SE">Sergipe</option>
+                                <option value="TO">Tocantins</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="address-phone">Telefone</label>
+                            <input type="tel" id="address-phone" class="edit-input" placeholder="(00) 00000-0000">
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-outline" id="cancel-new-address">Cancelar</button>
+                            <button type="button" class="btn btn-primary" id="save-new-address">Salvar Endereço</button>
+                        </div>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Seção de Histórico de Pedidos -->
+            <section class="profile-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-shopping-bag"></i> Meus Pedidos</h2>
+                </div>
+                
+                <div class="empty-state">
+                    <i class="fas fa-shopping-basket"></i>
+                    <h3>Nenhum pedido encontrado</h3>
+                    <p>Você ainda não realizou nenhum pedido em nossa loja. Aproveite para conhecer nossos produtos!</p>
+                    <a href="{{ url_for('loja') }}" class="btn btn-primary">
+                        <i class="fas fa-shopping-cart"></i> Ir para a Loja
+                    </a>
+                </div>
+            </section>
         </div>
-        <button class="add-address-button" onclick="toggleEditForm('add-address-form')">Adicionar Novo Endereço</button>
-        <form id="add-address-form" style="display:none; margin-top:15px;">
-            <h4>Novo Endereço</h4>
-            <div class="form-group">
-                <label for="address_nickname">Apelido (ex: Casa, Trabalho):</label>
-                <input type="text" id="address_nickname" name="address_nickname">
-            </div>
-            <div class="form-group">
-                <label for="street">Rua/Avenida:</label>
-                <input type="text" id="street" name="street">
-            </div>
-            <div class="form-group">
-                <label for="number">Número:</label>
-                <input type="text" id="number" name="number">
-            </div>
-            <div class="form-group">
-                <label for="complement">Complemento:</label>
-                <input type="text" id="complement" name="complement">
-            </div>
-            <div class="form-group">
-                <label for="neighborhood">Bairro:</label>
-                <input type="text" id="neighborhood" name="neighborhood">
-            </div>
-            <div class="form-group">
-                <label for="city">Cidade:</label>
-                <input type="text" id="city" name="city">
-            </div>
-            <div class="form-group">
-                <label for="state">Estado:</label>
-                <input type="text" id="state" name="state">
-            </div>
-            <div class="form-group">
-                <label for="zipcode">CEP:</label>
-                <input type="text" id="zipcode" name="zipcode">
-            </div>
-            <button type="submit" class="edit-button">Salvar Endereço</button>
-        </form>
-    </section>
-
+    </div>
 </div>
 
-<script>
-function toggleEditForm(formId) {
-    var form = document.getElementById(formId);
-    if (form.style.display === "none") {
-        form.style.display = "block";
-    } else {
-        form.style.display = "none";
-    }
-}
-</script>
-
+<script src="{{ url_for('static', filename='js/profile.js') }}"></script>
 {% endblock %}
-
