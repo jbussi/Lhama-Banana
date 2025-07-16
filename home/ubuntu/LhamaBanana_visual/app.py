@@ -166,6 +166,21 @@ def checkout():
                           coupon_code="DEMO20",
                           user="Visitante (Demo)")
 
+@app.route('/order_confirmation')
+def order_confirmation():
+    # Simulação de dados de pedido
+    order_details = {
+        "order_number": "ORD123456",
+        "date": "15/07/2025",
+        "total": 229.80,
+        "discount": 20.00,
+        "final_total": 209.80,
+        "shipping_address": "Rua das Bananeiras, 123 - Cidade Feliz",
+        "payment_method": "Cartão de Crédito",
+        "status": "Pedido Confirmado"
+    }
+    return render_template('order_confirmation.html', order_details=order_details, user="Visitante (Demo)")
+
 @app.route('/admin')
 def admin():
     # Simulação de painel administrativo com dados estáticos
@@ -183,4 +198,4 @@ def admin():
     return render_template('admin/dashboard.html', insights=insights, user="Admin (Demo)")
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    app.run(host='0.0.0.0', port=80, debug=True)

@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/home.css') }}">
+<link rel="stylesheet" href="https://unpkg.com/swiper@8/swiper-bundle.min.css" />
+
 <section class="hero">
   <div class="hero-text">
     <h1>Noites tranquilas, sorrisos garantidos!</h1>
@@ -294,33 +297,7 @@
 </section>
 
     <!-- Swiper JS -->
-    <link rel="stylesheet" href="https://unpkg.com/swiper@8/swiper-bundle.min.css" />
     <script src="https://unpkg.com/swiper@8/swiper-bundle.min.js"></script>
-
-    <style>
-        /* Estilos adicionais para o Swiper */
-        .swiper {
-            width: 100%;
-            padding: 20px 0 50px;
-        }
-        
-        .swiper-wrapper {
-            padding: 10px 0;
-        }
-        
-        .swiper-slide {
-            height: auto;
-            display: flex;
-            justify-content: center;
-        }
-        
-        .swiper-button-next,
-        .swiper-button-prev {
-            color: var(--cor-principal-turquesa);
-            --swiper-navigation-size: 28px;
-            top: 40%;
-        }
-    </style>
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {

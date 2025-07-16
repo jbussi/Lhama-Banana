@@ -3,6 +3,7 @@
 {% block title %}Login{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/login.css') }}">
     <h2>Bem-vindo de volta!</h2>
     
     {% if error %}
@@ -47,33 +48,7 @@
     <div class="switch-auth">
         <p>Não tem uma conta? <a href="{{ url_for('register') }}">Cadastre-se</a></p>
     </div>
-    
-    <style>
-        .divider {
-            display: flex;
-            align-items: center;
-            text-align: center;
-            margin: 25px 0;
-            color: #999;
-            font-size: 0.9rem;
-        }
         
-        .divider::before,
-        .divider::after {
-            content: '';
-            flex: 1;
-            border-bottom: 1px solid #ddd;
-        }
-        
-        .divider:not(:empty)::before {
-            margin-right: 1em;
-        }
-        
-        .divider:not(:empty)::after {
-            margin-left: 1em;
-        }
-    </style>
-    
     <script>
         // Aguarda o carregamento completo do DOM
         document.addEventListener('DOMContentLoaded', function() {

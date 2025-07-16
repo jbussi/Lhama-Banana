@@ -3,6 +3,7 @@
 {% block title %}Criar Conta{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/register.css') }}">
     <h2>Crie sua conta</h2>
     
     {% if error %}
@@ -72,66 +73,6 @@
     <div class="switch-auth">
         <p>Já tem uma conta? <a href="{{ url_for('login') }}">Faça login</a></p>
     </div>
-    
-    <style>
-        .divider {
-            display: flex;
-            align-items: center;
-            text-align: center;
-            margin: 25px 0;
-            color: #999;
-            font-size: 0.9rem;
-        }
-        
-        .divider::before,
-        .divider::after {
-            content: '';
-            flex: 1;
-            border-bottom: 1px solid #ddd;
-        }
-        
-        .divider:not(:empty)::before {
-            margin-right: 1em;
-        }
-        
-        .divider:not(:empty)::after {
-            margin-left: 1em;
-        }
-        
-        /* Estilo para indicar força da senha */
-        .password-strength {
-            height: 4px;
-            background: #eee;
-            margin-top: 8px;
-            border-radius: 2px;
-            overflow: hidden;
-        }
-        
-        .password-strength::before {
-            content: '';
-            display: block;
-            height: 100%;
-            width: 0;
-            background: #ff4444;
-            transition: width 0.3s ease, background 0.3s ease;
-        }
-        
-        .password-strength.weak::before {
-            width: 33%;
-            background: #ff4444;
-        }
-        
-        .password-strength.medium::before {
-            width: 66%;
-            background: #ffbb33;
-        }
-        
-        .password-strength.strong::before {
-            width: 100%;
-            background: #00C851;
-        }
-    </style>
-    
     <script>
         // Aguarda o carregamento completo do DOM
         document.addEventListener('DOMContentLoaded', function() {

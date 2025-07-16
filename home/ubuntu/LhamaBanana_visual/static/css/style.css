@@ -236,14 +236,13 @@ nav {
 /* ===== CONTEÚDO PRINCIPAL ===== */
 main {
     padding: 50px 0 60px;
-    min-height: calc(100vh - 180px - 200px); /* Ajustado para o novo tamanho do cabeçalho */
-    max-width: 1200px;
-    margin: 0 auto;
+    min-height: calc(100vh - 180px - 200px);
     width: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     box-sizing: border-box;
+    background-color: #f9f9f9;
 }
 
 /* ===== HERO SECTION ===== */
@@ -255,12 +254,11 @@ main {
     background-attachment: fixed;
     min-height: 100vh;
     margin: 0;
-    padding: 20px 0; /* Reduzido o padding superior e removido o padding lateral */
+    padding: 20px 0;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 2rem;
     width: 100%;
-    max-width: 100%;
     box-sizing: border-box;
     align-items: center;
     position: relative;
@@ -275,7 +273,7 @@ main {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(255, 255, 255, 0.7); /* Ajuste a opacidade conforme necessário */
+    background: rgba(255, 255, 255, 0.7);
     z-index: -1;
 }
 
@@ -283,8 +281,8 @@ main {
 .hero::after {
     content: '';
     position: absolute;
-    top: 80px; /* Altura do cabeçalho */
-    left: 20px; /* Ajuste para não cortar no canto */
+    top: 80px;
+    left: 20px;
     width: 200px;
     height: 200px;
     background-image: url('../img/banana-lua.png');
@@ -292,13 +290,13 @@ main {
     background-repeat: no-repeat;
     background-position: left top;
     z-index: -1;
-    opacity: 0.9;
+    opacity: 0.95;
     mix-blend-mode: screen;
-    filter: drop-shadow(0 0 15px rgba(255, 255, 200, 0.7)) 
-            drop-shadow(0 0 30px rgba(255, 240, 150, 0.5))
-            brightness(1.1) contrast(1.1);
-    transition: all 0.5s ease;
-    animation: pulse 4s infinite alternate;
+    filter: drop-shadow(0 0 10px rgba(255, 255, 200, 0.8))
+            drop-shadow(0 0 20px rgba(255, 240, 150, 0.6))
+            drop-shadow(0 0 30px rgba(255, 230, 100, 0.4))
+            brightness(1.2) saturate(1.2);
+    animation: cintilacao 3s ease-in-out infinite;
 }
 
 /* Animação de pulsação suave */
@@ -306,7 +304,7 @@ main {
     0% {
         filter: drop-shadow(0 0 15px rgba(255, 255, 200, 0.7)) 
                 drop-shadow(0 0 30px rgba(255, 240, 150, 0.5))
-                brightness(1.1) contrast(1.1);
+                brightness(1.3) contrast(1.2);
     }
     100% {
         filter: drop-shadow(0 0 20px rgba(255, 255, 220, 0.8)) 
@@ -317,7 +315,7 @@ main {
 
 .hero-text {
     padding-right: 1rem;
-    padding-left: 6rem; /* Espaçamento à esquerda para desktop */
+    padding-left: 6rem;
     animation: fadeInUp 0.8s ease-out;
     max-width: 90%;
 }
@@ -388,8 +386,8 @@ main {
 /* ===== SEÇÃO DESTAQUES ===== */
 .destaques {
     padding: 60px 20px;
-    background-color: #fdfaf5; /* Um tom de creme/pêssego muito claro */
-    margin-top: 0; /* Remove a margem superior, pois a seção hero já tem espaçamento */
+    background-color: #fdfaf5;
+    margin-top: 0;
     text-align: center;
 }
 
@@ -432,14 +430,11 @@ main {
 /* Carrossel */
 .carrossel-container {
     width: 100%;
-    max-width: 1200px;
-    margin: 0 auto;
     position: relative;
-    padding: 0 15px;
 }
 
 .carrossel-produtos {
-    display: none; /* Oculta todos por padrão */
+    display: none;
     width: 100%;
     padding: 20px 0 50px; /* Espaço para navegação e paginação */
     overflow: hidden;
@@ -550,6 +545,8 @@ main {
     background-color: #f9f9f9;
     position: relative;
     overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 /* Frases de Efeito */
@@ -595,6 +592,9 @@ main {
     padding: 50px 30px;
     margin-bottom: 60px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .destaques-qualidade {
