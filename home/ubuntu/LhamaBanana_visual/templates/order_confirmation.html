@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base/reset.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base/typhography.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base/animations.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base/colors.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/order-confirmation.css') }}">
 
 <div class="confirmation-container">

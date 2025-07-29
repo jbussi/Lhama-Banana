@@ -1,0 +1,35 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Fredoka', 'Nunito', sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--cor-fundo-branco);
+    color: var(--cor-texto-cinza);
+    line-height: 1.6;
+    overflow-x: hidden;
+    padding-top: 100px;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+ul {
+    list-style: none;
+}
+
+button {
+    cursor: pointer;
+    font-family: inherit;
+}

@@ -1,0 +1,136 @@
+footer {
+    background-color: var(--cor-principal-turquesa);
+    color: white;
+    padding: 2rem 0;
+    margin-top: 3rem;
+}
+
+.footer-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.footer-left p {
+    margin: 0.5rem 0;
+    line-height: 1.6;
+}
+
+.footer-right {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+}
+
+.footer-right a {
+    color: white;
+    font-size: 1.5rem;
+    transition: transform 0.3s ease;
+}
+
+.footer-right a:hover {
+    transform: translateY(-3px);
+}
+
+.back-to-top {
+    text-align: center;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.back-to-top a {
+    color: white;
+    text-decoration: none;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: color 0.3s ease;
+}
+
+.back-to-top a:hover {
+    color: var(--cor-secundaria-amarelo);
+}
+
+@media (max-width: 1024px) {
+    .footer-container {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .footer-right {
+        justify-content: center;
+    }
+}
+
+@media (min-width: 600px) {
+  .footer-container {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    text-align: left;
+    gap: 0;
+    padding: 0 20px; 
+  }
+}
+
+.footer-left p {
+    margin: 4px 0;
+}
+
+.footer-link {
+    color: var(--cor-fundo-branco);
+    text-decoration: underline;
+    transition: opacity 0.2s;
+}
+
+.footer-link:hover {
+    opacity: 0.8;
+}
+
+.footer-right a {
+    margin: 0 10px;
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+
+.footer-right a:hover {
+    transform: scale(1.1);
+}
+
+.icone-hover {
+    width: 24px;
+    height: 24px;
+    filter: brightness(0) invert(1); /* ícones brancos */
+}
+
+.back-to-top {
+    text-align: center;
+    margin-top: 15px;
+}
+
+.back-to-top a {
+    color: var(--cor-fundo-branco);
+    font-size: 0.9em;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border 0.2s;
+}
+
+.back-to-top a:hover {
+    border-bottom: 1px solid white;
+}
+
+@media (max-width: 480px) {
+    .footer-right {
+        flex-wrap: wrap;
+    }
+    
+    .footer-right a {
+        font-size: 1.3rem;
+    }
+}

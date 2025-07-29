@@ -1,0 +1,9 @@
+:root {
+    --cor-principal-turquesa: #40e0d0;
+    --cor-secundaria-amarelo: #FFE135;
+    --cor-texto-preto: #000000;
+    --cor-texto-cinza: #333;
+    --cor-fundo-branco: #FFFFFF;
+    --cor-detalhe-cinza-claro: #D3D3D3;
+    --cor-sombra: rgba(0, 0, 0, 0.1);
+}
