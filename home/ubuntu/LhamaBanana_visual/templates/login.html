@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/base/animations.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/base/colors.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/login.css') }}">
+<script type="module" src="{{ url_for('static', filename='js/login.js') }}"></script>
     <h2>Bem-vindo de volta!</h2>
     
     {% if error %}
@@ -19,9 +20,9 @@
     
     <form method="POST" action="{{ url_for('login') }}">
         <div class="form-group">
-            <label for="username">Usuário</label>
+            <label for="username">Email</label>
             <i class="fas fa-user"></i>
-            <input type="text" id="username" name="username" placeholder="Digite seu usuário" required>
+            <input type="email" id="email" name="email" placeholder="Digite seu email" required>
         </div>
         
         <div class="form-group">
@@ -35,7 +36,7 @@
             <a href="#" style="font-size: 0.9rem; color: #666; cursor: not-allowed;" title="Funcionalidade em desenvolvimento">Esqueceu a senha?</a>
         </div> -->
         
-        <button type="submit" class="auth-button">
+        <button id="submit" type="submit" class="auth-button">
             Entrar <i class="fas fa-arrow-right"></i>
         </button>
     </form>

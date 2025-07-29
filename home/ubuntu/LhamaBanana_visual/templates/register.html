@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/base/colors.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/login.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/register.css') }}">
+<script type="module" src="{{ url_for('static', filename='js/register.js') }}"></script>
     <h2>Crie sua conta</h2>
     
     {% if error %}
@@ -61,7 +62,7 @@
             </label>
         </div>
         
-        <button type="submit" class="auth-button">
+        <button type="submit" id ="submit" class="auth-button">
             Criar Conta <i class="fas fa-user-plus"></i>
         </button>
     </form>

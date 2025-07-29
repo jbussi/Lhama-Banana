@@ -71,11 +71,11 @@ def perfil():
 def test_css():
     return app.send_static_file('css/profile.css')
 
-@app.route('/register')
+@app.route('/register', methods=["GET", "POST"])
 def register():
     return render_template('register.html')
 
-@app.route('/login')
+@app.route('/login', methods=["GET", "POST"])
 def login():
     return render_template('login.html')
 
