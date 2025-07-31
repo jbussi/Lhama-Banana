@@ -26,14 +26,33 @@ submit.addEventListener("click", function(event) {
   const email    = document.getElementById("email").value;
   const password = document.getElementById("password").value;
 
-  signInWithEmailAndPassword(auth, email, password)
-    .then((userCredential) => {
-      const user = userCredential.user;
-      console.log("Usuário logado com sucesso:", user);
-      alert(`Bem-vindo!`);
-    })
-    .catch((error) => {
-      console.error("Erro ao logar usuário:", error.message);
-      alert("Erro: " + error.message);
+signInWithEmailAndPassword(auth, email, password)
+  .then((userCredential) => {
+    const user = userCredential.user;
+    const uid = user.uid;
+    console.log("Usuário logado com sucesso:", user);
+    alert("Bem-vindo!");
+
+    // Agora que o UID está definido, você pode usá-lo aqui
+    return fetch("http://localhost:80/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ uid: uid })
     });
+  })
+  .then((response) => {
+    if (!response.ok) {
+      throw new Error("Erro no backend");
+    }
+    return response.text();
+  })
+  .then((data) => {
+    console.log("Resposta do servidor:", data);
+  })
+  .catch((error) => {
+    console.error("Erro ao logar usuário ou enviar UID:", error.message);
+    alert("Erro: " + error.message);
+  });
 });

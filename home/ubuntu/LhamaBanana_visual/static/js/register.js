@@ -30,11 +30,38 @@ submit.addEventListener("click", function(event) {
   createUserWithEmailAndPassword(auth, email, password)
     .then((userCredential) => {
       const user = userCredential.user;
+      const uid = user.uid;
       console.log("Usuário criado com sucesso:", user);
       alert(`Bem-vindo, ${username}!`);
+
+      // Agora sim, fetch com os dados corretos:
+      fetch("http://localhost:80/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          uid: uid,
+          username: username,
+          email: email
+        })
+      })
+      .then(response => {
+        if (!response.ok) throw new Error("Erro ao salvar no banco de dados");
+        return response.json();
+      })
+      .then(data => {
+        console.log("Dados salvos no backend:", data);
+        // redireciona, se quiser:
+        window.location.href = "/perfil";
+      })
+      .catch(error => {
+        console.error("Erro no backend:", error.message);
+      });
     })
-    .catch((error) => {
-      console.error("Erro ao criar usuário:", error.message);
-      alert("Erro: " + error.message);
+      .catch((error) => {
+        console.error("Erro ao criar usuário:", error.message);
+        alert("Erro: " + error.message);
     });
 });
+

@@ -4,9 +4,19 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from flask import Flask, render_template, session, redirect, url_for, flash, request
+from flask_cors import CORS
+import psycopg2
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT' # Chave secreta para sessões
+
+conn = psycopg2.connect(
+    host="localhost",
+    dbname="sistema_usuarios",
+    user="postgres",
+    password="far111111"
+)
+
 
 # Dados estáticos para simulação
 produtos = [
@@ -73,11 +83,79 @@ def test_css():
 
 @app.route('/register', methods=["GET", "POST"])
 def register():
-    return render_template('register.html')
+    if request.method == "GET":
+        return render_template('register.html')
+
+    # método POST:
+    data = request.get_json()
+    uid = data.get("uid")  # pode ser None se não enviado
+    username = data.get("username")
+    email = data.get("email")
+
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO usuarios (firebase_uid, nome, email) VALUES (%s, %s, %s)", (uid, username, email))
+        conn.commit()
+        cur.close()
+        return render_template("perfil.html", nome=username, email=email)
+    except Exception as e:
+        print(e)
+        return render_template("register.html", erro=str(e)), 500
 
 @app.route('/login', methods=["GET", "POST"])
 def login():
-    return render_template('login.html')
+    if request.method == "GET":
+        return render_template('login.html')
+
+    # método POST:
+    data = request.get_json()
+    uid = data.get("uid")  # pode ser None se não enviado
+    
+    try:
+        cur = conn.cursor()
+
+        # Buscar dados do usuário
+        cur.execute("""
+            SELECT id, nome, email, cpf, data_nascimento, criado_em
+            FROM usuarios WHERE firebase_uid = %s
+        """, (uid,))
+        user = cur.fetchone()
+
+        if user is None:
+            cur.close()
+            return render_template('login.html', erro="Usuário não encontrado"), 404
+        
+        usuario_id, nome, email, cpf, data_nascimento, criado_em = user
+
+        # Buscar endereços
+        cur.execute("""
+            SELECT rua, numero, complemento, bairro, cidade, estado, cep, criado_em
+            FROM enderecos WHERE usuario_id = %s
+        """, (usuario_id,))
+        enderecos = cur.fetchall()
+
+        # Buscar vendas
+        cur.execute("""
+            SELECT data_venda, valor_total
+            FROM vendas WHERE usuario_id = %s
+        """, (usuario_id,))
+        vendas = cur.fetchall()
+
+        cur.close()
+
+        # Passar tudo para o template
+        return render_template('perfil.html',
+                               nome=nome,
+                               email=email,
+                               cpf=cpf,
+                               data_nascimento=data_nascimento,
+                               criado_em=criado_em,
+                               enderecos=enderecos,
+                               vendas=vendas)
+
+    except Exception as e:
+        print("Erro ao consultar usuário:", e)
+        return render_template('login.html', erro="Erro no servidor"), 500
 
 @app.route('/produto/<int:id>')
 def produto(id):
