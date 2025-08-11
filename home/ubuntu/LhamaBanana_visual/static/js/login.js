@@ -1,10 +1,6 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyDd13Tl9dJaUqIvNhGWakoEbpYqw7ZrB7Y",
   authDomain: "lhamabanana-981d5.firebaseapp.com",
@@ -26,33 +22,47 @@ submit.addEventListener("click", function(event) {
   const email    = document.getElementById("email").value;
   const password = document.getElementById("password").value;
 
-signInWithEmailAndPassword(auth, email, password)
+  signInWithEmailAndPassword(auth, email, password)
   .then((userCredential) => {
     const user = userCredential.user;
-    const uid = user.uid;
-    console.log("Usuário logado com sucesso:", user);
-    alert("Bem-vindo!");
+    // const uid = user.uid; // UID já é acessível via user.uid se necessário
 
-    // Agora que o UID está definido, você pode usá-lo aqui
-    return fetch("http://localhost:80/register", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ uid: uid })
-    });
+    console.log("Usuário logado com sucesso no Firebase:", user);
+    
+    // CORREÇÃO: Use user.displayName ou user.email para a mensagem de boas-vindas
+    const userNameOrEmail = user.displayName || user.email;
+    alert(`Bem-vindo, ${userNameOrEmail}!`); // Use a variável definida
+
+    // Pega o ID Token JWT do Firebase, que deve ser enviado para backend
+    return user.getIdToken(); // Retorna a Promise do token diretamente
+  })
+  .then((id_token) => { // id_token é o resultado da Promise anterior
+      console.log("ID Token obtido:", id_token);
+
+      // Fetch com os dados corretos, enviando o token para validação no backend
+      return fetch("http://localhost:80/api/login_user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          id_token: id_token  // Token para backend validar
+        })
+      });
   })
   .then((response) => {
     if (!response.ok) {
-      throw new Error("Erro no backend");
+      // Se a resposta não for OK (status 4xx ou 5xx), tenta ler a mensagem de erro do backend
+      return response.json().then(err => { throw new Error(err.erro || "Erro desconhecido no backend"); });
     }
-    return response.text();
+    return response.json(); // CORREÇÃO: Espere JSON, não texto
   })
   .then((data) => {
     console.log("Resposta do servidor:", data);
+    window.location.href = "/perfil"; // Redireciona para a página de perfil
   })
   .catch((error) => {
-    console.error("Erro ao logar usuário ou enviar UID:", error.message);
-    alert("Erro: " + error.message);
+    console.error("Erro no fluxo de login:", error.message);
+    alert("Erro ao logar: " + error.message);
   });
 });

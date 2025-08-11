@@ -1,6 +1,5 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-// TODO: Add SDKs for Firebase products that you want to use
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 // https://firebase.google.com/docs/web/setup#available-libraries
 
 // Your web app's Firebase configuration
@@ -28,40 +27,37 @@ submit.addEventListener("click", function(event) {
   const password = document.getElementById("password").value;
 
   createUserWithEmailAndPassword(auth, email, password)
-    .then((userCredential) => {
-      const user = userCredential.user;
-      const uid = user.uid;
+  .then((userCredential) => {
+    const user = userCredential.user;
+
+    // Pega o ID Token JWT do Firebase, que deve ser enviado para backend
+    return user.getIdToken().then((id_token) => {
       console.log("Usuário criado com sucesso:", user);
       alert(`Bem-vindo, ${username}!`);
 
-      // Agora sim, fetch com os dados corretos:
-      fetch("http://localhost:80/register", {
+      // Agora sim, fetch com os dados corretos, enviando o token para validação no backend
+      return fetch("http://localhost:80/api/register_user", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          uid: uid,
           username: username,
-          email: email
+          id_token: id_token  // Token para backend validar
         })
-      })
-      .then(response => {
-        if (!response.ok) throw new Error("Erro ao salvar no banco de dados");
-        return response.json();
-      })
-      .then(data => {
-        console.log("Dados salvos no backend:", data);
-        // redireciona, se quiser:
-        window.location.href = "/perfil";
-      })
-      .catch(error => {
-        console.error("Erro no backend:", error.message);
       });
-    })
-      .catch((error) => {
-        console.error("Erro ao criar usuário:", error.message);
-        alert("Erro: " + error.message);
     });
+  })
+  .then(response => {
+    if (!response.ok) throw new Error("Erro ao salvar no banco de dados");
+    return response.json();
+  })
+  .then(data => {
+    console.log("Dados salvos no backend:", data);
+    window.location.href = "/login";
+  })
+  .catch(error => {
+    console.error("Erro no backend ou criação:", error.message);
+  });
 });
 

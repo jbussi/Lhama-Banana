@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LhamaBanana</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base/reset.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base/typhography.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base/animations.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base/colors.css') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/logo.png') }}" type="image/x-icon">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/layout/header.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/layout/footer.css') }}">
@@ -24,7 +28,7 @@
                 </ul>
                 
                 <div class="nav-icons">
-                    <a href="{{ url_for('perfil') }}" aria-label="Perfil">
+                    <a href="{{ url_for('perfil_page') }}" aria-label="Perfil">
                         <img src="{{ url_for('static', filename='img/perfil.svg') }}" alt="Perfil" class="icone-hover">
                     </a>
                     <a href="{{ url_for('carrinho') }}" aria-label="Carrinho">

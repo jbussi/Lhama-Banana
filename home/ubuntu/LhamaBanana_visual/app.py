@@ -1,22 +1,132 @@
 import os
 import sys
+from functools import wraps
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from flask import Flask, render_template, session, redirect, url_for, flash, request
+from flask import Flask, render_template, session, redirect, url_for, flash, request, jsonify, g
 from flask_cors import CORS
 import psycopg2
 
-app = Flask(__name__, static_folder='static', template_folder='templates')
-app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT' # Chave secreta para sessões
+from firebase_admin import auth, credentials, initialize_app
 
+app = Flask(__name__, static_folder='static', template_folder='templates')
+CORS(app) 
+app.config['SECRET_KEY'] = 'asdf#FGSgvasgf$5$WGT' # Chave secreta para sessões
 conn = psycopg2.connect(
     host="localhost",
     dbname="sistema_usuarios",
     user="postgres",
     password="far111111"
 )
+cred = credentials.Certificate("C:\\Users\\João Paulo Bussi\\Downloads\\LhamaBanana_visual_estatica_corrigida\\key.json")
+initialize_app(cred)
 
+def get_user_by_firebase_uid(firebase_uid):
+    """Busca os dados principais de um usuário pelo seu Firebase UID."""
+    if conn is None: return None # Ou levante um erro se o DB não estiver conectado
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, firebase_uid, nome, email, cpf, data_nascimento, criado_em, telefone
+        FROM usuarios WHERE firebase_uid = %s
+    """, (firebase_uid,))
+    user_data = cur.fetchone()
+    cur.close()
+
+    if user_data:
+        # Retorna um dicionário para facilitar o acesso por nome da coluna
+        # Adapte os índices conforme a ordem das colunas no seu SELECT
+        return {
+            'id': user_data[0],
+            'firebase_uid': user_data[1],
+            'nome': user_data[2],
+            'email': user_data[3],
+            'cpf': user_data[4],
+            'data_nascimento': str(user_data[5]) if user_data[5] else None,
+            'criado_em': str(user_data[6]),
+            'telefone': user_data[7],
+        }
+    return None
+
+def insert_new_user(firebase_uid, nome, email):
+    """Insere um novo usuário na tabela 'usuarios'."""
+    if conn is None: return None
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO usuarios (firebase_uid, nome, email) VALUES (%s, %s, %s) RETURNING id",
+            (firebase_uid, nome, email)
+        )
+        new_user_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        return new_user_id
+    except Exception as e:
+        conn.rollback()
+        cur.close()
+        print(f"Erro ao inserir novo usuário: {e}")
+        return None
+
+def update_user_profile_db(user_id, data):
+    """Atualiza os dados de perfil de um usuário."""
+    if conn is None: return False
+    try:
+        cur = conn.cursor()
+        # Construa a query dinamicamente para atualizar apenas campos presentes em 'data'
+        updates = []
+        params = []
+        
+        if 'nome' in data:
+            updates.append("nome = %s")
+            params.append(data['nome'])
+        if 'email' in data: # Cuidado ao permitir atualização de email que é também UID no Firebase
+            updates.append("email = %s")
+            params.append(data['email'])
+        if 'cpf' in data:
+            updates.append("cpf = %s")
+            params.append(data['cpf'])
+        if 'data_nascimento' in data:
+            updates.append("data_nascimento = %s")
+            # Converta string para date object se necessário, ex: datetime.date.fromisoformat(data['data_nascimento'])
+            params.append(data['data_nascimento']) 
+        if 'telefone' in data:
+            updates.append("telefone = %s")
+            params.append(data['telefone'])
+
+        if not updates: # Nenhuma atualização para fazer
+            cur.close()
+            return True
+
+        query = f"UPDATE usuarios SET {', '.join(updates)} WHERE id = %s"
+        params.append(user_id)
+        
+        cur.execute(query, tuple(params))
+        conn.commit()
+        cur.close()
+        return True
+    except Exception as e:
+        conn.rollback()
+        cur.close()
+        print(f"Erro ao atualizar perfil do usuário {user_id}: {e}")
+        return False
+
+def login_required_and_load_user(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        uid = session.get('uid')
+        if not uid:
+            return redirect(url_for('login_page')) # Sua rota de login HTML
+
+        user_data = get_user_by_firebase_uid(uid) # Usa a função auxiliar
+        if not user_data:
+            session.pop('uid', None) # Limpa sessão se usuário não existe no DB
+            return redirect(url_for('login_page'))
+
+        g.user = user_data # g.user agora é um dicionário com os dados principais
+
+        # Busca dados relacionados e os adiciona a g.user
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Dados estáticos para simulação
 produtos = [
@@ -57,105 +167,147 @@ produtos = [
 # Rotas para visualização estática
 @app.route('/')
 def home():
-    return render_template('home.html', user=session.get('username'))
+    return render_template('home.html', user=session.get('uid'))
 
 @app.route('/loja')
 def loja():
-    return render_template('loja.html', products=produtos, user=session.get('username'))
+    return render_template('loja.html', products=produtos, user=session.get('uid'))
 
 @app.route('/sobre-nos')
 def sobre_nos():
-    return render_template('sobre_nos.html', user=session.get('username'))
+    return render_template('sobre_nos.html', user=session.get('uid'))
 
 @app.route('/contato')
 def contato():
     return render_template('contato.html', user=session.get('username'))
 
-@app.route('/perfil')
-def perfil():
-    # Simulação de perfil - apenas visual
-    return render_template('perfil.html', user="Visitante (Demo)", user_data={"username": "Visitante", "email": "demo@exemplo.com"})
+@app.route('/perfil', methods=["GET"])
+@login_required_and_load_user # Garante que o usuário está logado e g.user está populado
+def perfil_page():
+    return render_template('perfil.html')
 
-# Rota para testar o CSS
-@app.route('/test_css')
-def test_css():
-    return app.send_static_file('css/profile.css')
+# Rota para logout
+@app.route('/logout')
+def logout():
+    session.pop('uid', None) # Remove o ID do usuário da sessão
+    return redirect(url_for('login_page'))
 
-@app.route('/register', methods=["GET", "POST"])
-def register():
-    if request.method == "GET":
+# Rota API para obter os dados do perfil do usuário logado (GET JSON)
+@app.route('/api/user_data', methods=["GET"])
+@login_required_and_load_user # Garante que o usuário está logado e g.user está populado
+def get_user_profile_data_api():
+    # g.user já está populado pelo decorator com todos os dados (principais, endereços, vendas)
+    return jsonify(g.user)
+
+@app.route('/api/user_data', methods=["PUT"]) # ou POST, mas PUT é mais semântico para atualização
+def update_user_profile_api():
+    data = request.get_json()
+    id_token = request.headers.get("Authorization").split("Bearer ")[1] # Pega o token do header
+
+    if not id_token:
+        return jsonify({"erro": "Token de autenticação é obrigatório"}), 401
+
+    try:
+        decoded_token = auth.verify_id_token(id_token)
+        firebase_uid = decoded_token['uid']
+        
+        # Busque o usuário pelo firebase_uid para obter o id interno do seu DB
+        user_in_db = get_user_by_firebase_uid(firebase_uid)
+        if not user_in_db:
+            return jsonify({"erro": "Usuário não encontrado em seu sistema."}), 404
+        
+        user_id_db = user_in_db['id']
+
+        # Limpa dados que não devem ser atualizados via essa rota ou que são gerados pelo Firebase
+        data_to_update = {k: v for k, v in data.items() if k in ['nome', 'email', 'cpf', 'data_nascimento', 'telefone']}
+        
+        if update_user_profile_db(user_id_db, data_to_update):
+            return jsonify({"mensagem": "Perfil atualizado com sucesso"}), 200
+        else:
+            return jsonify({"erro": "Falha ao atualizar perfil no banco de dados"}), 500
+    except auth.InvalidIdTokenError:
+        return jsonify({"erro": "Token inválido ou expirado"}), 401
+    except Exception as e:
+        print(f"Erro ao atualizar perfil: {e}")
+        return jsonify({"erro": "Erro interno do servidor"}), 500
+
+@app.route('/register', methods=["GET"])
+def register_page():
         return render_template('register.html')
 
+
+@app.route('/api/register_user', methods=["POST"])
+def register_api():
     # método POST:
     data = request.get_json()
-    uid = data.get("uid")  # pode ser None se não enviado
+    id_token = data.get("id_token")  # Token JWT enviado pelo frontend
     username = data.get("username")
-    email = data.get("email")
+
+    if not id_token:
+        return jsonify({"erro": "Token de autenticação é obrigatório"}), 401
 
     try:
+        # Verifica e decodifica o token
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token['uid']
+        email = decoded_token['email']
+        # Agora insere no banco com o uid validado
         cur = conn.cursor()
-        cur.execute("INSERT INTO usuarios (firebase_uid, nome, email) VALUES (%s, %s, %s)", (uid, username, email))
+        cur.execute(
+            "INSERT INTO usuarios (firebase_uid, nome, email) VALUES (%s, %s, %s)",
+            (uid, username, email)
+        )
         conn.commit()
         cur.close()
-        return render_template("perfil.html", nome=username, email=email)
+
+        return jsonify({"mensagem": "Conta criada com sucesso"}), 200
+
+    except auth.InvalidIdTokenError:
+        return jsonify({"erro": "Token inválido"}), 401
+    except auth.ExpiredIdTokenError:
+        return jsonify({"erro": "Token expirado"}), 401
     except Exception as e:
-        print(e)
-        return render_template("register.html", erro=str(e)), 500
+        print(f"Erro ao salvar usuário no banco: {e}")
+        return jsonify({"erro": "Erro interno ao salvar usuário"}), 500
 
-@app.route('/login', methods=["GET", "POST"])
-def login():
-    if request.method == "GET":
-        return render_template('login.html')
+@app.route('/login', methods=["GET"])
+def login_page():
+    return render_template('login.html')
 
-    # método POST:
+
+@app.route('/api/login_user', methods=["POST"])
+def login_api():
+        # método POST:
     data = request.get_json()
-    uid = data.get("uid")  # pode ser None se não enviado
+    id_token = data.get("id_token") # pode ser None se não enviado
     
+    if not id_token:
+        return jsonify({"erro": "Token de autenticação é obrigatório"}), 401
+
+
     try:
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token['uid']        
         cur = conn.cursor()
 
         # Buscar dados do usuário
         cur.execute("""
-            SELECT id, nome, email, cpf, data_nascimento, criado_em
+            SELECT id, nome, email, cpf, data_nascimento, criado_em, telefone
             FROM usuarios WHERE firebase_uid = %s
         """, (uid,))
         user = cur.fetchone()
 
         if user is None:
             cur.close()
-            return render_template('login.html', erro="Usuário não encontrado"), 404
-        
-        usuario_id, nome, email, cpf, data_nascimento, criado_em = user
-
-        # Buscar endereços
-        cur.execute("""
-            SELECT rua, numero, complemento, bairro, cidade, estado, cep, criado_em
-            FROM enderecos WHERE usuario_id = %s
-        """, (usuario_id,))
-        enderecos = cur.fetchall()
-
-        # Buscar vendas
-        cur.execute("""
-            SELECT data_venda, valor_total
-            FROM vendas WHERE usuario_id = %s
-        """, (usuario_id,))
-        vendas = cur.fetchall()
+            return jsonify({"erro": "Usuário não encontrado em seu sistema. Por favor, registre-se."}), 404
 
         cur.close()
 
-        # Passar tudo para o template
-        return render_template('perfil.html',
-                               nome=nome,
-                               email=email,
-                               cpf=cpf,
-                               data_nascimento=data_nascimento,
-                               criado_em=criado_em,
-                               enderecos=enderecos,
-                               vendas=vendas)
-
+        session['uid'] = uid
+        return jsonify({"mensagem": "Login efetuado com sucesso"}), 200
     except Exception as e:
         print("Erro ao consultar usuário:", e)
-        return render_template('login.html', erro="Erro no servidor"), 500
+        return jsonify({"erro": "Erro interno do servidor ao efetuar login"}), 500
 
 @app.route('/produto/<int:id>')
 def produto(id):

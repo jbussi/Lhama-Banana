@@ -3,10 +3,6 @@
 {% block title %}Meu Perfil - LhamaBanana{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/reset.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/typhography.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/animations.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/colors.css') }}">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/perfil.css') }}">
 </head>
@@ -23,8 +19,8 @@
                 </button>
                 <input type="file" id="profile-pic-input" accept="image/*" style="display: none;">
             </div>
-            <h1>Olá, <span id="user-name">Usuário</span>!</h1>
-            <p class="member-since">Membro desde <span id="join-date">Janeiro 2023</span></p>
+            <h1>Olá, <span id="profile-name"></span>!</h1>
+            <p class="member-since">Membro desde <span id="profile-join-date"></span></p>
         </div>
 
         <div class="profile-sections">
@@ -32,7 +28,7 @@
             <section class="profile-section">
                 <div class="section-header">
                     <h2><i class="fas fa-user"></i> Informações Pessoais</h2>
-                    <button class="btn btn-outline" id="edit-personal-info">
+                    <button class="btn btn-outline" id="edit-btn">
                         <i class="fas fa-edit"></i> Editar
                     </button>
                 </div>
@@ -40,51 +36,51 @@
                 <div class="info-grid" id="personal-info-view">
                     <div class="info-item">
                         <span class="info-label">Nome Completo</span>
-                        <p class="info-value" id="full-name">Maria da Silva</p>
+                        <p class="info-value" id="view-name"></p>
                     </div>
                     <div class="info-item">
                         <span class="info-label">E-mail</span>
-                        <p class="info-value" id="email">maria@exemplo.com</p>
+                        <p class="info-value" id="view-email"></p>
                     </div>
                     <div class="info-item">
                         <span class="info-label">CPF</span>
-                        <p class="info-value" id="cpf">123.456.789-00</p>
+                        <p class="info-value" id="view-cpf"></p>
                     </div>
                     <div class="info-item">
                         <span class="info-label">Data de Nascimento</span>
-                        <p class="info-value" id="birthdate">15/05/1990</p>
+                        <p class="info-value" id="view-birthdate"></p>
                     </div>
                     <div class="info-item">
                         <span class="info-label">Telefone</span>
-                        <p class="info-value" id="phone">(11) 98765-4321</p>
+                        <p class="info-value" id="view-phone"></p>
                     </div>
                 </div>
 
                 <!-- Formulário de Edição (inicialmente oculto) -->
-                <form id="personal-info-form" class="info-grid" style="display: none;">
+                <form id="personal-info-edit" class="info-grid" style="display: none;">
                     <div class="form-group">
-                        <label for="edit-full-name">Nome Completo</label>
-                        <input type="text" id="edit-full-name" class="edit-input" value="Maria da Silva">
+                        <label for="edit-name">Nome Completo</label>
+                        <input type="text" id="edit-name" class="edit-input">
                     </div>
                     <div class="form-group">
                         <label for="edit-email">E-mail</label>
-                        <input type="email" id="edit-email" class="edit-input" value="maria@exemplo.com">
+                        <input type="email" id="edit-email" class="edit-input">
                     </div>
                     <div class="form-group">
                         <label for="edit-cpf">CPF</label>
-                        <input type="text" id="edit-cpf" class="edit-input" value="123.456.789-00">
+                        <input type="text" id="edit-cpf" class="edit-input">
                     </div>
                     <div class="form-group">
                         <label for="edit-birthdate">Data de Nascimento</label>
-                        <input type="date" id="edit-birthdate" class="edit-input" value="1990-05-15">
+                        <input type="date" id="edit-birthdate" class="edit-input">
                     </div>
                     <div class="form-group">
                         <label for="edit-phone">Telefone</label>
-                        <input type="tel" id="edit-phone" class="edit-input" value="11987654321">
+                        <input type="tel" id="edit-phone" class="edit-input">
                     </div>
                     <div class="form-actions">
-                        <button type="button" class="btn btn-outline" id="cancel-personal-edit">Cancelar</button>
-                        <button type="button" class="btn btn-primary" id="save-personal-info">Salvar Alterações</button>
+                        <button type="button" class="btn btn-outline" id="cancel-btn">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="save-btn">Salvar Alterações</button>
                     </div>
                 </form>
             </section>
@@ -236,5 +232,5 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/profile.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/profile.js') }}"></script>
 {% endblock %}
