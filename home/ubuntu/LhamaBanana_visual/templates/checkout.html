@@ -687,23 +687,17 @@
             </h2>
             
             <div class="order-items">
-                {% for item in cart_items %}
                 <div class="order-item">
-                    <img src="{{ url_for('static', filename=item.product.image) }}" alt="{{ item.product.name }}" class="order-item-img">
                     <div class="order-item-details">
-                        <div class="order-item-title">{{ item.product.name }}</div>
-                        {% if item.product.get('variation') %}
+                        <div class="order-item-title"></div>
                         <div class="order-item-variation">
-                            {{ item.product.variation }}
                         </div>
-                        {% endif %}
-                        <div class="order-item-price">R$ {{ "%.2f"|format(item.product.price|float) }}</div>
+                        <div class="order-item-price"></div>
                         <div class="order-item-quantity">
-                            <span>Quantidade: {{ item.quantity }}</span>
+                            <span></span>
                         </div>
                     </div>
                 </div>
-                {% endfor %}
             </div>
             
             <div class="coupon-section">
@@ -773,7 +767,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const addAddressBtn = document.getElementById('add-address-btn');
     if (addAddressBtn) {
         addAddressBtn.addEventListener('click', function() {
-            window.location.href = "{{ url_for('perfil') }}#addresses";
+            window.location.href = "{{ url_for('perfil_page') }}#addresses";
         });
     }
     

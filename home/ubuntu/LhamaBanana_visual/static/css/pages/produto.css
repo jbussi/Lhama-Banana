@@ -8,17 +8,17 @@
 .breadcrumb {
     margin-bottom: 2rem;
     font-size: 0.95rem;
-    color: #6c757d;
+    color: var(--cor-texto-cinza);
 }
 
 .breadcrumb a {
-    color: #2ab7a9;
+    color: var(--cor-principal-turquesa);
     text-decoration: none;
     transition: color 0.2s;
 }
 
 .breadcrumb a:hover {
-    color: #1f9c8f;
+    filter: brightness(0.9);
     text-decoration: underline;
 }
 
@@ -26,16 +26,16 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 3rem;
-    background: #fff;
+    background: var(--cor-fundo-branco);
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-    border: 1px solid #e9ecef;
+    box-shadow: 0 4px 20px var(--cor-sombra);
+    border: 1px solid var(--cor-detalhe-cinza-claro);
 }
 
 .product-gallery {
     position: relative;
-    background: #f8f9fa;
+    background: #fdfdfd;
     min-height: 500px;
     display: flex;
     align-items: center;
@@ -61,7 +61,7 @@
 .thumbnail {
     width: 80px;
     height: 80px;
-    border: 2px solid #e9ecef;
+    border: 2px solid var(--cor-detalhe-cinza-claro);
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -69,7 +69,7 @@
 }
 
 .thumbnail:hover, .thumbnail.active {
-    border-color: #2ab7a9;
+    border-color: var(--cor-principal-turquesa);
 }
 
 .product-info {
@@ -77,7 +77,7 @@
 }
 
 .product-category {
-    color: #2ab7a9;
+    color: var(--cor-principal-turquesa);
     font-size: 0.9rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -88,7 +88,7 @@
 
 .product-title {
     font-size: 2.2rem;
-    color: #2d3436;
+    color: var(--cor-texto-preto);
     margin: 0 0 1.2rem 0;
     line-height: 1.2;
     font-weight: 700;
@@ -103,19 +103,19 @@
 .current-price {
     font-size: 2rem;
     font-weight: 700;
-    color: #2ab7a9;
+    color: var(--cor-principal-turquesa);
     margin-right: 1rem;
 }
 
 .old-price {
     text-decoration: line-through;
-    color: #adb5bd;
+    color: var(--cor-texto-cinza);
     font-size: 1.2rem;
 }
 
 .discount-badge {
-    background: #f9d71c;
-    color: #2d3436;
+    background: var(--cor-secundaria-amarelo);
+    color: var(--cor-texto-preto);
     padding: 0.3rem 0.8rem;
     border-radius: 4px;
     font-size: 0.85rem;
@@ -124,7 +124,7 @@
 }
 
 .product-description {
-    color: #495057;
+    color: var(--cor-texto-cinza);
     line-height: 1.7;
     margin: 1.5rem 0 2rem;
     font-size: 1.05rem;
@@ -137,7 +137,7 @@
 .variation-title {
     font-weight: 600;
     margin-bottom: 0.5rem;
-    color: #495057;
+    color: var(--cor-texto-cinza);
 }
 
 .color-options, .size-options {
@@ -152,7 +152,7 @@
     height: 36px;
     border-radius: 50%;
     cursor: pointer;
-    border: 2px solid #e9ecef;
+    border: 2px solid var(--cor-detalhe-cinza-claro);
     transition: all 0.2s ease;
 }
 
@@ -161,8 +161,8 @@
 }
 
 .color-option.selected {
-    border-color: #2ab7a9;
-    box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2ab7a9;
+    border-color: var(--cor-principal-turquesa);
+    box-shadow: 0 0 0 2px var(--cor-fundo-branco), 0 0 0 4px var(--cor-principal-turquesa);
 }
 
 .size-option {
@@ -171,7 +171,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--cor-detalhe-cinza-claro);
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.9rem;
@@ -179,14 +179,14 @@
 }
 
 .size-option:hover {
-    border-color: #2ab7a9;
-    color: #2ab7a9;
+    border-color: var(--cor-principal-turquesa);
+    color: var(--cor-principal-turquesa);
 }
 
 .size-option.selected {
-    background-color: #2ab7a9;
-    color: white;
-    border-color: #2ab7a9;
+    background-color: var(--cor-principal-turquesa);
+    color: var(--cor-fundo-branco);
+    border-color: var(--cor-principal-turquesa);
 }
 
 .product-actions {
@@ -199,8 +199,8 @@
 .product-meta {
     margin: 2rem 0;
     padding: 1.5rem 0;
-    border-top: 1px solid #e9ecef;
-    border-bottom: 1px solid #e9ecef;
+    border-top: 1px solid var(--cor-detalhe-cinza-claro);
+    border-bottom: 1px solid var(--cor-detalhe-cinza-claro);
 }
 
 .meta-item {
@@ -211,12 +211,12 @@
 
 .meta-label {
     font-weight: 600;
-    color: #2d3436;
+    color: var(--cor-texto-preto);
     min-width: 120px;
 }
 
 .meta-value {
-    color: #6c757d;
+    color: var(--cor-texto-cinza);
 }
 
 .product-actions {
@@ -235,7 +235,7 @@
     width: 42px;
     height: 42px;
     background: #f8f9fa;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--cor-detalhe-cinza-claro);
     font-size: 1.2rem;
     cursor: pointer;
     display: flex;
@@ -245,14 +245,14 @@
 }
 
 .quantity-btn:hover {
-    background: #e9ecef;
+    background: #f1f3f5;
 }
 
 .quantity-input {
     width: 60px;
     height: 42px;
     text-align: center;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--cor-detalhe-cinza-claro);
     border-left: none;
     border-right: none;
     font-size: 1rem;
@@ -275,25 +275,25 @@
 }
 
 .add-to-cart-btn {
-    background: #2ab7a9;
-    color: white;
+    background: var(--cor-principal-turquesa);
+    color: var(--cor-fundo-branco);
 }
 
 .add-to-cart-btn:hover {
-    background: #1f9c8f;
+    filter: brightness(0.9);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(42, 183, 169, 0.3);
+    box-shadow: 0 4px 12px var(--cor-sombra);
 }
 
 .buy-now-btn {
-    background: #f9d71c;
-    color: #2d3436;
+    background: var(--cor-secundaria-amarelo);
+    color: var(--cor-texto-preto);
 }
 
 .buy-now-btn:hover {
-    background: #f0cc18;
+    filter: brightness(0.95);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(249, 215, 28, 0.3);
+    box-shadow: 0 4px 12px var(--cor-sombra);
 }
 
 .product-tabs {
@@ -302,7 +302,7 @@
 
 .tabs-header {
     display: flex;
-    border-bottom: 1px solid #e9ecef;
+    border-bottom: 1px solid var(--cor-detalhe-cinza-claro);
     margin-bottom: 1.5rem;
 }
 
@@ -313,24 +313,24 @@
     border-bottom: 3px solid transparent;
     font-size: 1rem;
     font-weight: 600;
-    color: #6c757d;
+    color: var(--cor-texto-cinza);
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .tab-btn.active {
-    color: #2ab7a9;
-    border-bottom-color: #2ab7a9;
+    color: var(--cor-principal-turquesa);
+    border-bottom-color: var(--cor-principal-turquesa);
 }
 
 .tab-content {
     padding: 1.5rem 0;
-    color: #495057;
+    color: var(--cor-texto-cinza);
     line-height: 1.7;
 }
 
 .tab-content h3 {
-    color: #2d3436;
+    color: var(--cor-texto-preto);
     margin-top: 1.5rem;
     margin-bottom: 1rem;
 }

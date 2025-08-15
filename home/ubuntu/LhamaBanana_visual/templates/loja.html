@@ -3,10 +3,6 @@
 {% block title %}Loja - LhamaBanana{% endblock %}
 
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/reset.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/typhography.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/animations.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/colors.css') }}">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/loja.css') }}">
 
@@ -16,11 +12,12 @@
         <p class="page-subtitle">Encontre os melhores produtos com estampas exclusivas de lhamas</p>
     </div>
     
-    <!-- Seção de Filtros -->
+    <!-- Seção de Filtros (Adicionado IDs para futura manipulação via JS) -->
     <section class="filters-section">
         <div class="filter-group">
             <h3>Categorias</h3>
-            <div class="filter-options">
+            <div class="filter-options" id="category-filters">
+                <!-- Filtros de categoria serão injetados aqui pelo JS (ou pode manter estáticos se preferir) -->
                 <button class="filter-btn active">Todos</button>
                 <button class="filter-btn">Camisetas</button>
                 <button class="filter-btn">Regatas</button>
@@ -31,7 +28,8 @@
         
         <div class="filter-group">
             <h3>Tamanhos</h3>
-            <div class="filter-options">
+            <div class="filter-options" id="size-filters">
+                <!-- Filtros de tamanho serão injetados aqui pelo JS (ou pode manter estáticos se preferir) -->
                 <button class="filter-btn">P</button>
                 <button class="filter-btn">M</button>
                 <button class="filter-btn">G</button>
@@ -42,7 +40,8 @@
         
         <div class="filter-group">
             <h3>Preço</h3>
-            <div class="filter-options">
+            <div class="filter-options" id="price-filters">
+                <!-- Filtros de preço serão injetados aqui pelo JS (ou pode manter estáticos se preferir) -->
                 <button class="filter-btn">Até R$ 50</button>
                 <button class="filter-btn">R$ 50 - R$ 100</button>
                 <button class="filter-btn">Acima de R$ 100</button>
@@ -50,88 +49,15 @@
         </div>
     </section>
     
-    <!-- Grid de Produtos -->
-    <div class="product-grid">
-        <!-- Produto 1 -->
-        <div class="product-card">
-            <a href="{{ url_for('produto', id=1) }}" style="text-decoration: none; color: inherit;">
-                <div class="product-image">
-                    <span class="product-badge">Novo</span>
-                    <img src="{{ url_for('static', filename='img/produto1.jpg') }}" alt="Camiseta Llama Power">
-                </div>
-                <div class="product-info">
-                    <span class="product-category">Camisetas</span>
-                    <h3>Camiseta Lhama Básica</h3>
-                    <p class="product-description">Camiseta 100% algodão com estampa de lhama estilizada.</p>
-                </div>
-            </a>
-            <div class="product-footer">
-                <div class="price">R$ 59,90</div>
-                <button class="add-to-cart-btn">
-                    <i class="fas fa-shopping-cart"></i> Comprar
-                </button>
-            </div>
-        </div>
-        
-        <!-- Produto 2 -->
-        <div class="product-card">
-            <div class="product-image">
-                <span class="product-badge">Promoção</span>
-                <img src="{{ url_for('static', filename='img/produtos/regata-lhama-verao.jpg') }}" alt="Regata Lhama Verão">
-            </div>
-            <div class="product-info">
-                <span class="product-category">Regatas</span>
-                <h3>Regata Lhama Verão</h3>
-                <p class="product-description">Regata leve e confortável para os dias mais quentes.</p>
-                <div class="product-footer">
-                    <div class="price">R$ 49,90 <span class="old-price">R$ 69,90</span></div>
-                    <button class="add-to-cart-btn">
-                        <i class="fas fa-shopping-cart"></i> Comprar
-                    </button>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Produto 3 -->
-        <div class="product-card">
-            <div class="product-image">
-                <img src="{{ url_for('static', filename='img/produtos/caneca-lhama-feliz.jpg') }}" alt="Caneca Lhama Feliz">
-            </div>
-            <div class="product-info">
-                <span class="product-category">Acessórios</span>
-                <h3>Caneca Lhama Feliz</h3>
-                <p class="product-description">Caneca de cerâmica com alça e estampa exclusiva.</p>
-                <div class="product-footer">
-                    <div class="price">R$ 39,90</div>
-                    <button class="add-to-cart-btn">
-                        <i class="fas fa-shopping-cart"></i> Comprar
-                    </button>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Produto 4 -->
-        <div class="product-card">
-            <div class="product-image">
-                <span class="product-badge">Kit</span>
-                <img src="{{ url_for('static', filename='img/produtos/kit-lhama-completo.jpg') }}" alt="Kit Lhama Completo">
-            </div>
-            <div class="product-info">
-                <span class="product-category">Kits</span>
-                <h3>Kit Lhama Completo</h3>
-                <p class="product-description">Kit com camiseta, caneca e chaveiro exclusivos.</p>
-                <div class="product-footer">
-                    <div class="price">R$ 129,90</div>
-                    <button class="add-to-cart-btn">
-                        <i class="fas fa-shopping-cart"></i> Comprar
-                    </button>
-                </div>
-            </div>
-        </div>
+    <!-- Grid de Produtos (ADICIONADO ID - CRUCIAL) -->
+    <div class="product-grid" id="product-grid">
+        <!-- PRODUTOS SERÃO INJETADOS AQUI PELO JAVASCRIPT -->
+        <!-- O conteúdo estático dos produtos 1, 2, 3, 4 foi REMOVIDO daqui -->
     </div>
     
-    <!-- Paginação -->
-    <div class="pagination">
+    <!-- Paginação (Adicionado ID para futura manipulação via JS) -->
+    <div class="pagination" id="pagination">
+        <!-- Paginação será injetada aqui pelo JS (ou pode manter estática se preferir) -->
         <a href="#" class="page-link"><i class="fas fa-chevron-left"></i></a>
         <a href="#" class="page-link active">1</a>
         <a href="#" class="page-link">2</a>
@@ -140,4 +66,6 @@
     </div>
 </div>
 
+{# O script deve ser carregado no final do 'block content' e com type="module" #}
+<script type="module" src="{{ url_for('static', filename='js/loja.js') }}"></script>
 {% endblock %}

@@ -27,11 +27,12 @@ let usuario = { addresses: [] };
 function formatDate(dateString) {
     if (!dateString) return '';
     const date = new Date(dateString);
-    // IMPORTANTE: Se a sua data do backend for 'YYYY-MM-DD' sem informações de fuso horário,
-    // o JavaScript pode interpretar como UTC e exibir o dia anterior.
-    // Adapte este trecho conforme o formato EXATO que vem do seu backend.
-    // Ex: Se o backend retorna '2023-01-15' e o JS exibe '14/01/2023' (fuso horário local),
-    // você pode precisar fazer: date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
+
+    // CORREÇÃO: Adiciona 1 dia para compensar o fuso horário se a data
+    // for interpretada como UTC meia-noite e seu fuso horário for negativo.
+    // Isso é mais comum para datas sem componente de tempo (YYYY-MM-DD).
+    date.setDate(date.getDate() + 1); 
+    
     return date.toLocaleDateString('pt-BR');
 }
 

@@ -22,7 +22,7 @@
                                 
                 <ul class="nav-links">
                     <li><a href="{{ url_for('home') }}" class="{{ 'active' if request.endpoint == 'home' }}">Home</a></li>
-                    <li><a href="{{ url_for('loja') }}" class="{{ 'active' if request.endpoint == 'loja' }}">Loja</a></li>
+                    <li><a href="{{ url_for('loja_page') }}" class="{{ 'active' if request.endpoint == 'loja' }}">Loja</a></li>
                     <li><a href="{{ url_for('sobre_nos') }}" class="{{ 'active' if request.endpoint == 'sobre_nos' }}">Sobre Nós</a></li>
                     <li><a href="{{ url_for('contato') }}" class="{{ 'active' if request.endpoint == 'contato' }}">Contato</a></li>
                 </ul>
