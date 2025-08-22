@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base/reset.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base/typhography.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base/animations.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base/colors.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/order-confirmation.css') }}">
+
+<div class="confirmation-container">
+    <!-- Você pode adicionar um ícone de checkmark aqui -->
+    <!-- Exemplo com texto, idealmente seria um SVG ou Font Icon -->
+    <div class="icon">✔</div> 
+    <h2>Pedido Realizado com Sucesso!</h2>
+    
+    {# Simulação de dados de pedido para visualização #}
+    <p>Obrigado por comprar na LhamaBanana, Visitante (Demo)!</p>
+    <p>Seu pedido <strong style="color: var(--cor-principal-turquesa);">#DEMO123</strong> foi recebido e está sendo processado.</p>
+    <p>Enviamos um e-mail de confirmação com os detalhes do seu pedido e informações para pagamento (se aplicável).</p>
+
+    <div class="order-details">
+        <h4>Detalhes do Pedido:</h4>
+        <p><strong>Número do Pedido:</strong> DEMO123</p>
+        <p><strong>Data:</strong> 15/05/2025 13:00</p> {# Data estática #}
+        <p><strong>Valor Total:</strong> R$ 199.80</p> {# Valor estático #}
+        <p><strong>Status:</strong> Processando</p> {# Status estático #}
+    </div>
+
+    <div class="actions">
+        <a href="{{ url_for("main.loja") }}">Continuar Comprando</a>
+        <a href="{{ url_for("perfil") }}#order-history">Ver Meus Pedidos</a>
+    </div>
+</div>
+
+{% endblock %}
+

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/base-auth.css') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='img/logo.png') }}" type="image/x-icon">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base/reset.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base/typhography.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base/animations.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base/colors.css') }}">
+    {% block page_css %}{% endblock %}
+
+    <title>LhamaBanana - {% block title %}{% endblock %}</title>
+
+</head>
+<body>
+    <div class="auth-page">
+        <div class="auth-container">
+            <div class="auth-logo">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="LhamaBanana">
+                <h1>LhamaBanana</h1>
+            </div>
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    <script>
+        // Efeito de foco nos campos do formulário
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputs = document.querySelectorAll('input[type="text"], input[type="email"], input[type="password"]');
+            
+            inputs.forEach(input => {
+                // Adiciona classe quando o campo recebe foco
+                input.addEventListener('focus', function() {
+                    this.parentNode.classList.add('focused');
+                });
+                
+                // Remove a classe quando o campo perde o foco, mas só se estiver vazio
+                input.addEventListener('blur', function() {
+                    if (this.value === '') {
+                        this.parentNode.classList.remove('focused');
+                    }
+                });
+                
+                // Verifica se o campo já tem valor ao carregar a página
+                if (input.value !== '') {
+                    input.parentNode.classList.add('focused');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

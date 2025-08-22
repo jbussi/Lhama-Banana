@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block page_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link rel="stylesheet" href="{{ url_for('main.static', filename='css/checkout.css') }}">
+{% endblock %}
+
+{% block title %}Finalizar Compra - LhamaBanana{% endblock %}
+
+{% block content %}
+
+
+<div class="checkout-container">
+    <!-- Progress Steps -->
+    <div class="checkout-steps">
+        <div class="step active">
+            <div class="step-number">1</div>
+            <span class="step-text">Endereço</span>
+        </div>
+        <div class="step">
+            <div class="step-number">2</div>
+            <span class="step-text">Pagamento</span>
+        </div>
+        <div class="step">
+            <div class="step-number">3</div>
+            <span class="step-text">Confirmação</span>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="checkout-layout">
+        <!-- Left Column - Address & Payment -->
+        <div class="checkout-main">
+            <!-- Address Section -->
+            <div class="checkout-section">
+                <h2 class="section-title">
+                    <i class="fas fa-map-marker-alt"></i>
+                    Endereço de Entrega
+                </h2>
+                
+                {% if user_addresses %}
+                    <div class="address-list">
+                        {% for address in user_addresses %}
+                        <div class="address-card {% if loop.first %}selected{% endif %}" data-address-id="{{ address.id }}">
+                            <span class="address-type">
+                                {{ address.nickname }}
+                            </span>
+                            <div class="address-details">
+                                <p><strong>{{ address.recipient_name }}</strong></p>
+                                <p>{{ address.street }}, {{ address.number }}{% if address.complement %}, {{ address.complement }}{% endif %}</p>
+                                <p>{{ address.district }} - {{ address.city }}/{{ address.state }}</p>
+                                <p>CEP: {{ address.postal_code }}</p>
+                                <p>Telefone: {{ address.phone }}</p>
+                            </div>
+                            <div class="address-actions">
+                                <button class="btn-address">
+                                    <i class="fas fa-edit"></i> Editar
+                                </button>
+                                {% if not address.is_primary %} {# Apenas mostra botão de remover se não for o principal #}
+                                <button class="btn-address text-danger">
+                                    <i class="fas fa-trash-alt"></i> Remover
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-map-marker-alt fa-3x text-muted mb-3"></i>
+                        <p>Nenhum endereço cadastrado</p>
+                        {# Mensagem para usuários não logados (que não têm user_email) #}
+                        {% if not user_email %} 
+                        <p class="text-muted small">Por favor, faça login para ver seus endereços ou adicione um novo.</p>
+                        {% endif %}
+                    </div>
+                {% endif %}
+                
+                <button id="add-address-btn" class="add-address-btn">
+                    <i class="fas fa-plus"></i> Adicionar novo endereço
+                </button>
+            </div>
+            
+            <!-- Payment Method Section -->
+            <div class="checkout-section">
+                <h2 class="section-title">
+                    <i class="fas fa-credit-card"></i>
+                    Método de Pagamento
+                </h2>
+                
+                <div class="payment-methods">
+                    <label class="payment-option">
+                        <input type="radio" name="payment-method" value="credit-card" checked>
+                        <i class="fas fa-credit-card payment-icon"></i>
+                        <div class="payment-details">
+                            <div class="payment-title">Cartão de Crédito</div>
+                            <div class="payment-description">Pague com seu cartão de crédito</div>
+                        </div>
+                    </label>
+                    
+                    <label class="payment-option">
+                        <input type="radio" name="payment-method" value="pix">
+                        <i class="fas fa-qrcode payment-icon"></i>
+                        <div class="payment-details">
+                            <div class="payment-title">PIX</div>
+                            <div class="payment-description">Pague via PIX com QR Code</div>
+                        </div>
+                    </label>
+                    
+                    <label class="payment-option">
+                        <input type="radio" name="payment-method" value="boleto">
+                        <i class="fas fa-barcode payment-icon"></i>
+                        <div class="payment-details">
+                            <div class="payment-title">Boleto Bancário</div>
+                            <div class="payment-description">Pague com boleto bancário</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Column - Order Summary -->
+        <div class="order-summary">
+            <h2 class="section-title">
+                <i class="fas fa-shopping-bag"></i>
+                Resumo do Pedido
+            </h2>
+            
+            <div class="order-items">
+                {% if cart_items %} {# Verifica se há itens no carrinho #}
+                    {% for item in cart_items %}
+                    <div class="order-item">
+                        <img src="{{ item.image_url }}" alt="{{ item.product_name }}" class="order-item-img">
+                        <div class="order-item-details">
+                            <div class="order-item-title">{{ item.product_name }}</div>
+                            <div class="order-item-variation">{{ item.estampa_name }} / {{ item.tamanho_name }}</div>
+                            <div class="order-item-price">R$ {{ "%.2f"|format(item.price_at_time_of_add) }}</div>
+                            <div class="order-item-quantity">Quantidade: {{ item.quantity }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-center text-muted">Seu carrinho está vazio.</p>
+                {% endif %}
+            </div>
+            
+            <div class="coupon-section">
+                <h3 class="mb-2">Possui um cupom de desconto?</h3>
+                <form id="coupon-form" class="coupon-form">
+                    <input type="text" class="coupon-input" placeholder="Código do cupom" value="{{ coupon_code }}">
+                    <button type="submit" class="btn-apply">Aplicar</button>
+                </form>
+            </div>
+            
+            <div class="order-totals">
+                <div class="total-row">
+                    <span>Subtotal</span>
+                    <span>R$ {{ "%.2f"|format(cart_total_value|float) }}</span>
+                </div>
+                <div class="total-row">
+                    <span>Frete</span>
+                    <span>A calcular</span> {# Frete será dinâmico com JS/API #}
+                </div>
+                {% if discount > 0 %} {# Mostra a linha de desconto apenas se houver desconto #}
+                <div class="total-row">
+                    <span>Desconto</span>
+                    <span class="text-danger">- R$ {{ "%.2f"|format(discount|float) }}</span>
+                </div>
+                {% endif %}
+                <div class="total-row">
+                    <strong>Total</strong>
+                    <strong class="total-amount">R$ {{ "%.2f"|format(final_total|float) }}</strong>
+                </div>
+            </div>
+            
+            {# Desabilita o botão se não houver endereços OU se não houver itens no carrinho #}
+            <button class="btn-checkout" id="checkout-btn" {% if not user_addresses or not cart_items %}disabled{% endif %}>
+                <i class="fas fa-lock"></i>
+                {% if not user_addresses %} {# Se não há endereços #}
+                    Adicione um endereço para continuar
+                {% elif not cart_items %} {# Se não há itens no carrinho #}
+                    Carrinho vazio
+                {% else %} {# Se há endereços E itens no carrinho #}
+                    Finalizar Compra
+                {% endif %}
+            </button>
+            
+            <p class="text-center mt-3 text-muted small">
+                <i class="fas fa-lock"></i> Pagamento 100% seguro
+            </p>
+        </div>
+    </div>
+</div>
+
+<script type="module" src="{{ url_for('main.static', filename='js/checkout.js') }}"></script>
+{% endblock %}

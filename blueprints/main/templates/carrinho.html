@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block page_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link rel="stylesheet" href="{{ url_for('main.static', filename='css/carrinho.css') }}">
+{% endblock %}
+
+{% block title %}Carrinho de Compras - LhamaBanana{% endblock %}
+
+{% block content %}
+
+<div class="cart-container" id="main-cart-container"> {# Adicionado ID para o JS #}
+    <div class="page-header">
+        <h1 class="page-title">Meu Carrinho</h1>
+        <p class="page-subtitle">Revise seus itens antes de finalizar a compra</p>
+    </div>
+
+    {# Mensagens flash (Flask) podem ser mantidas, pois são do backend #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-4">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="close" data-dismiss="alert" aria-label="Fechar">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    {# REMOVIDO: {% if cart_items %} - A lógica de "carrinho vazio" será tratada pelo JS #}
+    
+    {# Header da tabela do carrinho #}
+    <div class="cart-header d-none d-md-grid">
+        <div>Produto</div>
+        <div class="text-center">Preço</div>
+        <div class="text-center">Quantidade</div>
+        <div class="text-center">Subtotal</div>
+        <div></div>
+    </div>
+    
+    {# Contêiner onde os itens do carrinho serão injetados pelo JavaScript #}
+    <div class="cart-items" id="cart-items-list">
+        {# Conteúdo inicial para indicar carregamento ou vazio #}
+        <p>Carregando itens do carrinho...</p>
+    </div>
+
+    {# Este bloco inteiro é o resumo do carrinho #}
+    <div class="cart-summary-container">
+        <div class="coupon-section">
+            <h3>Aplicar Cupom de Desconto</h3>
+            <p class="text-muted mb-3">Digite o código do cupom se você tiver um.</p>
+            <form class="coupon-form" id="couponForm">
+                <input type="text" class="coupon-input" placeholder="Código do cupom">
+                <button type="submit" class="apply-coupon-btn">Aplicar</button>
+            </form>
+        </div>
+        
+        <div class="cart-summary">
+            <h3>Resumo do Pedido</h3>
+            
+            <div class="summary-row">
+                <span class="summary-label">Subtotal</span>
+                <span class="summary-value" id="summary-subtotal">R$ --,--</span> {# ID para JS #}
+            </div>
+            
+            <div class="summary-row">
+                <span class="summary-label">Frete</span>
+                <span class="summary-value" id="summary-shipping">A calcular</span> {# ID para JS #}
+            </div>
+            
+            <div class="summary-row">
+                <span class="summary-label">Desconto</span>
+                <span class="summary-value" id="summary-discount">- R$ 0,00</span> {# ID para JS #}
+            </div>
+            
+            <div class="summary-row summary-total">
+                <span>Total</span>
+                <span id="cart-total-price">R$ --,--</span> {# ID para JS #}
+            </div>
+            
+            <button class="checkout-btn" id="checkout-btn"> {# Adicionado ID para JS #}
+                <i class="fas fa-credit-card"></i> Finalizar Compra
+            </button>
+            
+            <div class="text-center">
+                <a href="{{ url_for('produtos.produtos_page') }}" class="continue-shopping">
+                    <i class="fas fa-arrow-left"></i> Continuar Comprando
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {# Bloco para carrinho vazio - Será preenchido pelo JS #}
+    <div class="empty-cart" id="empty-cart-message" style="display: none;"> {# ID para JS, oculto por padrão #}
+        <div class="empty-cart-icon">
+            <i class="fas fa-shopping-cart"></i>
+        </div>
+        <h2>Seu carrinho está vazio</h2>
+        <p>Navegue pela nossa loja e adicione itens incríveis ao seu carrinho!</p>
+        <a href="{{ url_for('produtos.produtos_page') }}" class="btn-shop-now">
+            <i class="fas fa-shopping-bag"></i> Ir para a Loja
+        </a>
+    </div>
+
+</div>
+
+{# O JavaScript que irá carregar o conteúdo dinamicamente #}
+<script type="module" src="{{ url_for('main.static', filename='js/carrinho.js') }}"></script>
+{% endblock %}
+
