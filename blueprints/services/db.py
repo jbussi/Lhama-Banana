@@ -40,16 +40,24 @@ def close_db_connection(exception=None):
     """
     Devolve a conexão ao pool no final da requisição.
     É chamada pelo `app.teardown_appcontext`.
+    Sempre devolve a conexão ao pool, mesmo em caso de erro.
     """
     db_conn = g.pop("db", None) 
     if db_conn is not None:
-        if exception is not None: 
-            db_conn.rollback()
-        else: 
+        try:
+            if exception is not None: 
+                db_conn.rollback()
+            else: 
+                try:
+                    db_conn.commit() 
+                except psycopg2.Error as e:
+                    print(f"ATENÇÃO: Erro ao commitar na finalização da requisição: {e}")
+                    db_conn.rollback()
+        except Exception as e:
+            print(f"ATENÇÃO: Erro ao fechar conexão: {e}")
+        finally:
+            # Sempre devolve a conexão ao pool, mesmo em caso de erro
             try:
-                db_conn.commit() 
-            except psycopg2.Error as e:
-                print(f"ATENÇÃO: Erro ao commitar na finalização da requisição: {e}")
-                db_conn.rollback() 
-        
-        connection_pool.putconn(db_conn)
+                connection_pool.putconn(db_conn)
+            except Exception as e:
+                print(f"ERRO CRÍTICO: Falha ao devolver conexão ao pool: {e}")

@@ -38,47 +38,76 @@
                     Endereço de Entrega
                 </h2>
                 
-                {% if user_addresses %}
+                <!-- Container para endereços salvos -->
+                <div id="saved-addresses-section">
                     <div class="address-list">
-                        {% for address in user_addresses %}
-                        <div class="address-card {% if loop.first %}selected{% endif %}" data-address-id="{{ address.id }}">
-                            <span class="address-type">
-                                {{ address.nickname }}
-                            </span>
-                            <div class="address-details">
-                                <p><strong>{{ address.recipient_name }}</strong></p>
-                                <p>{{ address.street }}, {{ address.number }}{% if address.complement %}, {{ address.complement }}{% endif %}</p>
-                                <p>{{ address.district }} - {{ address.city }}/{{ address.state }}</p>
-                                <p>CEP: {{ address.postal_code }}</p>
-                                <p>Telefone: {{ address.phone }}</p>
-                            </div>
-                            <div class="address-actions">
-                                <button class="btn-address">
-                                    <i class="fas fa-edit"></i> Editar
-                                </button>
-                                {% if not address.is_primary %} {# Apenas mostra botão de remover se não for o principal #}
-                                <button class="btn-address text-danger">
-                                    <i class="fas fa-trash-alt"></i> Remover
-                                </button>
-                                {% endif %}
-                            </div>
-                        </div>
-                        {% endfor %}
+                        <!-- Endereços serão injetados aqui pelo JS -->
                     </div>
-                {% else %}
-                    <div class="text-center py-4">
+                    
+                    <div id="no-saved-addresses-message" class="text-center py-4" style="display: none;">
                         <i class="fas fa-map-marker-alt fa-3x text-muted mb-3"></i>
                         <p>Nenhum endereço cadastrado</p>
-                        {# Mensagem para usuários não logados (que não têm user_email) #}
-                        {% if not user_email %} 
-                        <p class="text-muted small">Por favor, faça login para ver seus endereços ou adicione um novo.</p>
-                        {% endif %}
+                        <p class="text-muted small">Preencha o formulário abaixo ou <a href="#" id="login-link">faça login</a> para usar seus endereços salvos.</p>
                     </div>
-                {% endif %}
+                    
+                    <button id="add-new-address-btn" class="add-address-btn">
+                        <i class="fas fa-plus"></i> Adicionar novo endereço
+                    </button>
+                </div>
                 
-                <button id="add-address-btn" class="add-address-btn">
-                    <i class="fas fa-plus"></i> Adicionar novo endereço
-                </button>
+                <!-- Formulário de Endereço Manual (Inicialmente escondido) -->
+                <div id="manual-address-form-section" style="display: none;">
+                    <h3 class="section-title">Preencha o Novo Endereço</h3>
+                    <form id="manual-address-form">
+                    <div class="form-group">
+                        <label for="manual-recipient-name">Nome Completo do Recebedor:</label>
+                        <input type="text" id="manual-recipient-name" class="form-control" value="{{ user_name if user_logged_in else '' }}" required>
+                    </div>
+                        <div class="form-group">
+                            <label for="manual-street">Rua:</label>
+                            <input type="text" id="manual-street" class="form-control" required>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-6">
+                                <label for="manual-number">Número:</label>
+                                <input type="text" id="manual-number" class="form-control" required>
+                            </div>
+                            <div class="col-6">
+                                <label for="manual-complement">Complemento:</label>
+                                <input type="text" id="manual-complement" class="form-control">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="manual-district">Bairro:</label>
+                            <input type="text" id="manual-district" class="form-control" required>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-6">
+                                <label for="manual-city">Cidade:</label>
+                                <input type="text" id="manual-city" class="form-control" required>
+                            </div>
+                            <div class="col-6">
+                                <label for="manual-state">Estado (UF):</label>
+                                <input type="text" id="manual-state" class="form-control" maxlength="2" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="manual-postal-code">CEP:</label>
+                            <input type="text" id="manual-postal-code" class="form-control" required>
+                        </div>
+                    <div class="form-group" id="email-field-group" style="display: none;">
+                        <label for="manual-email">E-mail:</label>
+                        <input type="email" id="manual-email" class="form-control" value="{{ user_email if user_logged_in else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="manual-phone">Telefone (apenas números, com DDD):</label>
+                        <input type="text" id="manual-phone" class="form-control" required>
+                    </div>
+                        <button type="button" id="use-saved-addresses-btn" class="btn btn-secondary mt-3" style="display:none;">
+                            <i class="fas fa-arrow-left"></i> Voltar para endereços salvos
+                        </button>
+                    </form>
+                </div>
             </div>
             
             <!-- Payment Method Section -->
@@ -116,6 +145,42 @@
                         </div>
                     </label>
                 </div>
+
+                <!-- Formulário de Cartão de Crédito (Inicialmente escondido) -->
+                <div class="checkout-section" id="credit-card-form-section">
+                    <h3 class="section-title">Dados do Cartão de Crédito</h3>
+                    <form id="credit-card-form">
+                        <div class="form-group">
+                            <label for="card-number">Número do Cartão:</label>
+                            <input type="text" id="card-number" class="form-control" placeholder="**** **** **** ****" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="card-holder-name">Nome Impresso no Cartão:</label>
+                            <input type="text" id="card-holder-name" class="form-control" required>
+                        </div>
+                        <div class="form-group row">
+                            <div class="col-6">
+                                <label for="card-expiry">Validade:</label>
+                                <input type="text" id="card-expiry" class="form-control" placeholder="MM/AA" required>
+                            </div>
+                            <div class="col-6">
+                                <label for="card-cvv">CVV:</label>
+                                <input type="text" id="card-cvv" class="form-control" placeholder="***" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="card-installments">Parcelas:</label>
+                            <select id="card-installments" class="form-control" required>
+                                <!-- Opções serão carregadas dinamicamente -->
+                                <option value="1">1x</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="card-holder-tax-id">CPF/CNPJ do Titular:</label>
+                            <input type="text" id="card-holder-tax-id" class="form-control" placeholder="000.000.000-00" required>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
         
@@ -127,62 +192,24 @@
             </h2>
             
             <div class="order-items">
-                {% if cart_items %} {# Verifica se há itens no carrinho #}
-                    {% for item in cart_items %}
-                    <div class="order-item">
-                        <img src="{{ item.image_url }}" alt="{{ item.product_name }}" class="order-item-img">
-                        <div class="order-item-details">
-                            <div class="order-item-title">{{ item.product_name }}</div>
-                            <div class="order-item-variation">{{ item.estampa_name }} / {{ item.tamanho_name }}</div>
-                            <div class="order-item-price">R$ {{ "%.2f"|format(item.price_at_time_of_add) }}</div>
-                            <div class="order-item-quantity">Quantidade: {{ item.quantity }}</div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <p class="text-center text-muted">Seu carrinho está vazio.</p>
-                {% endif %}
+                <!-- Itens do carrinho serão injetados aqui pelo JS -->
             </div>
             
             <div class="coupon-section">
                 <h3 class="mb-2">Possui um cupom de desconto?</h3>
                 <form id="coupon-form" class="coupon-form">
-                    <input type="text" class="coupon-input" placeholder="Código do cupom" value="{{ coupon_code }}">
+                    <input type="text" class="coupon-input" placeholder="Código do cupom" >
                     <button type="submit" class="btn-apply">Aplicar</button>
                 </form>
             </div>
             
             <div class="order-totals">
-                <div class="total-row">
-                    <span>Subtotal</span>
-                    <span>R$ {{ "%.2f"|format(cart_total_value|float) }}</span>
-                </div>
-                <div class="total-row">
-                    <span>Frete</span>
-                    <span>A calcular</span> {# Frete será dinâmico com JS/API #}
-                </div>
-                {% if discount > 0 %} {# Mostra a linha de desconto apenas se houver desconto #}
-                <div class="total-row">
-                    <span>Desconto</span>
-                    <span class="text-danger">- R$ {{ "%.2f"|format(discount|float) }}</span>
-                </div>
-                {% endif %}
-                <div class="total-row">
-                    <strong>Total</strong>
-                    <strong class="total-amount">R$ {{ "%.2f"|format(final_total|float) }}</strong>
-                </div>
+                <!-- Totais serão injetados aqui pelo JS -->
             </div>
             
-            {# Desabilita o botão se não houver endereços OU se não houver itens no carrinho #}
-            <button class="btn-checkout" id="checkout-btn" {% if not user_addresses or not cart_items %}disabled{% endif %}>
+            <button class="btn-checkout" id="checkout-btn">
                 <i class="fas fa-lock"></i>
-                {% if not user_addresses %} {# Se não há endereços #}
-                    Adicione um endereço para continuar
-                {% elif not cart_items %} {# Se não há itens no carrinho #}
-                    Carrinho vazio
-                {% else %} {# Se há endereços E itens no carrinho #}
-                    Finalizar Compra
-                {% endif %}
+                Finalizar Compra
             </button>
             
             <p class="text-center mt-3 text-muted small">
@@ -192,5 +219,10 @@
     </div>
 </div>
 
+<!-- PagBank SDK (opcional, para tokenização de cartão no frontend) -->
+<!-- Descomente e configure com seu APP_ID quando necessário -->
+<!-- <script src="https://assets.pagseguro.com.br/checkout-sdk/checkout-sdk.js" data-app-id="SEU_APP_ID"></script> -->
+
+<!-- Script principal do checkout - toda a lógica está aqui -->
 <script type="module" src="{{ url_for('main.static', filename='js/checkout.js') }}"></script>
 {% endblock %}

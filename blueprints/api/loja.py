@@ -6,7 +6,7 @@ from ..services import get_db
 def get_base_products():
     """Endpoint para listar produtos base (para a página da loja)."""
     base_products_list = []
-    conn = get_db() # Obtém a conexão do pool
+    conn = get_db()  # Obtém a conexão do pool
     cur = conn.cursor()
 
     cur = conn.cursor()
@@ -51,7 +51,8 @@ def get_base_products():
         return jsonify(base_products_list), 200
 
     except Exception as e:
-        print(f"Erro ao buscar produtos base: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"erro": "Erro interno do servidor ao carregar produtos base."}), 500
     finally:
         cur.close()

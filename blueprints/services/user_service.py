@@ -7,7 +7,7 @@ def get_user_by_firebase_uid(firebase_uid):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, firebase_uid, nome, email, cpf, data_nascimento, criado_em, telefone
+        SELECT id, firebase_uid, nome, email, cpf, data_nascimento, criado_em, telefone, role
         FROM usuarios WHERE firebase_uid = %s
     """, (firebase_uid,))
     user_data = cur.fetchone()
@@ -25,6 +25,7 @@ def get_user_by_firebase_uid(firebase_uid):
             'data_nascimento': str(user_data[5]) if user_data[5] else None,
             'criado_em': str(user_data[6]),
             'telefone': user_data[7],
+            'role': user_data[8] if len(user_data) > 8 else 'user',  # role do usuário
         }
     return None
 

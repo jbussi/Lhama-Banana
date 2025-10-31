@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', async function() {
      */
     async function fetchAndRenderCart() {
         try {
-            const response = await fetch('http://localhost:80/api/cart', {
+            const response = await fetch('/api/cart', {
                 method: 'GET',
                 headers: await getAuthHeaders() // Usar await aqui
             });
@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
 
         try {
-            const response = await fetch(`http://localhost:80/api/cart/update/${cartItemId}`, {
+            const response = await fetch(`/api/cart/update/${cartItemId}`, {
                 method: 'PUT',
                 headers: await getAuthHeaders(),
                 body: JSON.stringify({ quantity: newQuantity })
@@ -214,7 +214,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             return;
         }
         try {
-            const response = await fetch(`http://localhost:80/api/cart/remove/${cartItemId}`, {
+            const response = await fetch(`/api/cart/remove/${cartItemId}`, {
                 method: 'DELETE',
                 headers: await getAuthHeaders()
             });
@@ -241,7 +241,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             return;
         }
         try {
-            const response = await fetch('http://localhost:80/api/cart/clear', {
+            const response = await fetch('/api/cart/clear', {
                 method: 'DELETE',
                 headers: await getAuthHeaders()
             });
@@ -266,8 +266,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     if (checkoutBtn) {
         checkoutBtn.addEventListener('click', () => {
-            alert('Funcionalidade de Finalizar Compra será implementada aqui!');
-            // window.location.href = '/checkout'; // Redirecionar para a página de checkout
+            // Verificar se o carrinho tem itens antes de redirecionar
+            if (cartItemsList && cartItemsList.children.length === 0) {
+                alert('Seu carrinho está vazio. Adicione produtos antes de finalizar a compra.');
+                return;
+            }
+            
+            // Redirecionar para a página de checkout
+            window.location.href = '/checkout';
         });
     }
 

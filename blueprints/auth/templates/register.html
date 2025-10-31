@@ -2,14 +2,11 @@
 
 {% block title %}Criar Conta{% endblock %}
 
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('auth.static', filename='css/register.css') }}">
+{% endblock %}
+
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/reset.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/typhography.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/animations.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/colors.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/login.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/register.css') }}">
-<script type="module" src="{{ url_for('static', filename='js/register.js') }}"></script>
     <h2>Crie sua conta</h2>
     
     {% if error %}
@@ -38,7 +35,7 @@
             <input type="password" id="password" name="password" placeholder="Crie uma senha forte" required 
                    pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" 
                    title="A senha deve conter pelo menos 8 caracteres, incluindo letras maiúsculas, minúsculas e números.">
-            <span class="toggle-password" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: #666;">
+            <span class="toggle-password" style="position: absolute; right: 12px; bottom: 15px; cursor: pointer; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: #666; z-index: 2;">
                 <i class="fas fa-eye" style="font-size: 14px;"></i>
             </span>
             <small style="display: block; margin-top: 5px; color: #666; font-size: 0.8rem;">
@@ -50,7 +47,7 @@
             <label for="confirm_password">Confirme a Senha</label>
             <i class="fas fa-lock"></i>
             <input type="password" id="confirm_password" name="confirm_password" placeholder="Digite a senha novamente" required>
-            <span class="toggle-password" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: #666;">
+            <span class="toggle-password-2" style="position: absolute; right: 12px; bottom: 15px; cursor: pointer; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: #666; z-index: 3;">
                 <i class="fas fa-eye" style="font-size: 14px;"></i>
             </span>
         </div>
@@ -77,7 +74,7 @@
     </button> -->
     
     <div class="switch-auth">
-        <p>Já tem uma conta? <a href="{{ url_for('login_page') }}">Faça login</a></p>
+        <p>Já tem uma conta? <a href="{{ url_for('auth.login_page') }}">Faça login</a></p>
     </div>
     <script>
         // Aguarda o carregamento completo do DOM
@@ -121,43 +118,22 @@
                 confirmPassword.addEventListener('input', validatePasswords);
             }
             
-            // Validação de formulário
-            if (form) {
-                form.addEventListener('submit', function(e) {
-                    if (!validateForm()) {
-                        e.preventDefault();
-                        return false;
+            // Configura o toggle de senha para o campo de confirmação
+            const togglePassword2 = document.querySelector('.toggle-password-2');
+            if (togglePassword2 && confirmPassword) {
+                togglePassword2.addEventListener('click', function() {
+                    const icon = this.querySelector('i');
+                    if (icon) {
+                        const type = confirmPassword.getAttribute('type') === 'password' ? 'text' : 'password';
+                        confirmPassword.setAttribute('type', type);
+                        icon.classList.toggle('fa-eye');
+                        icon.classList.toggle('fa-eye-slash');
                     }
-                    return true;
                 });
             }
             
             // Código de registro com Google removido temporariamente
             // Para implementar, será necessário configurar o OAuth do Google
-            
-            // Funções auxiliares
-            function validateForm() {
-                const username = document.getElementById('username');
-                const email = document.getElementById('email');
-                const terms = document.querySelector('input[name="terms"]');
-                
-                if (!username.value || !email.value || !password.value || !confirmPassword.value) {
-                    alert('Por favor, preencha todos os campos obrigatórios.');
-                    return false;
-                }
-                
-                if (!terms.checked) {
-                    alert('Você precisa aceitar os Termos de Serviço e Política de Privacidade.');
-                    return false;
-                }
-                
-                if (password.value !== confirmPassword.value) {
-                    alert('As senhas não coincidem.');
-                    return false;
-                }
-                
-                return true;
-            }
             
             function checkPasswordStrength(password) {
                 let strength = 0;
@@ -202,4 +178,5 @@
             }
         });
     </script>
+    <script type="module" src="{{ url_for('auth.static', filename='js/register.js') }}"></script>
 {% endblock %}

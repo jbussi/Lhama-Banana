@@ -5,6 +5,7 @@ from firebase_admin import credentials
 from flask import g, Flask 
 
 from blueprints import init_db_pool
+from blueprints.services.db import close_db_connection
 
 _db_pool_instance = None
 _firebase_initialized = False 
@@ -46,6 +47,19 @@ def init_app(app: Flask):
     try:
         init_db_pool(db_config)
         print("Pool de conexões DB inicializado COM SUCESSO!")
+        
+        # Registrar teardown para fechar conexões automaticamente
+        app.teardown_appcontext(close_db_connection)
+        print("Teardown de conexões DB registrado COM SUCESSO!")
     except Exception as e:
-        print(f"ERRO FATAL: Falha ao inicializar Pool de Conexões DB: {e}")
-        sys.exit(1) 
+        print(f"ATENÇÃO: Falha ao inicializar Pool de Conexões DB: {e}")
+        print("Aplicação continuará sem banco de dados (modo de desenvolvimento)")
+        # Em desenvolvimento, não encerrar a aplicação se o banco não estiver disponível
+        is_debug = (app.config.get('DEBUG', False) or 
+                   os.environ.get('FLASK_DEBUG') == '1' or 
+                   os.environ.get('FLASK_ENV') == 'development')
+        if not is_debug:
+            print("ERRO FATAL: Banco de dados é obrigatório em produção")
+            sys.exit(1)
+        else:
+            print("✅ Modo de desenvolvimento detectado - continuando sem banco de dados") 

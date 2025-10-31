@@ -83,7 +83,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     async function fetchProductDetails() {
 
         try {
-            const response = await fetch(`http://localhost:80/api/base_products/${nomeProdutoId}`);
+            const response = await fetch(`/api/base_products/${nomeProdutoId}`);
 
             if (!response.ok) {
                 if (response.status === 404) {
@@ -379,7 +379,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
             
             try {
-                const response = await fetch('http://localhost:80/api/cart/add', {
+                const response = await fetch('/api/cart/add', {
                     method: 'POST',
                     headers: await getAuthHeaders(), // Usar o helper de headers
                     body: JSON.stringify({

@@ -125,18 +125,32 @@ CREATE TABLE IF NOT EXISTS cupom_usado (
   data_uso TIMESTAMP DEFAULT NOW() -- Data e hora que o cupom foi usado
 );
 
--- Tabela para registrar as transações de vendas
+-- Tabela de Vendas (Pedidos)
 CREATE TABLE IF NOT EXISTS vendas (
   id SERIAL PRIMARY KEY,
   codigo_pedido VARCHAR(50) UNIQUE NOT NULL, -- Código único do pedido (visível ao usuário/para controle)
-  usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL, -- Cliente que fez a compra
+  usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL, -- Cliente que fez a compra (NULL para usuário não logado)
   data_venda TIMESTAMP DEFAULT NOW(), -- Data e hora da venda
-  valor_total DECIMAL(10, 2) NOT NULL, -- Valor total da venda (produtos + frete - desconto)
-  valor_frete DECIMAL(10, 2) NOT NULL, -- Valor do frete
-  cupom_aplicado_id INTEGER REFERENCES cupom(id), -- Cupom que foi aplicado a esta venda (opcional)
-  forma_pagamento VARCHAR(50) NOT NULL CHECK (forma_pagamento IN ('pix', 'boleto', 'credito_1x', 'credito_2x', 'credito_3x', 'credito_4x', 'credito_5x', 'credito_6x', 'credito_7x', 'credito_8x', 'credito_9x', 'credito_10x', 'credito_11x', 'credito_12x')),
-  status_pedido VARCHAR(20) NOT NULL CHECK (status_pedido IN ('pendente', 'pago', 'em_processamento', 'enviado', 'entregue', 'cancelado')), -- Status do pedido
-  endereco_entrega_id INTEGER REFERENCES enderecos(id) NOT NULL, -- Endereço de entrega para este pedido
+  valor_total DECIMAL(10, 2) NOT NULL, -- Valor total da venda
+
+  -- Dados de Endereço (para auditoria e histórico, mesmo que o endereço original seja alterado)
+  endereco_entrega_id INTEGER REFERENCES enderecos(id) ON DELETE SET NULL, -- Endereço de entrega para este pedido (NULL se o endereço for gravado diretamente na venda)
+  nome_recebedor VARCHAR(255),
+  rua_entrega VARCHAR(255) NOT NULL,
+  numero_entrega VARCHAR(50) NOT NULL,
+  complemento_entrega VARCHAR(255),
+  bairro_entrega VARCHAR(255) NOT NULL,
+  cidade_entrega VARCHAR(255) NOT NULL,
+  estado_entrega CHAR(2) NOT NULL,
+  cep_entrega VARCHAR(10) NOT NULL,
+
+  -- Status de Pedido (Logística / Fulfillment)
+  status_pedido VARCHAR(20) NOT NULL CHECK (status_pedido IN ('pendente', 'processando_envio', 'enviado', 'entregue', 'cancelado_pelo_cliente', 'cancelado_pelo_vendedor')),
+  
+  -- Informações de Auditoria
+  cliente_ip VARCHAR(45), -- IP do cliente no momento da compra (para segurança/fraude)
+  user_agent TEXT,        -- User-Agent do navegador/dispositivo do cliente
+  
   criado_em TIMESTAMP DEFAULT NOW(),
   atualizado_em TIMESTAMP DEFAULT NOW()
 );
@@ -145,10 +159,45 @@ CREATE TABLE IF NOT EXISTS vendas (
 CREATE TABLE IF NOT EXISTS itens_venda (
   id SERIAL PRIMARY KEY,
   venda_id INTEGER REFERENCES vendas(id) ON DELETE CASCADE, -- Referência à venda à qual o item pertence
-  produto_id INTEGER REFERENCES produtos(id) ON DELETE SET NULL, -- Referência à variação do produto vendida
+  produto_id INTEGER REFERENCES produtos(id) ON DELETE SET NULL, -- Referência ao ID do produto original
   quantidade INTEGER NOT NULL,
-  preco_unitario DECIMAL(10, 2) NOT NULL, -- Preço unitário do produto NO MOMENTO DA VENDA (não flutua com preço_venda do produto)
+  preco_unitario DECIMAL(10, 2) NOT NULL, -- Preço unitário do produto NO MOMENTO DA VENDA
   subtotal DECIMAL(10, 2) NOT NULL, -- Subtotal deste item (quantidade * preco_unitario)
+  
+  -- Snapshot do Produto (CRÍTICO para histórico e auditoria)
+  nome_produto_snapshot VARCHAR(255) NOT NULL,
+  sku_produto_snapshot VARCHAR(50),
+  detalhes_produto_snapshot JSONB, 
+
+  criado_em TIMESTAMP DEFAULT NOW(),
+  atualizado_em TIMESTAMP DEFAULT NOW()
+);
+
+-- NOVA TABELA: Pagamentos (para rastrear transações com Gateway)
+CREATE TABLE IF NOT EXISTS pagamentos (
+  id SERIAL PRIMARY KEY,
+  venda_id INTEGER REFERENCES vendas(id) ON DELETE CASCADE, -- Venda a qual este pagamento pertence
+  
+  pagbank_transaction_id VARCHAR(100) UNIQUE, -- ID da transação no PagBank (CRÍTICO para webhooks)
+  pagbank_order_id VARCHAR(100), -- Opcional: ID do pedido no PagBank se diferente do transaction_id
+  
+  forma_pagamento_tipo VARCHAR(50) NOT NULL CHECK (forma_pagamento_tipo IN ('CREDIT_CARD', 'PIX', 'BOLETO')), -- Tipo genérico de pagamento PagBank
+  bandeira_cartao VARCHAR(50), -- Se for cartão de crédito (VISA, MASTERCARD, etc.)
+  parcelas INTEGER DEFAULT 1, -- Número de parcelas (para cartão de crédito)
+  
+  valor_pago DECIMAL(10, 2) NOT NULL, -- Valor real que foi enviado ao PagBank para esta tentativa
+  
+  -- Status do Pagamento (diretamente do PagBank)
+  status_pagamento VARCHAR(50) NOT NULL CHECK (status_pagamento IN ('PENDING', 'AUTHORIZED', 'PAID', 'DECLINED', 'REFUNDED', 'CHARGEBACK')),
+  status_detalhe_pagamento VARCHAR(100), -- Detalhes adicionais do status PagBank (ex: 'PAID', 'DECLINED_BY_ANTI_FRAUD')
+  
+  pagbank_qrcode_link TEXT, -- Link para QR Code (se PIX)
+  pagbank_qrcode_image TEXT, -- Dados da imagem do QR Code (se PIX)
+  pagbank_boleto_link TEXT, -- Link para boleto (se BOLETO)
+  pagbank_barcode_data TEXT, -- Código de barras do boleto (se BOLETO)
+  
+  json_resposta_api JSONB, -- Opcional: Armazenar a resposta JSON completa da API do PagBank para depuração
+  
   criado_em TIMESTAMP DEFAULT NOW(),
   atualizado_em TIMESTAMP DEFAULT NOW()
 );
@@ -156,19 +205,20 @@ CREATE TABLE IF NOT EXISTS itens_venda (
 -- Tabela para armazenar os carrinhos dos usuários/sessões
 CREATE TABLE IF NOT EXISTS carrinhos (
   id SERIAL PRIMARY KEY,
-  usuario_uid INTEGER REFERENCES usuarios(firebase_uid) ON DELETE CASCADE UNIQUE, -- Usuário dono do carrinho (NULL para anônimos)
+  usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE, -- referencia usuários.id (INTEGER)
   session_id VARCHAR(255) UNIQUE, -- ID de sessão anônima (UUID do localStorage)
   criado_em TIMESTAMP DEFAULT NOW(),
-  atualizado_em TIMESTAMP DEFAULT NOW()
+  atualizado_em TIMESTAMP DEFAULT NOW(),
+  UNIQUE (usuario_id)
 );
 
 -- Tabela para os itens dentro de cada carrinho
 CREATE TABLE IF NOT EXISTS carrinho_itens (
   id SERIAL PRIMARY KEY,
   carrinho_id INTEGER REFERENCES carrinhos(id) ON DELETE CASCADE,
-  produto_id INTEGER REFERENCES produtos(codigo_sku) ON DELETE RESTRICT, -- ID da variação específica do produto
+  produto_id INTEGER REFERENCES produtos(id) ON DELETE RESTRICT, -- referencia produtos.id (INTEGER)
   quantidade INTEGER NOT NULL CHECK (quantidade > 0),
-  preco_unitario_no_momento DECIMAL(10, 2) NOT NULL, -- Preço do produto quando foi adicionado
+  preco_unitario_no_momento DECIMAL(10, 2) NOT NULL,
   adicionado_em TIMESTAMP DEFAULT NOW(),
   UNIQUE (carrinho_id, produto_id) -- Impede duplicatas no mesmo carrinho
 );
@@ -181,24 +231,54 @@ CREATE INDEX IF NOT EXISTS idx_vendas_codigo_pedido ON vendas (codigo_pedido);
 CREATE INDEX IF NOT EXISTS idx_itens_venda_venda_id ON itens_venda (venda_id);
 CREATE INDEX IF NOT EXISTS idx_produtos_sku ON produtos (codigo_sku);
 
--- Gatilhos para atualizar 'atualizado_em' automaticamente
+-- Função para atualizar timestamps
 CREATE OR REPLACE FUNCTION update_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
    NEW.atualizado_em = NOW();
    RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ language plpgsql;
 
--- Criação dos gatilhos para as tabelas que precisam de 'atualizado_em'
+-- Criação dos gatilhos de forma idempotente
+DROP TRIGGER IF EXISTS trg_categorias_update_timestamp ON categorias;
 CREATE TRIGGER trg_categorias_update_timestamp BEFORE UPDATE ON categorias FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_usuarios_update_timestamp ON usuarios;
 CREATE TRIGGER trg_usuarios_update_timestamp BEFORE UPDATE ON usuarios FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_enderecos_update_timestamp ON enderecos;
 CREATE TRIGGER trg_enderecos_update_timestamp BEFORE UPDATE ON enderecos FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_nome_produto_update_timestamp ON nome_produto;
 CREATE TRIGGER trg_nome_produto_update_timestamp BEFORE UPDATE ON nome_produto FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_estampa_update_timestamp ON estampa;
 CREATE TRIGGER trg_estampa_update_timestamp BEFORE UPDATE ON estampa FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_tamanho_update_timestamp ON tamanho;
 CREATE TRIGGER trg_tamanho_update_timestamp BEFORE UPDATE ON tamanho FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_produtos_update_timestamp ON produtos;
 CREATE TRIGGER trg_produtos_update_timestamp BEFORE UPDATE ON produtos FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_imagens_produto_update_timestamp ON imagens_produto;
+CREATE TRIGGER trg_imagens_produto_update_timestamp BEFORE UPDATE ON imagens_produto FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_cupom_update_timestamp ON cupom;
 CREATE TRIGGER trg_cupom_update_timestamp BEFORE UPDATE ON cupom FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
--- cupom_usado não precisa de atualizado_em pois é um registro de evento
+
+DROP TRIGGER IF EXISTS trg_vendas_update_timestamp ON vendas;
 CREATE TRIGGER trg_vendas_update_timestamp BEFORE UPDATE ON vendas FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_itens_venda_update_timestamp ON itens_venda;
 CREATE TRIGGER trg_itens_venda_update_timestamp BEFORE UPDATE ON itens_venda FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_pagamentos_update_timestamp ON pagamentos;
+CREATE TRIGGER trg_pagamentos_update_timestamp BEFORE UPDATE ON pagamentos FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_carrinhos_update_timestamp ON carrinhos;
+CREATE TRIGGER trg_carrinhos_update_timestamp BEFORE UPDATE ON carrinhos FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_carrinho_itens_update_timestamp ON carrinho_itens;
+CREATE TRIGGER trg_carrinho_itens_update_timestamp BEFORE UPDATE ON carrinho_itens FOR EACH ROW EXECUTE PROCEDURE update_timestamp();

@@ -8,8 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function fetchAndRenderBaseProducts() {
         try {
             // Faz a requisição HTTP GET para o endpoint da sua API Flask
-            // Certifique-se de que a URL corresponde ao seu servidor Flask (normalmente localhost:80)
-            const response = await fetch('http://localhost:80/api/base_products');
+            const response = await fetch('/api/base_products');
 
             // Verifica se a resposta HTTP foi bem-sucedida (status 2xx)
             if (!response.ok) {

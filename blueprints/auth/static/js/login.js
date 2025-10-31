@@ -39,8 +39,16 @@ submit.addEventListener("click", function(event) {
   .then((id_token) => { // id_token é o resultado da Promise anterior
       console.log("ID Token obtido:", id_token);
 
+      // Pequeno delay para evitar problemas de clock skew (token usado muito cedo)
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(id_token);
+        }, 500); // Espera 500ms antes de enviar o token
+      });
+  })
+  .then((id_token) => {
       // Fetch com os dados corretos, enviando o token para validação no backend
-      return fetch("http://localhost:80/api/login_user", {
+      return fetch("/api/login_user", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

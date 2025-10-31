@@ -1,55 +1,407 @@
-.confirmation-container {
-    padding: 40px 20px;
-    background-color: var(--cor-fundo-branco);
-    border-radius: 10px;
-    box-shadow: 0 4px 15px var(--cor-sombra);
+/* Order Confirmation Page Styles */
+.order-confirmation-container {
+    max-width: 800px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+/* Error Message */
+.error-message {
     text-align: center;
-    max-width: 700px;
-    margin: 40px auto;
+    padding: 3rem 2rem;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
 }
-.confirmation-container h2 {
-    color: var(--cor-principal-turquesa);
-    font-size: 2.5em;
-    margin-bottom: 20px;
+
+.error-message h1 {
+    color: #dc3545;
+    margin-bottom: 1rem;
 }
-.confirmation-container .icon {
-    font-size: 4em; /* Placeholder for a nice checkmark icon */
-    color: #28a745; /* Green for success */
-    margin-bottom: 20px;
+
+.error-message p {
+    color: #6c757d;
+    margin-bottom: 2rem;
+    font-size: 1.1rem;
 }
-.confirmation-container p {
-    font-size: 1.2em;
-    color: var(--cor-texto-cinza);
-    margin-bottom: 15px;
-    line-height: 1.6;
+
+/* Confirmation Header */
+.confirmation-header {
+    text-align: center;
+    margin-bottom: 3rem;
+    padding: 2rem;
+    background: linear-gradient(135deg, #28a745, #20c997);
+    border-radius: 16px;
+    color: white;
 }
-.confirmation-container .order-details {
-    margin-top: 20px;
-    margin-bottom: 30px;
-    padding: 15px;
-    background-color: #f9f9f9;
+
+.success-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.9;
+}
+
+.confirmation-header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+}
+
+.confirmation-header p {
+    font-size: 1.2rem;
+    opacity: 0.9;
+    margin: 0;
+}
+
+/* Cards */
+.order-info-card,
+.payment-info-card,
+.next-steps-card {
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e9ecef;
+}
+
+.order-info-card h2,
+.payment-info-card h3,
+.next-steps-card h3 {
+    color: #2c3e50;
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+/* Order Details */
+.order-details {
+    display: grid;
+    gap: 1rem;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #f1f3f4;
+}
+
+.detail-row:last-child {
+    border-bottom: none;
+}
+
+.detail-row .label {
+    font-weight: 600;
+    color: #495057;
+}
+
+.detail-row .value {
+    color: #2c3e50;
+    font-weight: 500;
+}
+
+.status-pendente {
+    color: #ffc107;
+    background: #fff3cd;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+}
+
+.status-processando_envio {
+    color: #17a2b8;
+    background: #d1ecf1;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+}
+
+.status-enviado {
+    color: #007bff;
+    background: #cce7ff;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+}
+
+.status-entregue {
+    color: #28a745;
+    background: #d4edda;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+}
+
+/* PIX Payment */
+.pix-payment {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    align-items: start;
+}
+
+.qr-code-container {
+    text-align: center;
+    padding: 1rem;
+    background: #f8f9fa;
     border-radius: 8px;
-    text-align: left;
+    border: 2px dashed #dee2e6;
 }
-.order-details p {
-    font-size: 1.1em;
+
+.qr-code {
+    max-width: 200px;
+    width: 100%;
+    height: auto;
 }
-.order-details strong {
-    color: var(--cor-texto-preto);
+
+.pix-instructions {
+    padding: 1rem;
 }
-.actions a {
-    background-color: var(--cor-secundaria-amarelo);
-    color: var(--cor-texto-preto);
-    padding: 12px 25px;
+
+.pix-instructions p {
+    margin-bottom: 1rem;
+    color: #495057;
+}
+
+.pix-instructions ol {
+    margin-bottom: 1.5rem;
+    padding-left: 1.5rem;
+}
+
+.pix-instructions li {
+    margin-bottom: 0.5rem;
+    color: #6c757d;
+}
+
+.pix-code {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.pix-code label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #495057;
+}
+
+.pix-code textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 0.75rem;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.875rem;
+    resize: vertical;
+    margin-bottom: 0.75rem;
+}
+
+.btn-small {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-small:hover {
+    background: #0056b3;
+}
+
+/* Boleto Payment */
+.boleto-payment {
+    text-align: center;
+    padding: 2rem;
+}
+
+.boleto-payment p {
+    margin-bottom: 1.5rem;
+    color: #495057;
+    font-size: 1.1rem;
+}
+
+.boleto-note {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 8px;
+    color: #856404;
+    font-size: 0.9rem;
+}
+
+/* Next Steps */
+.steps {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.step {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #007bff;
+}
+
+.step-icon {
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    background: #007bff;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+}
+
+.step-content h4 {
+    margin: 0 0 0.5rem 0;
+    color: #2c3e50;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.step-content p {
+    margin: 0;
+    color: #6c757d;
+    line-height: 1.5;
+}
+
+/* Actions */
+.actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid #e9ecef;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
     text-decoration: none;
-    border-radius: 8px;
-    font-weight: bold;
-    font-size: 1.1em;
-    margin: 0 10px;
-    transition: background-color 0.3s ease;
-    display: inline-block;
-    margin-top: 10px;
+    font-weight: 600;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
 }
-.actions a:hover {
-    background-color: #E6C300;
+
+.btn-primary {
+    background: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #545b62;
+    transform: translateY(-1px);
+}
+
+.btn-outline {
+    background: transparent;
+    color: #007bff;
+    border: 2px solid #007bff;
+}
+
+.btn-outline:hover {
+    background: #007bff;
+    color: white;
+    transform: translateY(-1px);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .order-confirmation-container {
+        margin: 1rem auto;
+        padding: 0 0.5rem;
+    }
+    
+    .confirmation-header {
+        padding: 1.5rem 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .confirmation-header h1 {
+        font-size: 2rem;
+    }
+    
+    .confirmation-header p {
+        font-size: 1rem;
+    }
+    
+    .order-info-card,
+    .payment-info-card,
+    .next-steps-card {
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .pix-payment {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+    
+    .detail-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+    
+    .actions {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .btn {
+        width: 100%;
+        max-width: 300px;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .success-icon {
+        font-size: 3rem;
+    }
+    
+    .confirmation-header h1 {
+        font-size: 1.75rem;
+    }
+    
+    .step {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .step-icon {
+        align-self: center;
+    }
 }

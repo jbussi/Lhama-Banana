@@ -12,13 +12,9 @@
   <div class="hero-text">
     <h1>Noites tranquilas, sorrisos garantidos!</h1>
     <p>Somos uma marca feita por famílias, para famílias. Aqui você encontra qualidade, conforto e muito carinho em cada detalhe.</p>
-    <button class="btn-collection" type="button" aria-label="Ver coleção">
-      <!-- Ícone lhama simples -->
-      <svg class="btn-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-        <circle cx="32" cy="32" r="30" fill="#f9a825"/>
-        <path d="M20 40c0-6 8-6 8-12s-4-8-4-8 4 0 8 6" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-      </svg>
-      Ver Coleção
+<button class="btn-collection" type="button" onclick="window.location.href='{{ url_for('produtos.produtos_page') }}'" aria-label="Navegar pela loja">
+      <span>🦙</span>
+      <span>Comprar Agora</span>
     </button>
   </div>
   <div class="hero-image">
@@ -42,10 +38,15 @@
                 <div class="swiper-wrapper">
                     <!-- Slides de Produtos -->
                     <div class="swiper-slide">
-                        <div class="produto-card">
-                            <img src="https://via.placeholder.com/300x400" alt="Produto 1">
-                            <h3>Produto Destaque 1</h3>
-                            <p>R$ 199,90</p>
+                        <div class="card-product animate-fadeInUp">
+                            <img src="https://via.placeholder.com/300x400" alt="Produto 1" class="card-product-image">
+                            <div class="card-product-content">
+                                <h3 class="card-product-title">Produto Destaque 1</h3>
+                                <p class="card-product-price">R$ 199,90</p>
+                                <div class="card-product-actions">
+                                    <button class="btn-primary btn-small">Adicionar</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="swiper-slide">

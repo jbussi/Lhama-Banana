@@ -98,8 +98,8 @@
     background-color: var(--cor-secundaria-amarelo);
     color: var(--cor-texto-preto);
     font-weight: 700;
-    font-size: 1.3rem;
-    padding: 1.1rem 2.5rem;
+    font-size: 1.6rem;
+    padding: 1.5rem 3.5rem;
     border-radius: 50px;
     border: none;
     cursor: pointer;
@@ -197,9 +197,9 @@
     }
     
     .btn-collection {
-        font-size: 0.95rem;
-        padding: 0.6rem 0.5rem; /* Reduzi o padding do botão */
-        margin-bottom: 0.1rem; /* Reduzi a margem inferior do botão */
+        font-size: 1.1rem;
+        padding: 1rem 2rem;
+        margin-bottom: 0.1rem;
     }
     
     .btn-icon {
@@ -247,8 +247,8 @@
     }
     
     .btn-collection {
-        font-size: 1rem;
-        padding: 0.9rem 1.8rem;
+        font-size: 1.1rem;
+        padding: 1.1rem 2.2rem;
     }
     
 }

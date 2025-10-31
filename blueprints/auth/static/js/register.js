@@ -17,16 +17,41 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
-const submit = document.getElementById("submit");
+// Aguarda o DOM estar pronto
+document.addEventListener('DOMContentLoaded', function() {
+  const submit = document.getElementById("submit");
 
-submit.addEventListener("click", function(event) {
-  event.preventDefault();
+  if (!submit) {
+    console.error("Botão de submit não encontrado");
+    return;
+  }
 
-  const username = document.getElementById("username").value;
-  const email    = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+  submit.addEventListener("click", function(event) {
+    event.preventDefault();
 
-  createUserWithEmailAndPassword(auth, email, password)
+    const username = document.getElementById("username").value;
+    const email    = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+    const confirmPassword = document.getElementById("confirm_password").value;
+    const terms = document.querySelector('input[name="terms"]');
+
+    // Validações
+    if (!username || !email || !password || !confirmPassword) {
+      alert('Por favor, preencha todos os campos obrigatórios.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      alert('As senhas não coincidem.');
+      return;
+    }
+
+    if (!terms || !terms.checked) {
+      alert('Você precisa aceitar os Termos de Uso e Política de Privacidade.');
+      return;
+    }
+
+    createUserWithEmailAndPassword(auth, email, password)
   .then((userCredential) => {
     const user = userCredential.user;
 
@@ -36,7 +61,7 @@ submit.addEventListener("click", function(event) {
       alert(`Bem-vindo, ${username}!`);
 
       // Agora sim, fetch com os dados corretos, enviando o token para validação no backend
-      return fetch("http://localhost:80/api/register_user", {
+      return fetch("/api/register_user", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -48,16 +73,19 @@ submit.addEventListener("click", function(event) {
       });
     });
   })
-  .then(response => {
-    if (!response.ok) throw new Error("Erro ao salvar no banco de dados");
-    return response.json();
-  })
-  .then(data => {
+  .then(async response => {
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.erro || "Erro ao salvar no banco de dados");
+    }
     console.log("Dados salvos no backend:", data);
-    window.location.href = "/login";
+    alert("Conta criada com sucesso!");
+    window.location.href = "/auth/login";
   })
   .catch(error => {
-    console.error("Erro no backend ou criação:", error.message);
+    console.error("Erro no backend ou criação:", error);
+    alert("Erro ao criar conta: " + error.message);
+  });
   });
 });
 

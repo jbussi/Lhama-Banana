@@ -126,7 +126,7 @@ async function savePersonalInfo() {
         }
         const idToken = await currentUser.getIdToken(); // Obtém o ID Token JWT do Firebase
 
-        const response = await fetch("http://localhost:80/api/user_data", {
+        const response = await fetch("/api/user_data", {
             method: "PUT", // Usamos PUT para indicar uma atualização de recurso existente
             headers: {
                 "Content-Type": "application/json",
@@ -338,7 +338,7 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 const idToken = await user.getIdToken(); // Obtém o ID Token JWT do Firebase
 
-                const response = await fetch("http://localhost:80/api/user_data", {
+                const response = await fetch("/api/user_data", {
                     method: "GET",
                     headers: {
                         "Content-Type": "application/json",

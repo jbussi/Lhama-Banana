@@ -1,36 +1,256 @@
 {% extends "base.html" %}
 
-{% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/reset.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/typhography.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/animations.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/base/colors.css') }}">
+{% block page_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/order-confirmation.css') }}">
-
-<div class="confirmation-container">
-    <!-- Você pode adicionar um ícone de checkmark aqui -->
-    <!-- Exemplo com texto, idealmente seria um SVG ou Font Icon -->
-    <div class="icon">✔</div> 
-    <h2>Pedido Realizado com Sucesso!</h2>
-    
-    {# Simulação de dados de pedido para visualização #}
-    <p>Obrigado por comprar na LhamaBanana, Visitante (Demo)!</p>
-    <p>Seu pedido <strong style="color: var(--cor-principal-turquesa);">#DEMO123</strong> foi recebido e está sendo processado.</p>
-    <p>Enviamos um e-mail de confirmação com os detalhes do seu pedido e informações para pagamento (se aplicável).</p>
-
-    <div class="order-details">
-        <h4>Detalhes do Pedido:</h4>
-        <p><strong>Número do Pedido:</strong> DEMO123</p>
-        <p><strong>Data:</strong> 15/05/2025 13:00</p> {# Data estática #}
-        <p><strong>Valor Total:</strong> R$ 199.80</p> {# Valor estático #}
-        <p><strong>Status:</strong> Processando</p> {# Status estático #}
-    </div>
-
-    <div class="actions">
-        <a href="{{ url_for("main.loja") }}">Continuar Comprando</a>
-        <a href="{{ url_for("perfil") }}#order-history">Ver Meus Pedidos</a>
-    </div>
-</div>
-
 {% endblock %}
 
+{% block title %}Confirmação de Pedido - LhamaBanana{% endblock %}
+
+{% block content %}
+<div class="order-confirmation-container">
+    {% if error %}
+        <div class="error-message">
+            <h1>Erro</h1>
+            <p>{{ error }}</p>
+            <a href="{{ url_for('main.home') }}" class="btn btn-primary">Voltar ao Início</a>
+        </div>
+    {% else %}
+        <div class="confirmation-header">
+            <div class="success-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <h1>Pedido Confirmado!</h1>
+            <p>Obrigado pela sua compra. Seu pedido foi processado com sucesso.</p>
+        </div>
+        
+        <div class="order-info-card">
+            <h2>Informações do Pedido</h2>
+            <div class="order-details">
+                <div class="detail-row">
+                    <span class="label">Código do Pedido:</span>
+                    <span class="value">{{ codigo_pedido }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Status:</span>
+                    <span class="value status-{{ order.status_pedido if order else 'pendente' }}">
+                        {{ order.status_pedido if order else 'Processando' }}
+                    </span>
+                </div>
+                {% if order %}
+                <div class="detail-row">
+                    <span class="label">Valor Total:</span>
+                    <span class="value">R$ {{ "%.2f"|format(order.valor_total) }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Data do Pedido:</span>
+                    <span class="value">{{ order.data_venda.strftime('%d/%m/%Y %H:%M') if order.data_venda else 'N/A' }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if pix_qr %}
+        <div class="payment-info-card">
+            <h3><i class="fas fa-qrcode"></i> Pagamento via PIX</h3>
+            <div class="pix-payment">
+                <div class="payment-status">
+                    <div class="status-badge status-waiting">
+                        <i class="fas fa-clock"></i> Aguardando Pagamento
+                    </div>
+                </div>
+                <div class="qr-code-container">
+                    {% if pix_qr %}
+                    <img src="{{ pix_qr }}" alt="QR Code PIX" class="qr-code" onerror="this.style.display='none'; document.querySelector('.qr-code-fallback').style.display='block';">
+                    <div class="qr-code-fallback" style="display: none;">
+                        <p>QR Code não disponível. Use o código PIX abaixo.</p>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="pix-instructions">
+                    <p><strong>Instruções para pagamento:</strong></p>
+                    <ol>
+                        <li>Abra o app do seu banco</li>
+                        <li>Escaneie o QR Code acima ou copie o código PIX abaixo</li>
+                        <li>Confirme o pagamento no app</li>
+                        <li>Aguarde a confirmação (geralmente instantânea)</li>
+                    </ol>
+                    {% if pix_text %}
+                    <div class="pix-code">
+                        <label><strong>Código PIX Copia e Cola:</strong></label>
+                        <textarea readonly id="pix-code-text">{{ pix_text }}</textarea>
+                        <button onclick="copyPixCode()" class="btn btn-small">
+                            <i class="fas fa-copy"></i> Copiar Código
+                        </button>
+                    </div>
+                    {% endif %}
+                    <div class="payment-note">
+                        <p><strong>⏱️ Tempo de validade:</strong> Este QR Code expira em 30 minutos. 
+                        Se expirar, você pode gerar um novo na página do pedido.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% elif boleto_link %}
+        <div class="payment-info-card">
+            <h3><i class="fas fa-barcode"></i> Pagamento via Boleto Bancário</h3>
+            <div class="boleto-payment">
+                <div class="payment-status">
+                    <div class="status-badge status-waiting">
+                        <i class="fas fa-clock"></i> Aguardando Pagamento
+                    </div>
+                </div>
+                <p>Seu boleto foi gerado com sucesso. Clique no botão abaixo para visualizar e imprimir.</p>
+                <div class="boleto-actions">
+                    <a href="{{ boleto_link }}" target="_blank" class="btn btn-primary">
+                        <i class="fas fa-file-pdf"></i> Visualizar e Imprimir Boleto
+                    </a>
+                </div>
+                {% if request.args.get('boleto_barcode') %}
+                <div class="boleto-barcode">
+                    <label><strong>Código de Barras:</strong></label>
+                    <div class="barcode-value">{{ request.args.get('boleto_barcode') }}</div>
+                    <button onclick="copyBarcode()" class="btn btn-small">
+                        <i class="fas fa-copy"></i> Copiar Código
+                    </button>
+                </div>
+                {% endif %}
+                <div class="payment-note">
+                    <p><strong>📅 Vencimento:</strong> O boleto vence em 3 dias úteis.</p>
+                    <p><strong>⚠️ Importante:</strong> Após o vencimento, será necessário gerar um novo boleto.</p>
+                    <p><strong>💰 Pagamento:</strong> Você pode pagar em qualquer banco, lotérica ou pelo internet banking.</p>
+                </div>
+            </div>
+        </div>
+        {% elif order and order.get('forma_pagamento') == 'CREDIT_CARD' %}
+        <div class="payment-info-card">
+            <h3><i class="fas fa-credit-card"></i> Pagamento via Cartão de Crédito</h3>
+            <div class="card-payment">
+                {% if order.status_pagamento == 'paid' or order.status_pagamento == 'approved' %}
+                <div class="payment-status">
+                    <div class="status-badge status-paid">
+                        <i class="fas fa-check-circle"></i> Pagamento Aprovado
+                    </div>
+                </div>
+                <p class="success-message">
+                    <strong>✅ Seu pagamento foi aprovado com sucesso!</strong><br>
+                    Seu pedido está sendo processado e você receberá um e-mail de confirmação em breve.
+                </p>
+                {% else %}
+                <div class="payment-status">
+                    <div class="status-badge status-pending">
+                        <i class="fas fa-clock"></i> Pagamento Pendente
+                    </div>
+                </div>
+                <p class="pending-message">
+                    <strong>⏳ Seu pagamento está sendo processado.</strong><br>
+                    Você receberá um e-mail assim que o pagamento for confirmado.
+                </p>
+                {% endif %}
+                {% if order.bandeira_cartao %}
+                <div class="payment-details">
+                    <p><strong>Bandeira:</strong> {{ order.bandeira_cartao }}</p>
+                    {% if order.parcelas %}
+                    <p><strong>Parcelas:</strong> {{ order.parcelas }}x</p>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="next-steps-card">
+            <h3>Próximos Passos</h3>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-icon">
+                        <i class="fas fa-envelope"></i>
+                    </div>
+                    <div class="step-content">
+                        <h4>Confirmação por E-mail</h4>
+                        <p>Você receberá um e-mail de confirmação em breve com todos os detalhes do seu pedido.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-icon">
+                        <i class="fas fa-box"></i>
+                    </div>
+                    <div class="step-content">
+                        <h4>Processamento</h4>
+                        <p>Seu pedido será processado e preparado para envio em até 2 dias úteis.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-icon">
+                        <i class="fas fa-truck"></i>
+                    </div>
+                    <div class="step-content">
+                        <h4>Envio</h4>
+                        <p>Você receberá o código de rastreamento assim que o pedido for enviado.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="actions">
+            <a href="{{ url_for('produtos.produtos_page') }}" class="btn btn-primary">
+                <i class="fas fa-shopping-bag"></i> Continuar Comprando
+            </a>
+            <a href="{{ url_for('main.home') }}" class="btn btn-secondary">
+                <i class="fas fa-home"></i> Voltar ao Início
+            </a>
+            {% if is_logged_in %}
+            <a href="{{ url_for('main.perfil_page') }}" class="btn btn-outline">
+                <i class="fas fa-user"></i> Meu Perfil
+            </a>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function copyPixCode() {
+    const textarea = document.getElementById('pix-code-text');
+    if (textarea) {
+        textarea.select();
+        textarea.setSelectionRange(0, 99999); // Para mobile
+        document.execCommand('copy');
+        
+        // Mostrar feedback visual
+        const button = document.querySelector('.pix-code button');
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i> Copiado!';
+        button.style.backgroundColor = '#28a745';
+        
+        setTimeout(() => {
+            button.innerHTML = originalHTML;
+            button.style.backgroundColor = '';
+        }, 2000);
+        
+        // Notificação opcional
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(textarea.value);
+        }
+    }
+}
+
+function copyBarcode() {
+    const barcodeValue = document.querySelector('.barcode-value');
+    if (barcodeValue) {
+        const text = barcodeValue.textContent.trim();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => {
+                const button = document.querySelector('.boleto-barcode button');
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check"></i> Copiado!';
+                button.style.backgroundColor = '#28a745';
+                
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.style.backgroundColor = '';
+                }, 2000);
+            });
+        }
+    }
+}
+</script>
+{% endblock %}
