@@ -9,5 +9,22 @@
             "username": "postgres",
             "database": "sistema_usuarios"
         }
-    ]
+    ],
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+    "python.analysis.autoImportCompletions": true,
+    "files.exclude": {
+        "**/*.pyc": true,
+        "**/__pycache__": true,
+        ".pytest_cache": true
+    },
+    "files.watcherExclude": {
+        "**/__pycache__/**": true,
+        "**/*.pyc": true
+    },
+    "python.analysis.typeCheckingMode": "basic",
+    "files.associations": {
+        "*.js": "javascript"
+    },
+    "javascript.updateImportsOnFileMove.enabled": "always"
 }

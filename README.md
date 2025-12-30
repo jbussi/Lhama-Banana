@@ -2,137 +2,166 @@
 
 Uma plataforma de e-commerce moderna construída com Flask, PostgreSQL e Firebase.
 
-## 🚀 **Funcionalidades Implementadas**
+## 🚀 Funcionalidades Implementadas
 
-### ✅ **Sistema de Checkout Completo**
+### ✅ Sistema de Checkout Completo
 - **Processamento de Pedidos** com validação de estoque
-- **Integração PagSeguro** (PIX, Cartão de Crédito, Boleto)
-- **Cálculo de Frete** em tempo real
-- **Página de Confirmação** com QR Code e links de pagamento
+- **Integração PagBank** (PIX, Cartão de Crédito, Boleto)
+- **Cálculo de Frete** em tempo real via Melhor Envio
+- **Páginas de Pagamento** dedicadas (PIX, Boleto)
+- **Status de Pedidos** com atualização automática
+- **Webhook** para atualização de status de pagamento
 
-### ✅ **Sistema de Frete Inteligente**
+### ✅ Sistema de Frete Inteligente
 - **Validação de CEP** via ViaCEP
 - **Múltiplas Modalidades**: PAC, SEDEX, Frete Grátis
 - **Cálculo Dinâmico** baseado em peso, distância e valor
 
-### ✅ **Autenticação e Usuários**
+### ✅ Autenticação e Usuários
 - **Firebase Authentication** integrado
 - **Sistema de Perfis** de usuário
 - **Carrinho Persistente** por sessão
 
-## 🛠️ **Tecnologias Utilizadas**
+## 🛠️ Tecnologias Utilizadas
 
 - **Backend**: Flask (Python)
 - **Banco de Dados**: PostgreSQL
 - **Autenticação**: Firebase Admin SDK
-- **Pagamentos**: PagSeguro API
+- **Pagamentos**: PagBank API (PagSeguro)
 - **Frontend**: HTML5, CSS3, JavaScript
-- **Frete**: ViaCEP API
+- **Frete**: Melhor Envio API
 
-## 📦 **Instalação**
+## 📦 Instalação
 
-### **1. Clonar o Repositório**
+### 1. Clonar o Repositório
 ```bash
 git clone <seu-repositorio>
 cd LhamaBanana_visual_estatica_corrigida/Lhama-Banana
 ```
 
-### **2. Instalar Dependências**
+### 2. Instalar Dependências
 ```bash
 pip install -r requirements.txt
 ```
 
-### **3. Configurar Variáveis de Ambiente**
-```bash
-# Copiar arquivo de exemplo
-cp .env.example .env
+### 3. Configurar o Sistema
 
-# Editar com suas configurações
-nano .env
+Edite o arquivo `config.py` com suas configurações:
+
+```python
+# Banco de Dados
+DATABASE_CONFIG = {
+    "host": "localhost",
+    "dbname": "sistema_usuarios",
+    "user": "postgres",
+    "password": "sua_senha"
+}
+
+# PagBank
+PAGBANK_API_TOKEN = "seu-token-aqui"
+PAGBANK_ENVIRONMENT = "sandbox"  # ou "production"
+PAGBANK_NOTIFICATION_URL = "http://localhost:5000/api/webhook/pagbank"
+
+# Melhor Envio
+MELHOR_ENVIO_TOKEN = "seu-token-aqui"
+MELHOR_ENVIO_CEP_ORIGEM = "13219-052"
 ```
 
-### **4. Configurar Firebase**
-- Coloque o arquivo `key.json` na raiz do projeto
+**Ou use variáveis de ambiente:**
+```bash
+# Windows PowerShell
+$env:DB_PASSWORD="sua_senha"
+$env:PAGBANK_API_TOKEN="seu-token"
+$env:PAGBANK_ENVIRONMENT="sandbox"
+
+# Linux/Mac
+export DB_PASSWORD="sua_senha"
+export PAGBANK_API_TOKEN="seu-token"
+export PAGBANK_ENVIRONMENT="sandbox"
+```
+
+### 4. Configurar Firebase
+- Coloque o arquivo `key.json` na raiz do projeto (mesmo nível de `Lhama-Banana/`)
 - Configure as credenciais do Firebase
 
-## 🚀 **Execução**
-
-### **Modo de Desenvolvimento**
+### 5. Configurar Banco de Dados
+Execute as migrações SQL na ordem:
 ```bash
-# Método 1: Simples
-DEV_MODE=1 python app.py
+# 1. Criar estrutura base
+psql -U postgres -d sistema_usuarios -f sql/criar-banco-de-dados.sql
 
-# Método 2: Script Python
-python run_dev.py
+# 2. Atualizar checkout e pagamentos
+psql -U postgres -d sistema_usuarios -f sql/atualizar-checkout-pagamentos.sql
 
-# Método 3: Script Shell
-./start_dev.sh
+# 3. Criar tabela orders
+cd Lhama-Banana
+python run_migration_orders.py
 ```
 
-### **Modo de Produção**
+## 🚀 Execução
+
+### Modo de Desenvolvimento
 ```bash
 python app.py
 ```
 
-## 🌐 **URLs da Aplicação**
+A aplicação estará disponível em: `http://localhost:5000`
 
-### **Páginas Principais**
-- **Home**: http://127.0.0.1:5000/
-- **Loja**: http://127.0.0.1:5000/produtos/
-- **Carrinho**: http://127.0.0.1:5000/carrinho
-- **Checkout**: http://127.0.0.1:5000/checkout
-- **Login**: http://127.0.0.1:5000/auth/login
+## 🌐 URLs da Aplicação
 
-### **APIs**
+### Páginas Principais
+- **Home**: http://localhost:5000/
+- **Loja**: http://localhost:5000/produtos/
+- **Carrinho**: http://localhost:5000/carrinho
+- **Checkout**: http://localhost:5000/checkout
+- **Login**: http://localhost:5000/auth/login
+- **Status Pedido**: http://localhost:5000/status-pedido?token=...
+
+### APIs
 - **Checkout**: `POST /api/checkout/process`
 - **Frete**: `POST /api/shipping/calculate`
-- **Validação CEP**: `POST /api/shipping/validate-cep`
-- **Status Pedido**: `GET /api/checkout/status/<codigo>`
+- **Status Pedido**: `GET /api/orders/<token>`
+- **Status Pedido (polling)**: `GET /api/orders/<token>/status`
+- **Webhook PagBank**: `POST /api/webhook/pagbank`
 
-## 📁 **Estrutura do Projeto**
+## 📁 Estrutura do Projeto
 
 ```
 Lhama-Banana/
-├── app.py                          # Aplicação principal
-├── config.py                       # Configurações de produção
-├── config_dev.py                   # Configurações de desenvolvimento
+├── app.py                          # Aplicação principal Flask
+├── config.py                       # Configurações do sistema (EDITAR AQUI)
 ├── requirements.txt                # Dependências Python
-├── run_dev.py                      # Script de desenvolvimento
-├── start_dev.sh                    # Script shell
-├── test_app.py                     # Testes da aplicação
+├── run_migration_orders.py         # Script para executar migração SQL
+├── README.md                       # Este arquivo
+├── CONFIGURACAO_PAGBANK.md         # Guia de configuração do PagBank
+├── VERIFICACAO_RAPIDA.md          # Checklist de verificação
 ├── blueprints/                     # Módulos da aplicação
 │   ├── api/                        # APIs REST
 │   │   ├── checkout.py             # API de checkout
-│   │   └── shipping.py             # API de frete
+│   │   ├── orders.py               # API de status de pedidos
+│   │   ├── shipping.py             # API de frete
+│   │   └── webhook.py              # Webhook do PagBank
 │   ├── main/                       # Rotas principais
 │   │   ├── checkout.py             # Página de checkout
-│   │   └── order_confirmation.py   # Confirmação de pedido
-│   └── services/                   # Lógica de negócio
+│   │   ├── payment_routes.py       # Páginas de pagamento
+│   │   └── static/                 # CSS e JS das páginas
+│   └── services/                    # Lógica de negócio
 │       ├── checkout_service.py     # Serviços de checkout
+│       ├── order_service.py        # Serviços de pedidos
 │       └── shipping_service.py     # Serviços de frete
-├── templates/                      # Templates HTML
-│   ├── checkout.html               # Página de checkout
-│   └── order_confirmation.html     # Confirmação de pedido
-├── static/                         # Arquivos estáticos
-│   ├── css/                        # Estilos CSS
-│   └── js/                         # JavaScript
-└── plataform_config/               # Configurações da plataforma
+├── templates/                      # Templates HTML base
+├── static/                         # Arquivos estáticos globais
+└── sql/                            # Scripts SQL de migração
+    ├── criar-banco-de-dados.sql
+    ├── atualizar-checkout-pagamentos.sql
+    └── criar-tabela-orders.sql
 ```
 
-## 🔧 **Configuração**
+## 🔧 Configuração Detalhada
 
-### **Variáveis de Ambiente**
-```bash
-# Desenvolvimento
-FLASK_DEBUG=1
-FLASK_ENV=development
-DEV_MODE=1
+### Configurações Disponíveis em `config.py`
 
-# Produção
-FLASK_ENV=production
-```
-
-### **Configurações do Banco**
+#### Banco de Dados
 ```python
 DATABASE_CONFIG = {
     "host": "localhost",
@@ -142,56 +171,98 @@ DATABASE_CONFIG = {
 }
 ```
 
-### **Configurações PagSeguro**
+#### PagBank (Gateway de Pagamento)
 ```python
-PAGSEGURO_SANDBOX_API_TOKEN = "seu_token_sandbox"
-PAGSEGURO_SANDBOX_CHECKOUT_URL = "https://sandbox.api.pagseguro.com/checkouts"
+PAGBANK_API_TOKEN = "seu-token"                    # Token do painel PagBank
+PAGBANK_ENVIRONMENT = "sandbox"                    # "sandbox" ou "production"
+PAGBANK_NOTIFICATION_URL = "http://..."            # URL do webhook
+PAGBANK_SIMULATION_MODE = True                     # True para testes sem API real
 ```
 
-## 🧪 **Testes**
+#### Melhor Envio (Cálculo de Frete)
+```python
+MELHOR_ENVIO_TOKEN = "seu-token"                   # Token da API Melhor Envio
+MELHOR_ENVIO_CEP_ORIGEM = "13219-052"              # CEP da loja
+```
 
-### **Executar Testes**
+#### Administração
+```python
+ADMIN_EMAILS = ['admin@exemplo.com']              # Emails com acesso admin
+```
+
+### Variáveis de Ambiente
+
+Todas as configurações podem ser sobrescritas por variáveis de ambiente:
+
 ```bash
-python test_app.py
+# Banco de Dados
+DB_HOST=localhost
+DB_NAME=sistema_usuarios
+DB_USER=postgres
+DB_PASSWORD=sua_senha
+
+# PagBank
+PAGBANK_API_TOKEN=seu-token
+PAGBANK_ENVIRONMENT=sandbox
+PAGBANK_NOTIFICATION_URL=https://seudominio.com/api/webhook/pagbank
+PAGBANK_SIMULATION_MODE=false
+
+# Melhor Envio
+MELHOR_ENVIO_TOKEN=seu-token
+MELHOR_ENVIO_CEP_ORIGEM=13219-052
+
+# Admin
+ADMIN_EMAILS=admin1@exemplo.com,admin2@exemplo.com
 ```
 
-### **Testes Disponíveis**
-- ✅ Teste de imports
-- ✅ Teste de criação da aplicação
-- ✅ Teste de configuração
-- ✅ Teste de rotas
+## 📚 Documentação Adicional
 
-## 📊 **Status do Projeto**
+- **`CONFIGURACAO_PAGBANK.md`**: Guia completo de configuração do PagBank
+- **`VERIFICACAO_RAPIDA.md`**: Checklist de verificação do sistema
+
+## 🧪 Testes
+
+### Testar Checkout
+1. Adicione produtos ao carrinho
+2. Acesse `/checkout`
+3. Preencha os dados
+4. Selecione método de pagamento
+5. Finalize a compra
+
+### Testar Webhook (Local)
+1. Use ngrok: `ngrok http 5000`
+2. Configure URL temporária no painel PagBank
+3. Faça um pagamento de teste
+4. Verifique logs do webhook
+
+## 📊 Status do Projeto
 
 | Funcionalidade | Status | Descrição |
 |----------------|--------|-----------|
-| ✅ Checkout | 100% | Sistema completo implementado |
-| ✅ Frete | 100% | Cálculo dinâmico funcionando |
-| ✅ Pagamentos | 100% | PagSeguro integrado |
-| ⏳ Admin Panel | 0% | Pendente de implementação |
-| ⏳ Design | 0% | Melhorias visuais pendentes |
-| ⏳ 2FA | 0% | Autenticação admin pendente |
+| ✅ Checkout | 100% | Sistema completo com PIX, Boleto e Cartão |
+| ✅ Frete | 100% | Cálculo dinâmico via Melhor Envio |
+| ✅ Pagamentos | 100% | PagBank integrado com webhook |
+| ✅ Status Pedidos | 100% | Páginas dedicadas com polling |
+| ✅ Admin Panel | 100% | Painel administrativo funcional |
 
-## 🎯 **Próximas Implementações**
+## 🎯 Próximas Melhorias
 
-1. **Painel Administrativo**
-   - Dashboard com insights
-   - Gestão de produtos
-   - Controle de estoque
+1. **Notificações por Email**
+   - Confirmação de pedido
+   - Atualização de status
+   - Recuperação de senha
+
+2. **Dashboard Analytics**
    - Relatórios de vendas
+   - Gráficos de performance
+   - Análise de produtos
 
-2. **Melhorias de Design**
-   - Interface moderna
-   - Responsividade
-   - Animações
-   - UX/UI aprimorada
+3. **Melhorias de UX**
+   - Animações suaves
+   - Feedback visual aprimorado
+   - Loading states
 
-3. **Segurança**
-   - 2FA para administradores
-   - Validações avançadas
-   - Logs de auditoria
-
-## 🤝 **Contribuição**
+## 🤝 Contribuição
 
 1. Fork o projeto
 2. Crie uma branch para sua feature
@@ -199,17 +270,10 @@ python test_app.py
 4. Push para a branch
 5. Abra um Pull Request
 
-## 📄 **Licença**
+## 📄 Licença
 
-Este projeto está sob a licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
-
-## 📞 **Suporte**
-
-Para suporte, entre em contato através de:
-- Email: suporte@lhamabanana.com
-- Issues: GitHub Issues
+Este projeto está sob a licença MIT.
 
 ---
 
 **Desenvolvido com ❤️ para o e-commerce moderno**
-

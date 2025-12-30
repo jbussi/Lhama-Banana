@@ -135,8 +135,20 @@ def create_payment_entry(venda_id: int, payment_data: Dict, pagseguro_response: 
         
         if payment_type == 'PIX':
             pix_data = payment_method.get('pix', {})
-            qrcode_link = pix_data.get('qr_code', {}).get('links', [{}])[0].get('href')
-            qrcode_image = pix_data.get('qr_code', {}).get('links', [{}])[0].get('href')
+            # Tentar diferentes estruturas de resposta do PagBank
+            qr_codes = pix_data.get('qr_codes', [])
+            if not qr_codes:
+                qr_codes = pix_data.get('qr_code', [])
+            
+            if qr_codes and len(qr_codes) > 0:
+                qr_code = qr_codes[0]
+                links = qr_code.get('links', [])
+                qrcode_link = links[0].get('href') if links else qr_code.get('href', '')
+                qrcode_image = links[0].get('href') if links else qr_code.get('href', '')
+                # O código PIX text será extraído do JSON quando necessário
+            else:
+                qrcode_link = pix_data.get('link', '')
+                qrcode_image = pix_data.get('link', '')
             
         elif payment_type == 'BOLETO':
             boleto_data = payment_method.get('boleto', {})

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Pagamento Boleto - LhamaBanana{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/buttons.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/cards.css') }}">
+<link rel="stylesheet" href="{{ url_for('main.static', filename='css/boleto_payment.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="boleto-payment-container">
+    <div class="payment-header animate-fadeInUp">
+        <div class="header-icon">📄</div>
+        <h1>Pagamento via Boleto</h1>
+        <p>Baixe ou visualize o boleto para pagamento</p>
+    </div>
+
+    <div class="payment-content">
+        <!-- Card Principal com Boleto -->
+        <div class="payment-card card animate-fadeInUp">
+            <div class="payment-status">
+                <div class="status-indicator status-pending">
+                    <span class="status-dot"></span>
+                    <span class="status-text" id="statusText">{% if status == 'PENDENTE' %}Aguardando Pagamento{% elif status == 'PAGO' %}Pagamento Confirmado{% elif status == 'EXPIRADO' %}Pagamento Expirado{% else %}Aguardando Pagamento{% endif %}</span>
+                </div>
+            </div>
+
+            <!-- Informações do Boleto -->
+            <div class="boleto-info-section">
+                <div class="info-card">
+                    <div class="info-row">
+                        <span class="info-label">Valor:</span>
+                    <span class="info-value" id="paymentAmount">{{ payment_amount if payment_amount else 'R$ 0,00' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Vencimento:</span>
+                    <span class="info-value" id="paymentExpiry">{{ payment_expiry if payment_expiry else '--' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Código do Pedido:</span>
+                    <span class="info-value" id="orderCode">{{ order_code if order_code else '--' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Código de Barras:</span>
+                    <span class="info-value barcode-value" id="barcode">{{ barcode if barcode else '--' }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instruções de Pagamento -->
+            <div class="payment-instructions-section">
+                <h3 class="instructions-title">📋 Instruções de Pagamento</h3>
+                <ol class="payment-instructions">
+                    <li>Baixe ou visualize o boleto abaixo</li>
+                    <li>Pague em qualquer banco, lotérica ou aplicativo bancário</li>
+                    <li>O pagamento pode levar até 3 dias úteis para ser confirmado</li>
+                    <li>O status será atualizado automaticamente após a confirmação</li>
+                </ol>
+            </div>
+
+            <!-- Botões de Ação do Boleto -->
+            <div class="boleto-actions">
+                <a href="{{ boleto_url if boleto_url else '#' }}" id="viewBoleto" target="_blank" class="btn-primary btn-large">
+                    <span>👁️</span>
+                    <span>Visualizar Boleto</span>
+                </a>
+                <a href="{{ boleto_pdf_url if boleto_pdf_url else '#' }}" id="downloadBoleto" class="btn-secondary btn-large">
+                    <span>⬇️</span>
+                    <span>Baixar Boleto (PDF)</span>
+                </a>
+            </div>
+
+            <!-- Código de Barras Copiável -->
+            <div class="barcode-section">
+                <label for="barcodeInput" class="code-label">Ou copie o código de barras:</label>
+                <div class="barcode-container">
+                    <input type="text" id="barcodeInput" readonly value="{{ barcode if barcode else '' }}" class="barcode-input">
+                    <button type="button" id="copyBarcode" class="btn-copy">
+                        <span class="copy-icon">📋</span>
+                        <span class="copy-text">Copiar</span>
+                    </button>
+                </div>
+                <p class="code-hint">Cole este código no app do seu banco para pagar</p>
+            </div>
+
+            <!-- Botões de Ação -->
+            <div class="payment-actions">
+                <button type="button" id="refreshStatus" class="btn-secondary">
+                    <span>🔄</span>
+                    <span>Atualizar Status</span>
+                </button>
+                <a href="#" id="statusLink" class="btn-primary">
+                    <span>📊</span>
+                    <span>Ver Status do Pedido</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Card de Ajuda -->
+        <div class="help-card card animate-fadeInUp">
+            <div class="help-header">
+                <span class="help-icon">❓</span>
+                <h3>Precisa de ajuda?</h3>
+            </div>
+            <div class="help-content">
+                <p>O pagamento via boleto pode levar até 3 dias úteis para ser confirmado.</p>
+                <p>O status será atualizado automaticamente a cada 5 segundos após o pagamento.</p>
+                <p>Se após pagar o status não atualizar, clique no botão "Atualizar Status" acima.</p>
+                <p>Em caso de dúvidas, entre em contato conosco:</p>
+                <div class="contact-info">
+                    <a href="https://api.whatsapp.com/send/?phone=5511997480702&text&type=phone_number&app_absent=0" target="_blank" class="contact-link">
+                        <span>💬 WhatsApp</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="paymentLoading" class="loading-overlay" style="display: none;">
+    <div class="loading-content">
+        <div class="loading-spinner animate-spin"></div>
+        <h3>Processando...</h3>
+        <p>Por favor, aguarde</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="{{ url_for('main.static', filename='js/boleto_payment.js') }}"></script>
+{% endblock %}
+

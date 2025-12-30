@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}Status do Pedido - LhamaBanana{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/buttons.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/cards.css') }}">
+<link rel="stylesheet" href="{{ url_for('main.static', filename='css/order_status.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="order-status-container">
+    <div class="status-header animate-fadeInUp">
+        <div class="header-icon">📦</div>
+        <h1>Status do Pedido</h1>
+        <p>Acompanhe o status do seu pedido em tempo real</p>
+    </div>
+
+    <div class="status-content">
+        <!-- Card Principal com Status -->
+        <div class="status-card card animate-fadeInUp">
+            <!-- Indicador de Status Atual -->
+            <div class="current-status-section">
+                <div class="status-indicator status-{{ status.lower().replace(' ', '-') if status else 'pendente' }}" id="currentStatusIndicator">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span class="status-text" id="currentStatusText">
+                        {% if status == 'CRIADO' %}Pedido Criado
+                        {% elif status == 'PENDENTE' %}Aguardando Pagamento
+                        {% elif status == 'PAGO' %}Pagamento Confirmado
+                        {% elif status == 'APROVADO' %}Pedido Aprovado
+                        {% elif status == 'NA TRANSPORTADORA' %}Na Transportadora
+                        {% elif status == 'ENTREGUE' %}Entregue
+                        {% elif status == 'CANCELADO' %}Pedido Cancelado
+                        {% elif status == 'EXPIRADO' %}Pedido Expirado
+                        {% else %}Carregando...{% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Timeline de Status -->
+            <div class="status-timeline">
+                <div class="timeline-item" data-status="CRIADO">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <h3>Pedido Criado</h3>
+                        <p>Seu pedido foi criado com sucesso</p>
+                        <span class="timeline-date" id="dateCRIADO">--</span>
+                    </div>
+                </div>
+
+                <div class="timeline-item" data-status="PENDENTE">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <h3>Aguardando Pagamento</h3>
+                        <p>Estamos aguardando a confirmação do pagamento</p>
+                        <span class="timeline-date" id="datePENDENTE">--</span>
+                    </div>
+                </div>
+
+                <div class="timeline-item" data-status="PAGO">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <h3>Pagamento Confirmado</h3>
+                        <p>Pagamento recebido e confirmado</p>
+                        <span class="timeline-date" id="datePAGO">--</span>
+                    </div>
+                </div>
+
+                <div class="timeline-item" data-status="APROVADO">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <h3>Pedido Aprovado</h3>
+                        <p>Seu pedido foi aprovado e está sendo preparado</p>
+                        <span class="timeline-date" id="dateAPROVADO">--</span>
+                    </div>
+                </div>
+
+                <div class="timeline-item" data-status="NA TRANSPORTADORA">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <h3>Na Transportadora</h3>
+                        <p>Seu pedido está a caminho</p>
+                        <span class="timeline-date" id="dateNA TRANSPORTADORA">--</span>
+                    </div>
+                </div>
+
+                <div class="timeline-item" data-status="ENTREGUE">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <h3>Entregue</h3>
+                        <p>Seu pedido foi entregue com sucesso!</p>
+                        <span class="timeline-date" id="dateENTREGUE">--</span>
+                    </div>
+                </div>
+
+                <!-- Status de Cancelamento/Expiração -->
+                <div class="timeline-item timeline-item-error" data-status="CANCELADO" style="display: none;">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <h3>Pedido Cancelado</h3>
+                        <p>Este pedido foi cancelado</p>
+                        <span class="timeline-date" id="dateCANCELADO">--</span>
+                    </div>
+                </div>
+
+                <div class="timeline-item timeline-item-error" data-status="EXPIRADO" style="display: none;">
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <h3>Pedido Expirado</h3>
+                        <p>O prazo de pagamento expirou</p>
+                        <span class="timeline-date" id="dateEXPIRADO">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card com Informações do Pedido -->
+        <div class="order-info-card card animate-fadeInUp">
+            <div class="info-header">
+                <h2>📋 Informações do Pedido</h2>
+            </div>
+            
+            <div class="info-content">
+                <div class="info-row">
+                    <span class="info-label">Código do Pedido:</span>
+                    <span class="info-value" id="orderCode">{{ order_code if order_code else '--' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Valor Total:</span>
+                    <span class="info-value" id="orderValue">{{ order_value if order_value else 'R$ 0,00' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Data do Pedido:</span>
+                    <span class="info-value" id="orderDate">{{ order_date if order_date else '--' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Última Atualização:</span>
+                    <span class="info-value" id="lastUpdate">{{ last_update if last_update else '--' }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card de Ações -->
+        <div class="actions-card card animate-fadeInUp">
+            <div class="actions-content">
+                <button type="button" id="refreshStatus" class="btn-secondary">
+                    <span>🔄</span>
+                    <span>Atualizar Status</span>
+                </button>
+                <a href="{{ url_for('main.home') }}" class="btn-primary">
+                    <span>🏠</span>
+                    <span>Voltar ao Início</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Mensagem de Pedido Entregue -->
+        <div class="delivered-message card animate-fadeInUp" id="deliveredMessage" style="display: none;">
+            <div class="message-content">
+                <div class="message-icon">✅</div>
+                <h2>Pedido Entregue!</h2>
+                <p>Obrigado pela sua compra! Esperamos que tenha gostado dos nossos produtos.</p>
+                <p class="message-note">Este pedido foi finalizado e não está mais disponível para consulta.</p>
+            </div>
+        </div>
+
+        <!-- Mensagem de Erro/Acesso Negado -->
+        <div class="error-message card animate-fadeInUp" id="errorMessage" style="display: none;">
+            <div class="message-content">
+                <div class="message-icon">⚠️</div>
+                <h2>Pedido não encontrado</h2>
+                <p>O pedido solicitado não foi encontrado ou não está mais disponível.</p>
+                <a href="{{ url_for('main.home') }}" class="btn-primary">
+                    <span>🏠</span>
+                    <span>Voltar ao Início</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="statusLoading" class="loading-overlay" style="display: none;">
+    <div class="loading-content">
+        <div class="loading-spinner animate-spin"></div>
+        <h3>Carregando status...</h3>
+        <p>Por favor, aguarde</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="{{ url_for('main.static', filename='js/order_status.js') }}"></script>
+{% endblock %}
+

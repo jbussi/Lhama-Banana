@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify, current_app, session
 from ..services import (
     create_order_and_items, create_payment_entry, get_order_status, 
-    call_pagbank_api, create_pagbank_payload, get_db, get_cart_owner_info, get_or_create_cart
+    call_pagbank_api, create_pagbank_payload, get_db, get_cart_owner_info, get_or_create_cart,
+    create_order as create_order_record
 )
 import psycopg2.extras
 from ..services.user_service import get_user_by_firebase_uid
@@ -319,6 +320,27 @@ def process_checkout():
             # 11. Salvar resposta do pagamento
             payment_id = create_payment_entry(venda_id, payment_data, pagbank_response)
 
+            # 11.5. Criar registro na tabela orders com token público
+            # Determinar status inicial baseado no método de pagamento
+            initial_status = 'CRIADO'
+            if payment_method == 'CREDIT_CARD':
+                # Para cartão, verificar se foi aprovado
+                charges = pagbank_response.get('charges', [])
+                if charges:
+                    charge_status = charges[0].get('status', '').upper()
+                    if charge_status in ['PAID', 'AUTHORIZED', 'APPROVED']:
+                        initial_status = 'APROVADO'
+                    else:
+                        initial_status = 'PENDENTE'
+                else:
+                    initial_status = 'PENDENTE'
+            else:
+                # PIX e Boleto começam como PENDENTE
+                initial_status = 'PENDENTE'
+            
+            order_record = create_order_record(venda_id, final_total, initial_status)
+            public_token = order_record['public_token']
+
             # 12. Limpar carrinho após sucesso
             cur.execute("DELETE FROM carrinho_itens WHERE carrinho_id = %s", (cart_id,))
             conn.commit()
@@ -329,6 +351,7 @@ def process_checkout():
                 "codigo_pedido": codigo_pedido,
                 "venda_id": venda_id,
                 "payment_id": payment_id,
+                "public_token": public_token,  # Token público para acessar o pedido
                 "total_value": final_total,
                 "freight_value": freight_value,
                 "discount_value": discount_value

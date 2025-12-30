@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Pagamento PIX - LhamaBanana{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/buttons.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/components/cards.css') }}">
+<link rel="stylesheet" href="{{ url_for('main.static', filename='css/pix_payment.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="pix-payment-container">
+    <div class="payment-header animate-fadeInUp">
+        <div class="header-icon">📱</div>
+        <h1>Pagamento via PIX</h1>
+        <p>Escaneie o QR Code ou copie o código para pagar</p>
+    </div>
+
+    <div class="payment-content">
+        <!-- Card Principal com QR Code -->
+        <div class="payment-card card animate-fadeInUp">
+            <div class="payment-status">
+                <div class="status-indicator status-pending">
+                    <span class="status-dot"></span>
+                    <span class="status-text" id="statusText">{% if status == 'PENDENTE' %}Aguardando Pagamento{% elif status == 'PAGO' %}Pagamento Confirmado{% elif status == 'EXPIRADO' %}Pagamento Expirado{% else %}Aguardando Pagamento{% endif %}</span>
+                </div>
+            </div>
+
+            <div class="qr-code-section">
+                <div class="qr-code-container">
+                    <div class="qr-code-placeholder" id="qrCodePlaceholder">
+                        <div class="qr-code-icon">📱</div>
+                        <p>QR Code será exibido aqui</p>
+                    </div>
+                    <!-- QR Code real será inserido aqui via JavaScript -->
+                    <img id="qrCodeImage" src="" alt="QR Code PIX" style="display: none; max-width: 100%; height: auto; border-radius: 12px;">
+                </div>
+                
+                <div class="qr-code-info">
+                    <p class="info-title">Como pagar:</p>
+                    <ol class="payment-instructions">
+                        <li>Abra o app do seu banco</li>
+                        <li>Escaneie o QR Code acima</li>
+                        <li>Confirme o pagamento</li>
+                        <li>O status será atualizado automaticamente</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Código PIX Copiável -->
+            <div class="pix-code-section">
+                <label for="pixCode" class="code-label">Ou copie o código PIX:</label>
+                <div class="pix-code-container">
+                    <input type="text" id="pixCode" readonly value="" class="pix-code-input">
+                    <button type="button" id="copyPixCode" class="btn-copy">
+                        <span class="copy-icon">📋</span>
+                        <span class="copy-text">Copiar</span>
+                    </button>
+                </div>
+                <p class="code-hint">Cole este código no app do seu banco para fazer o pagamento</p>
+            </div>
+
+            <!-- Informações do Pedido -->
+            <div class="order-info-section">
+                <div class="info-row">
+                    <span class="info-label">Valor:</span>
+                    <span class="info-value" id="paymentAmount">{{ payment_amount if payment_amount else 'R$ 0,00' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Vencimento:</span>
+                    <span class="info-value" id="paymentExpiry">{{ payment_expiry if payment_expiry else '--' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Código do Pedido:</span>
+                    <span class="info-value" id="orderCode">{{ order_code if order_code else '--' }}</span>
+                </div>
+            </div>
+
+            <!-- Botões de Ação -->
+            <div class="payment-actions">
+                <button type="button" id="refreshStatus" class="btn-secondary">
+                    <span>🔄</span>
+                    <span>Atualizar Status</span>
+                </button>
+                <a href="#" id="statusLink" class="btn-primary">
+                    <span>📊</span>
+                    <span>Ver Status do Pedido</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Card de Ajuda -->
+        <div class="help-card card animate-fadeInUp">
+            <div class="help-header">
+                <span class="help-icon">❓</span>
+                <h3>Precisa de ajuda?</h3>
+            </div>
+            <div class="help-content">
+                <p>O pagamento PIX é processado automaticamente. O status será atualizado a cada 5 segundos.</p>
+                <p>Se após pagar o status não atualizar, clique no botão "Atualizar Status" acima.</p>
+                <p>Em caso de dúvidas, entre em contato conosco:</p>
+                <div class="contact-info">
+                    <a href="https://api.whatsapp.com/send/?phone=5511997480702&text&type=phone_number&app_absent=0" target="_blank" class="contact-link">
+                        <span>💬 WhatsApp</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="paymentLoading" class="loading-overlay" style="display: none;">
+    <div class="loading-content">
+        <div class="loading-spinner animate-spin"></div>
+        <h3>Processando...</h3>
+        <p>Por favor, aguarde</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="{{ url_for('main.static', filename='js/pix_payment.js') }}"></script>
+{% endblock %}
+
