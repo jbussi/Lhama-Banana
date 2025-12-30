@@ -24,8 +24,8 @@ def create_order(venda_id: int, valor: float, status: str = 'CRIADO') -> Dict:
     cur = conn.cursor()
     
     try:
-        # Gerar token público único
-        public_token = uuid.uuid4()
+        # Gerar token público único (convertido para string)
+        public_token = str(uuid.uuid4())
         
         cur.execute("""
             INSERT INTO orders (venda_id, public_token, status, valor)

@@ -237,7 +237,7 @@ def call_pagbank_api(endpoint_url: str, api_token: str, payload: Dict) -> Dict:
     
     try:
         current_app.logger.info(f"Enviando requisição para PagBank: {endpoint_url}")
-        current_app.logger.debug(f"Payload PagBank: {json.dumps(payload, indent=2)}")
+        current_app.logger.info(f"Payload PagBank:\n{json.dumps(payload, indent=2, ensure_ascii=False)}")
         
         response = requests.post(
             endpoint_url, 
@@ -338,15 +338,37 @@ def create_pagbank_payload(cart_items: List[Dict], shipping_info: Dict,
         payment_method_type = payment_data.get('payment_method', 'CREDIT_CARD').upper()
         
         if payment_method_type == 'CREDIT_CARD':
+            # Converter exp_year para 4 dígitos se necessário
+            exp_year_str = str(payment_data.get('card_exp_year', ''))
+            if len(exp_year_str) == 2:
+                # Se for 2 dígitos, assumir 20XX
+                current_year_prefix = str(datetime.datetime.now().year)[:2]
+                exp_year_int = int(current_year_prefix + exp_year_str)
+            elif len(exp_year_str) == 4:
+                exp_year_int = int(exp_year_str)
+            else:
+                exp_year_int = int(exp_year_str) if exp_year_str.isdigit() else datetime.datetime.now().year
+            
+            # Converter exp_month para inteiro
+            exp_month_str = str(payment_data.get('card_exp_month', '')).strip()
+            exp_month_int = int(exp_month_str) if exp_month_str.isdigit() else 12
+            
+            # Limpar e validar tax_id do portador do cartão
+            card_holder_tax_id = str(payment_data.get('card_holder_cpf_cnpj', '')).replace('.', '').replace('-', '').replace('/', '').strip()
+            # Se não tiver tax_id, usar o do cliente como fallback
+            if not card_holder_tax_id:
+                card_holder_tax_id = str(customer_data.get('tax_id', '')).replace('.', '').replace('-', '').replace('/', '').strip()
+            
             # Para cartão, usar token se disponível, senão usar dados diretos (sandbox)
             if payment_data.get('card_token'):
                 charge["payment_method"].update({
+                    "capture": True,  # Campo obrigatório: captura imediata
                     "card": {
                         "id": payment_data.get('card_token'),  # ID do token do cartão
                         "security_code": payment_data.get('security_code', ''),  # CVV ainda necessário
                         "holder": {
-                            "name": payment_data.get('card_holder_name', ''),
-                            "tax_id": payment_data.get('card_holder_cpf_cnpj', '').replace('.', '').replace('-', '').replace('/', '')
+                            "name": payment_data.get('card_holder_name', '') or customer_data.get('name', ''),
+                            "tax_id": card_holder_tax_id
                         }
                     },
                     "installments": payment_data.get('installments', 1)
@@ -354,14 +376,15 @@ def create_pagbank_payload(cart_items: List[Dict], shipping_info: Dict,
             else:
                 # Fallback para dados diretos (apenas sandbox/teste)
                 charge["payment_method"].update({
+                    "capture": True,  # Campo obrigatório: captura imediata
                     "card": {
                         "number": payment_data.get('card_number', '').replace(' ', ''),
-                        "exp_month": payment_data.get('card_exp_month', ''),
-                        "exp_year": payment_data.get('card_exp_year', ''),
+                        "exp_month": exp_month_int,  # Número inteiro
+                        "exp_year": exp_year_int,  # Número inteiro de 4 dígitos
                         "security_code": payment_data.get('card_cvv', ''),
                         "holder": {
-                            "name": payment_data.get('card_holder_name', ''),
-                            "tax_id": payment_data.get('card_holder_cpf_cnpj', '').replace('.', '').replace('-', '').replace('/', '')
+                            "name": payment_data.get('card_holder_name', '') or customer_data.get('name', ''),
+                            "tax_id": card_holder_tax_id
                         }
                     },
                     "installments": payment_data.get('installments', 1)

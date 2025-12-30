@@ -265,6 +265,21 @@
     border-top: 2px solid #f0f0f0;
 }
 
+.phone-inputs {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.phone-inputs input:first-child {
+    width: 60px;
+    flex-shrink: 0;
+}
+
+.phone-inputs input:last-child {
+    flex: 1;
+}
+
 .expiry-inputs {
     display: flex;
     align-items: center;

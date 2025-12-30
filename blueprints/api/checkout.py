@@ -271,6 +271,13 @@ def process_checkout():
             
             # Adicionar dados específicos do cartão se necessário
             if payment_method == 'CREDIT_CARD':
+                # Usar CPF/CNPJ do portador do cartão, ou do cliente como fallback
+                card_holder_cpf_cnpj = (
+                    payment_details.get('card_holder_cpf_cnpj', '') or 
+                    payment_details.get('customer_cpf_cnpj', '') or
+                    customer_data.get('tax_id', '')
+                )
+                
                 payment_data.update({
                     'card_token': payment_details.get('card_token', ''),  # Token do cartão (prioridade)
                     'card_number': payment_details.get('card_number', ''),
@@ -278,8 +285,8 @@ def process_checkout():
                     'card_exp_year': payment_details.get('card_exp_year', ''),
                     'card_cvv': payment_details.get('card_cvv', ''),
                     'security_code': payment_details.get('card_cvv', ''),  # CVV para validação do token
-                    'card_holder_name': payment_details.get('card_holder_name', ''),
-                    'card_holder_cpf_cnpj': payment_details.get('card_holder_cpf_cnpj', ''),
+                    'card_holder_name': payment_details.get('card_holder_name', '') or customer_data.get('name', ''),
+                    'card_holder_cpf_cnpj': card_holder_cpf_cnpj,
                     'installments': payment_details.get('installments', 1)
                 })
 

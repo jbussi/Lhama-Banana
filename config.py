@@ -47,8 +47,8 @@ class Config:
     )
     
     # URLs da API PagBank
-    PAGBANK_SANDBOX_API_URL = "https://sandbox.pagseguro.uol.com.br/orders"
-    PAGBANK_PRODUCTION_API_URL = "https://api.pagbank.com.br/orders"
+    PAGBANK_SANDBOX_API_URL = "https://sandbox.api.pagseguro.com/orders"
+    PAGBANK_PRODUCTION_API_URL = "https://api.pagseguro.com/orders"
     
     # Ambiente: 'sandbox' (desenvolvimento) ou 'production' (produção)
     PAGBANK_ENVIRONMENT = os.environ.get('PAGBANK_ENVIRONMENT', 'sandbox')
@@ -58,12 +58,12 @@ class Config:
     # Configure esta URL no painel do PagBank → Configurações → Webhooks
     PAGBANK_NOTIFICATION_URL = os.environ.get(
         'PAGBANK_NOTIFICATION_URL', 
-        'http://localhost:5000/api/webhook/pagbank'
+        'https://efractory-burdenless-kathlene.ngrok-free.dev/api/webhook/pagbank'
     )
     
     # Modo de simulação: se True, não chama a API real do PagBank
     # Útil para desenvolvimento/testes sem token válido
-    PAGBANK_SIMULATION_MODE = os.environ.get('PAGBANK_SIMULATION_MODE', 'true').lower() == 'true'
+    PAGBANK_SIMULATION_MODE = os.environ.get('PAGBANK_SIMULATION_MODE', 'true').lower() == 'false'
     
     # ============================================
     # MELHOR ENVIO - CÁLCULO DE FRETE

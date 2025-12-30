@@ -163,7 +163,13 @@ document.addEventListener('DOMContentLoaded', function() {
 				const formattedCEP = addressData.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2');
 				cepInput.value = formattedCEP;
 				if (numeroInput) setTimeout(() => numeroInput.focus(), 100);
-				if (cep.replace(/\D/g, '').length === 8) setTimeout(() => calculateShipping(cep), 500);
+				// Calcular frete com CEP limpo (sem formatação)
+				const cleanCEP = cep.replace(/\D/g, '');
+				if (cleanCEP.length === 8) {
+					setTimeout(() => {
+						window.calculateShipping(cleanCEP);
+					}, 500);
+				}
 			}
 		} catch (error) {
 			console.error('[Checkout] Erro ao preencher endereço:', error);
@@ -175,17 +181,37 @@ document.addEventListener('DOMContentLoaded', function() {
 	}
     
 	window.calculateShipping = async function(cep) {
+		console.log('[Checkout] calculateShipping chamado com CEP:', cep);
 		const shippingOptionsContainer = document.getElementById('shippingOptions');
-		if (!shippingOptionsContainer) return;
-		const cleanCEP = cep.replace(/\D/g, '');
-		if (cleanCEP.length !== 8) return;
+		if (!shippingOptionsContainer) {
+			console.error('[Checkout] Container de opções de frete não encontrado');
+			return;
+		}
+		const cleanCEP = cep ? cep.replace(/\D/g, '') : '';
+		if (cleanCEP.length !== 8) {
+			console.warn('[Checkout] CEP inválido:', cleanCEP);
+			return;
+		}
+		console.log('[Checkout] Calculando frete para CEP:', cleanCEP);
 		shippingOptionsContainer.innerHTML = `<div style="text-align: center; padding: 20px;"><div class="loading-spinner animate-spin" style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; margin: 0 auto 10px;"></div><p>Calculando frete...</p></div>`;
 		try {
 			const headers = await getAuthHeaders();
-			const response = await fetch('/api/shipping/calculate', { method: 'POST', credentials: 'include', headers: headers, body: JSON.stringify({ cep: cleanCEP }) });
-			if (!response.ok) { const errorData = await response.json().catch(() => ({ erro: 'Erro desconhecido' })); throw new Error(errorData.erro || `HTTP ${response.status}`); }
+			const response = await fetch('/api/shipping/calculate', { 
+				method: 'POST', 
+				credentials: 'include', 
+				headers: headers, 
+				body: JSON.stringify({ cep: cleanCEP }) 
+			});
+			if (!response.ok) { 
+				const errorData = await response.json().catch(() => ({ erro: 'Erro desconhecido' })); 
+				throw new Error(errorData.erro || `HTTP ${response.status}`); 
+			}
 			const data = await response.json();
-			if (!data.shipping_options || data.shipping_options.length === 0) { shippingOptionsContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: #666;"><p>Não foi possível calcular o frete para este CEP.</p><p style="font-size: 0.9em; color: #999;">Verifique o CEP e tente novamente.</p></div>`; return; }
+			console.log('[Checkout] Resposta do cálculo de frete:', data);
+			if (!data.shipping_options || data.shipping_options.length === 0) { 
+				shippingOptionsContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: #666;"><p>Não foi possível calcular o frete para este CEP.</p><p style="font-size: 0.9em; color: #999;">Verifique o CEP e tente novamente.</p></div>`; 
+				return; 
+			}
 			renderShippingOptions(data.shipping_options);
 		} catch (error) {
 			console.error('[Checkout] Erro ao calcular frete:', error);
@@ -348,18 +374,57 @@ document.addEventListener('DOMContentLoaded', function() {
 			}
 			
 			try {
-				// Preparar dados do checkout
-				const checkoutData = {
-					shipping_info: {
-						nome_recebedor: nomeRecebedorInput.value.trim(),
-						cep: cepInput.value.replace(/\D/g, ''),
-						rua: ruaInput.value.trim(),
-						numero: numeroInput.value.trim(),
-						complemento: complementoInput?.value.trim() || '',
-						bairro: bairroInput.value.trim(),
-						cidade: cidadeInput.value.trim(),
-						estado: estadoSelect.value
-					},
+			// Capturar dados adicionais
+			const emailInput = document.getElementById('email');
+			const cpfCnpjInput = document.getElementById('cpf_cnpj');
+			const phoneAreaInput = document.getElementById('phone_area');
+			const phoneNumberInput = document.getElementById('phone_number');
+			
+			// Validar email
+			if (!emailInput || !emailInput.value.trim() || !emailInput.value.includes('@')) {
+				alert('Por favor, preencha um email válido');
+				emailInput?.focus();
+				return;
+			}
+			
+			// Validar CPF/CNPJ
+			const cpfCnpj = cpfCnpjInput?.value.replace(/\D/g, '') || '';
+			if (!cpfCnpj || cpfCnpj.length < 11) {
+				alert('Por favor, preencha um CPF/CNPJ válido');
+				cpfCnpjInput?.focus();
+				return;
+			}
+			
+			// Validar telefone
+			const phoneArea = phoneAreaInput?.value.replace(/\D/g, '') || '';
+			const phoneNumber = phoneNumberInput?.value.replace(/\D/g, '') || '';
+			if (!phoneArea || phoneArea.length < 2) {
+				alert('Por favor, preencha o DDD do telefone');
+				phoneAreaInput?.focus();
+				return;
+			}
+			if (!phoneNumber || phoneNumber.length < 8) {
+				alert('Por favor, preencha o número do telefone');
+				phoneNumberInput?.focus();
+				return;
+			}
+			
+			// Preparar dados do checkout
+			const checkoutData = {
+				shipping_info: {
+					nome_recebedor: nomeRecebedorInput.value.trim(),
+					email: emailInput.value.trim(),
+					cpf_cnpj: cpfCnpj,
+					phone_area: phoneArea,
+					phone_number: phoneNumber,
+					cep: cepInput.value.replace(/\D/g, ''),
+					rua: ruaInput.value.trim(),
+					numero: numeroInput.value.trim(),
+					complemento: complementoInput?.value.trim() || '',
+					bairro: bairroInput.value.trim(),
+					cidade: cidadeInput.value.trim(),
+					estado: estadoSelect.value
+				},
 					shipping_option: {
 						name: selectedShippingOption.name,
 						price: selectedShippingOption.price,
@@ -374,18 +439,35 @@ document.addEventListener('DOMContentLoaded', function() {
 				// Adicionar dados do cartão se necessário
 				if (selectedPaymentMethod.value === 'CREDIT_CARD') {
 					const installments = parseInt(document.getElementById('installments')?.value || '1');
+					const cardExpYear = document.getElementById('card_exp_year')?.value.trim() || '';
+					
+					// Converter ano de 4 dígitos para 2 dígitos se necessário (para compatibilidade)
+					let cardExpYearFormatted = cardExpYear;
+					if (cardExpYear.length === 4) {
+						cardExpYearFormatted = cardExpYear.substring(2); // Pega os últimos 2 dígitos
+					}
+					
 					checkoutData.payment_details = {
 						card_number: document.getElementById('card_number')?.value.replace(/\s/g, ''),
 						card_holder_name: document.getElementById('card_holder_name')?.value.trim(),
-						card_exp_month: document.getElementById('card_exp_month')?.value.trim(),
-						card_exp_year: document.getElementById('card_exp_year')?.value.trim(),
+						card_exp_month: document.getElementById('card_exp_month')?.value.trim().padStart(2, '0'),
+						card_exp_year: cardExpYearFormatted,
 						card_cvv: document.getElementById('card_cvv')?.value.trim(),
 						installments: installments,
 						customer_name: nomeRecebedorInput.value.trim(),
-						customer_email: '', // Será preenchido se usuário estiver logado
-						customer_cpf_cnpj: '', // Será preenchido se usuário estiver logado
-						customer_phone_area: '11',
-						customer_phone_number: '999999999'
+						customer_email: emailInput.value.trim(),
+						customer_cpf_cnpj: cpfCnpj,
+						customer_phone_area: phoneArea,
+						customer_phone_number: phoneNumber
+					};
+				} else {
+					// Para PIX e Boleto, também enviar dados do cliente
+					checkoutData.payment_details = {
+						customer_name: nomeRecebedorInput.value.trim(),
+						customer_email: emailInput.value.trim(),
+						customer_cpf_cnpj: cpfCnpj,
+						customer_phone_area: phoneArea,
+						customer_phone_number: phoneNumber
 					};
 				}
 				
@@ -452,8 +534,28 @@ document.addEventListener('DOMContentLoaded', function() {
 	if (cepInput) {
 		cepInput.addEventListener('input', function(e) { let value = e.target.value.replace(/\D/g, ''); if (value.length > 5) value = value.substring(0, 5) + '-' + value.substring(5, 8); e.target.value = value; });
 		let cepTimeout;
-		cepInput.addEventListener('input', function(e) { const value = e.target.value.replace(/\D/g, ''); clearTimeout(cepTimeout); if (value.length === 8) { cepTimeout = setTimeout(() => { fillAddressByCEP(value); }, 800); } });
-		cepInput.addEventListener('blur', function(e) { const cep = e.target.value.replace(/\D/g, ''); if (cep.length === 8) { fillAddressByCEP(cep); } });
+		cepInput.addEventListener('input', function(e) { 
+			const value = e.target.value.replace(/\D/g, ''); 
+			clearTimeout(cepTimeout); 
+			if (value.length === 8) { 
+				cepTimeout = setTimeout(() => { 
+					fillAddressByCEP(value); 
+				}, 800); 
+			}
+		});
+		cepInput.addEventListener('blur', function(e) { 
+			const cep = e.target.value.replace(/\D/g, ''); 
+			if (cep.length === 8) { 
+				fillAddressByCEP(cep); 
+			}
+		});
+		// Adicionar listener para recalcular frete quando CEP mudar manualmente
+		cepInput.addEventListener('change', function(e) {
+			const cep = e.target.value.replace(/\D/g, '');
+			if (cep.length === 8) {
+				window.calculateShipping(cep);
+			}
+		});
 	}
 	
 	// Máscaras para campos do cartão
@@ -480,8 +582,67 @@ document.addEventListener('DOMContentLoaded', function() {
 	
 	if (cardExpYearInput) {
 		cardExpYearInput.addEventListener('input', function(e) {
+			// Aceitar 4 dígitos para o ano
+			let value = e.target.value.replace(/\D/g, '');
+			if (value.length > 4) value = value.substring(0, 4);
+			e.target.value = value;
+		});
+	}
+	
+	// Máscara para CPF/CNPJ
+	const cpfCnpjInput = document.getElementById('cpf_cnpj');
+	if (cpfCnpjInput) {
+		cpfCnpjInput.addEventListener('input', function(e) {
+			let value = e.target.value.replace(/\D/g, '');
+			if (value.length <= 11) {
+				// CPF: 000.000.000-00
+				if (value.length <= 3) {
+					value = value;
+				} else if (value.length <= 6) {
+					value = value.replace(/^(\d{3})(\d*)$/, '$1.$2');
+				} else if (value.length <= 9) {
+					value = value.replace(/^(\d{3})(\d{3})(\d*)$/, '$1.$2.$3');
+				} else {
+					value = value.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+				}
+			} else {
+				// CNPJ: 00.000.000/0000-00
+				value = value.substring(0, 14);
+				if (value.length <= 2) {
+					value = value;
+				} else if (value.length <= 5) {
+					value = value.replace(/^(\d{2})(\d*)$/, '$1.$2');
+				} else if (value.length <= 8) {
+					value = value.replace(/^(\d{2})(\d{3})(\d*)$/, '$1.$2.$3');
+				} else if (value.length <= 12) {
+					value = value.replace(/^(\d{2})(\d{3})(\d{3})(\d*)$/, '$1.$2.$3/$4');
+				} else {
+					value = value.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+				}
+			}
+			e.target.value = value;
+		});
+	}
+	
+	// Máscara para telefone
+	const phoneAreaInput = document.getElementById('phone_area');
+	const phoneNumberInput = document.getElementById('phone_number');
+	if (phoneAreaInput) {
+		phoneAreaInput.addEventListener('input', function(e) {
 			let value = e.target.value.replace(/\D/g, '');
 			if (value.length > 2) value = value.substring(0, 2);
+			e.target.value = value;
+		});
+	}
+	if (phoneNumberInput) {
+		phoneNumberInput.addEventListener('input', function(e) {
+			let value = e.target.value.replace(/\D/g, '');
+			if (value.length > 9) value = value.substring(0, 9);
+			if (value.length > 8) {
+				value = value.replace(/^(\d{5})(\d{4})$/, '$1-$2');
+			} else if (value.length > 4) {
+				value = value.replace(/^(\d{4})(\d*)$/, '$1-$2');
+			}
 			e.target.value = value;
 		});
 	}
