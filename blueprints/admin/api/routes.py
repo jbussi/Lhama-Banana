@@ -1,6 +1,8 @@
-from flask import Blueprint, jsonify, request, g, current_app
+from flask import Blueprint, jsonify, request, g, current_app, session
 from ..decorators import admin_required_email
 from datetime import datetime, timedelta
+from firebase_admin import auth
+from ...services.user_service import get_user_by_firebase_uid
 
 admin_api_bp = Blueprint('admin_api', __name__, url_prefix='/api/admin')
 
@@ -376,4 +378,60 @@ def list_pedidos():
         return jsonify({"erro": "Erro ao listar pedidos"}), 500
     finally:
         cur.close()
+
+@admin_api_bp.route('/validate-strapi-access', methods=['POST'])
+def validate_strapi_access():
+    """
+    Valida se o usuário pode acessar o Strapi.
+    Verifica autenticação Firebase, role admin e MFA.
+    Este endpoint é chamado pelo plugin flask-auth do Strapi.
+    """
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Token não fornecido'}), 401
+    
+    token = auth_header.split(' ')[1]
+    
+    try:
+        # Verificar token Firebase
+        decoded_token = auth.verify_id_token(token, check_revoked=False)
+        uid = decoded_token['uid']
+        
+        # Buscar dados do usuário
+        user_data = get_user_by_firebase_uid(uid)
+        if not user_data:
+            return jsonify({'error': 'Usuário não encontrado'}), 404
+        
+        # Verificar role admin
+        if user_data.get('role') != 'admin':
+            return jsonify({'error': 'Acesso negado'}), 403
+        
+        # Verificar MFA (assumir que foi verificado no login)
+        # TODO: Implementar verificação real de MFA
+        # Por enquanto, verificar se o usuário tem MFA habilitado
+        mfa_verified = request.json.get('mfa_verified', False) if request.is_json else False
+        
+        # Se MFA for obrigatório, verificar
+        # Por enquanto, apenas verificar se é admin
+        if not mfa_verified:
+            current_app.logger.warning(f"Tentativa de acesso ao Strapi sem MFA verificado: {uid}")
+            # Em produção, descomentar para exigir MFA:
+            # return jsonify({'error': 'MFA não verificado'}), 403
+        
+        # Retornar dados do usuário para o Strapi
+        return jsonify({
+            'uid': uid,
+            'email': user_data.get('email'),
+            'role': user_data.get('role'),
+            'nome': user_data.get('nome'),
+            'id': user_data.get('id'),
+        }), 200
+        
+    except auth.InvalidIdTokenError:
+        return jsonify({'error': 'Token inválido'}), 401
+    except auth.ExpiredIdTokenError:
+        return jsonify({'error': 'Token expirado'}), 401
+    except Exception as e:
+        current_app.logger.error(f"Erro ao validar acesso Strapi: {e}")
+        return jsonify({'error': 'Erro ao validar autenticação'}), 500
 

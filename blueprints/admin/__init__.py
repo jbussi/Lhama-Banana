@@ -5,5 +5,9 @@ admin_bp = Blueprint('admin', __name__,
                      static_folder='static',
                      url_prefix='/admin')
 
-from . import routes
+# Importar proxy do Strapi (todas as rotas vão para o Strapi)
+try:
+    from . import strapi_proxy
+except ImportError:
+    pass
 

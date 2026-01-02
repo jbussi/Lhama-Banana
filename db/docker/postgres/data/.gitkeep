@@ -1,0 +1,4 @@
+# Este diretório armazena os dados persistentes do PostgreSQL
+# Os arquivos de dados não são versionados (estão no .gitignore)
+# Este arquivo .gitkeep garante que a estrutura do diretório seja versionada
+

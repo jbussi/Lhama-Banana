@@ -85,27 +85,87 @@ export PAGBANK_ENVIRONMENT="sandbox"
 - Configure as credenciais do Firebase
 
 ### 5. Configurar Banco de Dados
-Execute as migrações SQL na ordem:
+
+#### Opção 1: Usando Docker (Recomendado)
 ```bash
-# 1. Criar estrutura base
-psql -U postgres -d sistema_usuarios -f sql/criar-banco-de-dados.sql
+# Subir o PostgreSQL com Docker
+docker compose up -d
 
-# 2. Atualizar checkout e pagamentos
-psql -U postgres -d sistema_usuarios -f sql/atualizar-checkout-pagamentos.sql
-
-# 3. Criar tabela orders
-cd Lhama-Banana
-python run_migration_orders.py
+# O schema será aplicado automaticamente na primeira inicialização
 ```
+
+#### Opção 2: Manual
+```bash
+# Aplicar o schema completo
+psql -U postgres -d sistema_usuarios -f db/schema.sql
+```
+
+**Nota:** O schema está consolidado em `db/schema.sql` e inclui todas as tabelas, índices, triggers e funções necessárias.
 
 ## 🚀 Execução
 
-### Modo de Desenvolvimento
+### Usando Docker (Recomendado)
+
+O projeto usa Docker Compose para gerenciar todos os serviços.
+
+#### 1. Configurar Variáveis de Ambiente
+
+**Windows (PowerShell):**
+```powershell
+Copy-Item env.example .env
+```
+
+**Linux/Mac:**
+```bash
+cp env.example .env
+```
+
+**Ou use o script:**
+- Windows: `.\setup-env.ps1`
+- Linux/Mac: `./setup-env.sh`
+
+O arquivo `.env` já vem pré-configurado com valores funcionais. Você pode ajustar se necessário.
+
+**📚 Para mais informações sobre configuração de ambientes, consulte [CONFIGURACAO_AMBIENTES.md](CONFIGURACAO_AMBIENTES.md)**
+
+#### 2. Subir Todos os Serviços
+
+```bash
+docker compose up -d
+```
+
+Isso irá iniciar:
+- **PostgreSQL** (apenas rede interna - `postgres:5432`)
+- **Flask** (porta 5000 - exposta externamente)
+- **Strapi** (apenas rede interna - `strapi:1337`, acessível via Flask em `/admin`)
+
+#### 3. Verificar Status
+
+```bash
+docker compose ps
+```
+
+#### 4. Ver Logs
+
+```bash
+# Todos os serviços
+docker compose logs -f
+
+# Apenas Flask
+docker compose logs -f flask
+```
+
+**📚 Para mais informações sobre Docker, consulte [DOCKER.md](DOCKER.md)**
+
+### Modo de Desenvolvimento (Sem Docker)
+
 ```bash
 python app.py
 ```
 
 A aplicação estará disponível em: `http://localhost:5000`
+
+**⚠️ Nota:** Sem Docker, você precisará configurar o PostgreSQL manualmente.
 
 ## 🌐 URLs da Aplicação
 
@@ -116,6 +176,7 @@ A aplicação estará disponível em: `http://localhost:5000`
 - **Checkout**: http://localhost:5000/checkout
 - **Login**: http://localhost:5000/auth/login
 - **Status Pedido**: http://localhost:5000/status-pedido?token=...
+- **Strapi Admin**: http://localhost:5000/admin (via proxy reverso)
 
 ### APIs
 - **Checkout**: `POST /api/checkout/process`
@@ -131,10 +192,12 @@ Lhama-Banana/
 ├── app.py                          # Aplicação principal Flask
 ├── config.py                       # Configurações do sistema (EDITAR AQUI)
 ├── requirements.txt                # Dependências Python
-├── run_migration_orders.py         # Script para executar migração SQL
+├── Dockerfile                      # Dockerfile para Flask
+├── docker-compose.yml              # Configuração Docker (PostgreSQL, Flask, Strapi)
+├── env.example                     # Exemplo de variáveis de ambiente
+├── DOCKER.md                       # Guia completo do Docker
 ├── README.md                       # Este arquivo
 ├── CONFIGURACAO_PAGBANK.md         # Guia de configuração do PagBank
-├── VERIFICACAO_RAPIDA.md          # Checklist de verificação
 ├── blueprints/                     # Módulos da aplicação
 │   ├── api/                        # APIs REST
 │   │   ├── checkout.py             # API de checkout
@@ -151,68 +214,89 @@ Lhama-Banana/
 │       └── shipping_service.py     # Serviços de frete
 ├── templates/                      # Templates HTML base
 ├── static/                         # Arquivos estáticos globais
-└── sql/                            # Scripts SQL de migração
-    ├── criar-banco-de-dados.sql
-    ├── atualizar-checkout-pagamentos.sql
-    └── criar-tabela-orders.sql
+├── db/                             # Estrutura do banco de dados
+│   ├── schema.sql                  # Schema completo do banco
+│   ├── seeds.sql                   # Dados iniciais (opcional)
+│   ├── connection.py               # Módulo de conexão PostgreSQL
+│   └── README.md                   # Documentação do banco
+└── strapi-admin/                   # Painel administrativo Strapi
+    ├── Dockerfile                  # Dockerfile para Strapi
+    └── ...
 ```
 
 ## 🔧 Configuração Detalhada
 
-### Configurações Disponíveis em `config.py`
+### Configurações via Arquivo `.env`
+
+Todas as configurações são gerenciadas via arquivo `.env`. O sistema suporta diferentes ambientes:
+
+- **development**: Desenvolvimento local (padrão)
+- **production**: Produção
+- **testing**: Testes
+
+Para mudar de ambiente, edite a variável `ENV` no arquivo `.env`.
+
+**📚 Consulte [CONFIGURACAO_AMBIENTES.md](CONFIGURACAO_AMBIENTES.md) para detalhes completos.**
+
+### Configurações Disponíveis (via .env)
+
+#### Ambiente
+```bash
+ENV=development  # development, production, testing
+FLASK_ENV=development
+FLASK_DEBUG=1
+FLASK_PORT=5000
+```
 
 #### Banco de Dados
-```python
-DATABASE_CONFIG = {
-    "host": "localhost",
-    "dbname": "sistema_usuarios",
-    "user": "postgres",
-    "password": "sua_senha"
-}
-```
-
-#### PagBank (Gateway de Pagamento)
-```python
-PAGBANK_API_TOKEN = "seu-token"                    # Token do painel PagBank
-PAGBANK_ENVIRONMENT = "sandbox"                    # "sandbox" ou "production"
-PAGBANK_NOTIFICATION_URL = "http://..."            # URL do webhook
-PAGBANK_SIMULATION_MODE = True                     # True para testes sem API real
-```
-
-#### Melhor Envio (Cálculo de Frete)
-```python
-MELHOR_ENVIO_TOKEN = "seu-token"                   # Token da API Melhor Envio
-MELHOR_ENVIO_CEP_ORIGEM = "13219-052"              # CEP da loja
-```
-
-#### Administração
-```python
-ADMIN_EMAILS = ['admin@exemplo.com']              # Emails com acesso admin
-```
-
-### Variáveis de Ambiente
-
-Todas as configurações podem ser sobrescritas por variáveis de ambiente:
-
 ```bash
-# Banco de Dados
-DB_HOST=localhost
+DB_HOST=postgres  # No Docker: 'postgres', Local: 'localhost'
 DB_NAME=sistema_usuarios
 DB_USER=postgres
 DB_PASSWORD=sua_senha
+DB_PORT=5432
+```
 
-# PagBank
+#### Firebase
+```bash
+FIREBASE_ADMIN_SDK_PATH=/app/key.json  # No Docker
+# FIREBASE_ADMIN_SDK_PATH=../key.json  # Local
+```
+
+#### PagBank (Gateway de Pagamento)
+```bash
 PAGBANK_API_TOKEN=seu-token
-PAGBANK_ENVIRONMENT=sandbox
-PAGBANK_NOTIFICATION_URL=https://seudominio.com/api/webhook/pagbank
-PAGBANK_SIMULATION_MODE=false
+PAGBANK_ENVIRONMENT=sandbox  # sandbox ou production
+PAGBANK_NOTIFICATION_URL=http://localhost:5000/api/webhook/pagbank
+PAGBANK_SIMULATION_MODE=true  # true para testes sem API real
+```
 
-# Melhor Envio
+#### Melhor Envio (Cálculo de Frete)
+```bash
 MELHOR_ENVIO_TOKEN=seu-token
 MELHOR_ENVIO_CEP_ORIGEM=13219-052
+```
 
-# Admin
-ADMIN_EMAILS=admin1@exemplo.com,admin2@exemplo.com
+#### Administração
+```bash
+ADMIN_EMAILS=admin@exemplo.com
+```
+
+#### Strapi
+```bash
+STRAPI_ENABLED=true
+STRAPI_URL=http://strapi:1337
+```
+
+**Nota:** Todas as configurações são lidas do arquivo `.env`. Não é necessário definir variáveis de ambiente manualmente, a menos que você queira sobrescrever valores específicos.
+
+Para produção, edite o arquivo `.env` e defina:
+```bash
+ENV=production
+FLASK_ENV=production
+FLASK_DEBUG=0
+PAGBANK_ENVIRONMENT=production
+PAGBANK_SIMULATION_MODE=false
 ```
 
 ## 📚 Documentação Adicional
