@@ -1,0 +1,83 @@
+{
+  "kind": "collectionType",
+  "collectionName": "enderecos",
+  "info": {
+    "singularName": "endereco",
+    "pluralName": "enderecos",
+    "displayName": "Endereço",
+    "description": "Endereços de entrega dos usuários"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "usuario": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::usuario.usuario",
+      "inversedBy": "enderecos"
+    },
+    "nome_endereco": {
+      "type": "string",
+      "required": true,
+      "maxLength": 50
+    },
+    "cep": {
+      "type": "string",
+      "required": true,
+      "maxLength": 8
+    },
+    "rua": {
+      "type": "string",
+      "required": true,
+      "maxLength": 255
+    },
+    "numero": {
+      "type": "string",
+      "required": true,
+      "maxLength": 20
+    },
+    "complemento": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "bairro": {
+      "type": "string",
+      "required": true,
+      "maxLength": 100
+    },
+    "cidade": {
+      "type": "string",
+      "required": true,
+      "maxLength": 100
+    },
+    "estado": {
+      "type": "string",
+      "required": true,
+      "maxLength": 2
+    },
+    "referencia": {
+      "type": "string",
+      "maxLength": 255
+    },
+    "is_default": {
+      "type": "boolean",
+      "default": false
+    },
+    "email": {
+      "type": "email",
+      "maxLength": 255
+    },
+    "telefone": {
+      "type": "string",
+      "maxLength": 20
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}
+
+

@@ -1,0 +1,84 @@
+{
+  "kind": "collectionType",
+  "collectionName": "cupom",
+  "info": {
+    "singularName": "cupom",
+    "pluralName": "cupons",
+    "displayName": "Cupom",
+    "description": "Cupons de desconto"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "codigo": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "maxLength": 20
+    },
+    "tipo": {
+      "type": "enumeration",
+      "enum": ["p", "v"],
+      "required": true
+    },
+    "valor": {
+      "type": "decimal",
+      "required": true,
+      "min": 0
+    },
+    "valor_minimo_pedido": {
+      "type": "decimal",
+      "default": 0,
+      "min": 0
+    },
+    "validade_inicio": {
+      "type": "datetime"
+    },
+    "validade_fim": {
+      "type": "datetime"
+    },
+    "uso_maximo": {
+      "type": "integer"
+    },
+    "uso_maximo_por_usuario": {
+      "type": "integer",
+      "default": 1,
+      "min": 1
+    },
+    "uso_atual": {
+      "type": "integer",
+      "default": 0,
+      "min": 0
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    },
+    "descricao": {
+      "type": "text"
+    },
+    "criado_por": {
+      "type": "integer"
+    },
+    "atualizado_por": {
+      "type": "integer"
+    },
+    "vendas": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::venda.venda",
+      "mappedBy": "cupom"
+    },
+    "cupons_usados": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::cupom-usado.cupom-usado",
+      "mappedBy": "cupom"
+    }
+  }
+}
+
+
+

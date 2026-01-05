@@ -35,8 +35,8 @@
             <input type="password" id="password" name="password" placeholder="Crie uma senha forte" required 
                    pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" 
                    title="A senha deve conter pelo menos 8 caracteres, incluindo letras maiúsculas, minúsculas e números.">
-            <span class="toggle-password" style="position: absolute; right: 12px; bottom: 15px; cursor: pointer; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: #666; z-index: 2;">
-                <i class="fas fa-eye" style="font-size: 14px;"></i>
+            <span class="toggle-password" id="toggle-password-register">
+                <i class="fas fa-eye"></i>
             </span>
             <small style="display: block; margin-top: 5px; color: #666; font-size: 0.8rem;">
                 Mínimo de 8 caracteres, incluindo letras maiúsculas, minúsculas e números.
@@ -47,8 +47,8 @@
             <label for="confirm_password">Confirme a Senha</label>
             <i class="fas fa-lock"></i>
             <input type="password" id="confirm_password" name="confirm_password" placeholder="Digite a senha novamente" required>
-            <span class="toggle-password-2" style="position: absolute; right: 12px; bottom: 15px; cursor: pointer; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: #666; z-index: 3;">
-                <i class="fas fa-eye" style="font-size: 14px;"></i>
+            <span class="toggle-password" id="toggle-password-confirm">
+                <i class="fas fa-eye"></i>
             </span>
         </div>
         
@@ -64,14 +64,13 @@
         </button>
     </form>
     
-    <!-- Botão de registro com Google temporariamente desativado -->
-    <!-- <div class="divider">
+    <div class="divider">
         <span>ou</span>
     </div>
     
-    <button type="button" class="auth-button google-register" style="background-color: #4285F4; margin-top: 20px; opacity: 0.6; cursor: not-allowed;" title="Cadastro com Google em breve">
-        <i class="fab fa-google" style="margin-right: 10px;"></i> Cadastrar com Google (Em breve)
-    </button> -->
+    <button type="button" id="google-register-btn" class="auth-button" style="background-color: #4285F4; margin-top: 20px;">
+        <i class="fab fa-google" style="margin-right: 10px;"></i> Cadastrar com Google
+    </button>
     
     <div class="switch-auth">
         <p>Já tem uma conta? <a href="{{ url_for('auth.login_page') }}">Faça login</a></p>
@@ -98,19 +97,32 @@
                 });
                 
                 // Configura os botões de mostrar/ocultar senha
-                const togglePasswords = document.querySelectorAll('.toggle-password');
-                togglePasswords.forEach(toggle => {
-                    toggle.addEventListener('click', function() {
-                        const input = this.previousElementSibling;
+                const togglePasswordRegister = document.getElementById('toggle-password-register');
+                const togglePasswordConfirm = document.getElementById('toggle-password-confirm');
+                
+                if (togglePasswordRegister && password) {
+                    togglePasswordRegister.addEventListener('click', function() {
                         const icon = this.querySelector('i');
-                        if (input && icon) {
-                            const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
-                            input.setAttribute('type', type);
+                        if (icon) {
+                            const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+                            password.setAttribute('type', type);
                             icon.classList.toggle('fa-eye');
                             icon.classList.toggle('fa-eye-slash');
                         }
                     });
-                });
+                }
+                
+                if (togglePasswordConfirm && confirmPassword) {
+                    togglePasswordConfirm.addEventListener('click', function() {
+                        const icon = this.querySelector('i');
+                        if (icon) {
+                            const type = confirmPassword.getAttribute('type') === 'password' ? 'text' : 'password';
+                            confirmPassword.setAttribute('type', type);
+                            icon.classList.toggle('fa-eye');
+                            icon.classList.toggle('fa-eye-slash');
+                        }
+                    });
+                }
             }
             
             // Validação de confirmação de senha
@@ -118,19 +130,7 @@
                 confirmPassword.addEventListener('input', validatePasswords);
             }
             
-            // Configura o toggle de senha para o campo de confirmação
-            const togglePassword2 = document.querySelector('.toggle-password-2');
-            if (togglePassword2 && confirmPassword) {
-                togglePassword2.addEventListener('click', function() {
-                    const icon = this.querySelector('i');
-                    if (icon) {
-                        const type = confirmPassword.getAttribute('type') === 'password' ? 'text' : 'password';
-                        confirmPassword.setAttribute('type', type);
-                        icon.classList.toggle('fa-eye');
-                        icon.classList.toggle('fa-eye-slash');
-                    }
-                });
-            }
+            // Removido - já configurado acima
             
             // Código de registro com Google removido temporariamente
             // Para implementar, será necessário configurar o OAuth do Google

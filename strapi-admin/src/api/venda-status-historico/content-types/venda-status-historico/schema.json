@@ -1,0 +1,53 @@
+{
+  "kind": "collectionType",
+  "collectionName": "venda_status_historico",
+  "info": {
+    "singularName": "venda-status-historico",
+    "pluralName": "venda-status-historicos",
+    "displayName": "Histórico de Status da Venda",
+    "description": "Histórico de alterações de status dos pedidos"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "venda": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::venda.venda",
+      "inversedBy": "status_historico"
+    },
+    "status_anterior": {
+      "type": "string",
+      "maxLength": 20
+    },
+    "status_novo": {
+      "type": "string",
+      "required": true,
+      "maxLength": 20
+    },
+    "motivo": {
+      "type": "text"
+    },
+    "observacoes": {
+      "type": "text"
+    },
+    "usuario": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::usuario.usuario"
+    },
+    "origem": {
+      "type": "enumeration",
+      "enum": ["sistema", "admin", "webhook", "cliente"],
+      "default": "sistema"
+    },
+    "criado_em": {
+      "type": "datetime",
+      "default": "now()"
+    }
+  }
+}
+
+

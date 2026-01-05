@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/buttons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/cards.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/notifications.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/message-helper.css') }}">
     {% block page_css %}{% endblock %}
 </head>
 <body>
@@ -81,6 +82,7 @@
         <a href="#">↑ Voltar ao topo</a>
     </div>
 </footer>
+<script src="{{ url_for('static', filename='js/message-helper.js') }}"></script>
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
 {% block page_js %}{% endblock %}

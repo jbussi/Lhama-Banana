@@ -1,0 +1,39 @@
+{
+  "kind": "collectionType",
+  "collectionName": "configuracoes",
+  "info": {
+    "singularName": "configuracao",
+    "pluralName": "configuracoes",
+    "displayName": "Configuração",
+    "description": "Configurações gerais do sistema"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "chave": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "maxLength": 100
+    },
+    "valor": {
+      "type": "json"
+    },
+    "tipo": {
+      "type": "string",
+      "maxLength": 50
+    },
+    "descricao": {
+      "type": "text"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}
+
+
+

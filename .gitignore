@@ -72,3 +72,7 @@ key.json
 # strapi-admin/.strapi
 # strapi-admin/dist
 # strapi-admin/build
+
+# Metabase (dados persistentes)
+metabase/data/*
+!metabase/data/.gitkeep

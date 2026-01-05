@@ -107,6 +107,29 @@ class Config:
     # ============================================
     STRAPI_URL = os.environ.get('STRAPI_URL', 'http://strapi:1337')
     STRAPI_ENABLED = os.environ.get('STRAPI_ENABLED', 'true').lower() == 'true'
+    
+    # ============================================
+    # METABASE - ANALYTICS E DASHBOARDS
+    # ============================================
+    METABASE_URL = os.environ.get('METABASE_URL', 'http://metabase:3000')
+    METABASE_ENABLED = os.environ.get('METABASE_ENABLED', 'true').lower() == 'true'
+    
+    # ============================================
+    # EMAIL - SERVIÇO DE EMAILS CUSTOMIZADOS
+    # ============================================
+    # Configurações SMTP para envio de emails administrativos
+    # Nota: Para emails de autenticação (verificação, reset), use o Firebase
+    SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+    SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+    SMTP_USER = os.environ.get('SMTP_USER', '')
+    SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
+    EMAIL_FROM = os.environ.get('EMAIL_FROM', '')
+    
+    # ============================================
+    # MFA - MULTI-FACTOR AUTHENTICATION
+    # ============================================
+    # Nome do emissor para códigos TOTP (aparece no app autenticador)
+    MFA_ISSUER_NAME = os.environ.get('MFA_ISSUER_NAME', 'LhamaBanana')
 
 
 class DevelopmentConfig(Config):

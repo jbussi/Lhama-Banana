@@ -5,7 +5,7 @@ export default ({ env }) => ({
     keys: env.array('APP_KEYS'),
   },
   url: env('PUBLIC_URL', 'http://localhost:1337'),
-  proxy: true,
+  proxy: false,
   cron: {
     enabled: false,
   },
@@ -14,5 +14,11 @@ export default ({ env }) => ({
     watchIgnoreFiles: [
       '**/config/sync/**',
     ],
+    // Habilitar hot reload em desenvolvimento
+    watchAdminFiles: env('NODE_ENV') === 'development',
+  },
+  // Configurações de desenvolvimento
+  dirs: {
+    public: env('PUBLIC_DIR', './public'),
   },
 });

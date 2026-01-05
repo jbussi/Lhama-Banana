@@ -1,0 +1,41 @@
+{
+  "kind": "collectionType",
+  "collectionName": "imagens_produto",
+  "info": {
+    "singularName": "imagem-produto",
+    "pluralName": "imagem-produtos",
+    "displayName": "Imagem do Produto",
+    "description": "Imagens dos produtos"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "produto": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::produto.produto",
+      "inversedBy": "imagens"
+    },
+    "url": {
+      "type": "string",
+      "required": true,
+      "maxLength": 2000
+    },
+    "ordem": {
+      "type": "integer",
+      "default": 0
+    },
+    "descricao": {
+      "type": "string",
+      "maxLength": 255
+    },
+    "is_thumbnail": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}
+
+

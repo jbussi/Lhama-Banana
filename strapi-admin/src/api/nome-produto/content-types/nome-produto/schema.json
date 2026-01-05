@@ -1,0 +1,92 @@
+{
+  "kind": "collectionType",
+  "collectionName": "nome_produto",
+  "info": {
+    "singularName": "nome-produto",
+    "pluralName": "nome-produtos",
+    "displayName": "Nome do Produto",
+    "description": "Nomes e descrições base dos produtos"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "nome": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "maxLength": 100
+    },
+    "descricao": {
+      "type": "text"
+    },
+    "descricao_curta": {
+      "type": "string",
+      "maxLength": 255
+    },
+    "categoria": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::categoria.categoria",
+      "inversedBy": "nome_produtos"
+    },
+    "peso_kg": {
+      "type": "decimal",
+      "default": 0,
+      "min": 0
+    },
+    "dimensoes_largura": {
+      "type": "decimal",
+      "default": 0,
+      "min": 0
+    },
+    "dimensoes_altura": {
+      "type": "decimal",
+      "default": 0,
+      "min": 0
+    },
+    "dimensoes_comprimento": {
+      "type": "decimal",
+      "default": 0,
+      "min": 0
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    },
+    "destaque": {
+      "type": "boolean",
+      "default": false
+    },
+    "ordem_exibicao": {
+      "type": "integer",
+      "default": 0
+    },
+    "meta_title": {
+      "type": "string",
+      "maxLength": 255
+    },
+    "meta_description": {
+      "type": "text"
+    },
+    "slug": {
+      "type": "string",
+      "unique": true,
+      "maxLength": 255
+    },
+    "criado_por": {
+      "type": "integer"
+    },
+    "atualizado_por": {
+      "type": "integer"
+    },
+    "produtos": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::produto.produto",
+      "mappedBy": "nome_produto"
+    }
+  }
+}
+

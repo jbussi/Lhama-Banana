@@ -1,10 +1,12 @@
 from functools import wraps
-from flask import g, abort, current_app, session
+from flask import g, abort, current_app, session, request
 from ..services.user_service import get_user_by_firebase_uid
+from ..services.auth_service import check_admin_access, require_email_verified, verify_firebase_token, is_mfa_enabled
 
 def admin_required_email(f):
     """
-    Decorador que verifica se o usuário está logado E se o email está na lista de admins.
+    Decorador que verifica se o usuário está logado, se o email está na lista de admins,
+    e se o email está verificado (obrigatório para administradores).
     Retorna 404 para emails não autorizados ou não logados (para não revelar existência da área admin).
     """
     @wraps(f)
@@ -29,23 +31,28 @@ def admin_required_email(f):
         g.user_db_data = user_data
         
         # Verificar permissões de admin
-        user_role = user_data.get('role', 'user')
-        user_email = user_data.get('email', '').lower()
-        
-        # Lista de emails autorizados (configurável)
-        admin_emails = current_app.config.get('ADMIN_EMAILS', [])
-        
-        # Log para debug (remover em produção se necessário)
-        current_app.logger.info(f"[Admin] Verificando acesso - Email: {user_email}, Role: {user_role}, Admin emails: {admin_emails}")
-        
-        # Verificar se o email está na lista de admins OU se tem role admin no banco
-        is_admin_email = user_email in [email.lower() for email in admin_emails] if admin_emails else False
-        is_admin_role = user_role == 'admin'
-        
-        if not (is_admin_email or is_admin_role):
-            current_app.logger.warning(f"[Admin] Acesso negado - Email: {user_email}, Role: {user_role}, Admin emails configurados: {admin_emails}")
-            # Retorna 404 ao invés de 403 para não revelar existência da área admin
+        is_admin = check_admin_access(user_data)
+        if not is_admin:
+            user_email = user_data.get('email', '').lower()
+            current_app.logger.warning(f"[Admin] Acesso negado - Email: {user_email}, Role: {user_data.get('role', 'user')}")
             abort(404)
+        
+        # Verificar se email está verificado (obrigatório para admin)
+        email_verified, error_msg = require_email_verified(user_data)
+        if not email_verified:
+            current_app.logger.warning(f"[Admin] Email não verificado - Email: {user_data.get('email')}")
+            # Retorna 403 com mensagem clara sobre necessidade de verificação
+            abort(403, description="Email não verificado. Verifique seu email antes de acessar a área administrativa.")
+        
+        # Verificar 2FA se estiver habilitado
+        if is_mfa_enabled(user_data):
+            mfa_verified = session.get('mfa_verified', False)
+            mfa_verified_uid = session.get('mfa_verified_uid')
+            
+            # Verificar se 2FA foi verificado para este usuário específico
+            if not mfa_verified or mfa_verified_uid != uid:
+                current_app.logger.warning(f"[Admin] 2FA não verificado - Email: {user_data.get('email')}, UID: {uid}")
+                abort(403, description="Verificação em duas etapas (2FA) é obrigatória. Por favor, verifique seu código 2FA.")
         
         return f(*args, **kwargs)
     

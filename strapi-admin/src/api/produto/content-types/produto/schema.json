@@ -1,0 +1,92 @@
+{
+  "kind": "collectionType",
+  "collectionName": "produtos",
+  "info": {
+    "singularName": "produto",
+    "pluralName": "produtos",
+    "displayName": "Produto",
+    "description": "Variações de produtos com estoque"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "nome_produto": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::nome-produto.nome-produto",
+      "inversedBy": "produtos"
+    },
+    "estampa": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::estampa.estampa",
+      "inversedBy": "produtos"
+    },
+    "tamanho": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::tamanho.tamanho",
+      "inversedBy": "produtos"
+    },
+    "custo": {
+      "type": "decimal",
+      "required": true,
+      "min": 0
+    },
+    "preco_venda": {
+      "type": "decimal",
+      "required": true,
+      "min": 0
+    },
+    "preco_promocional": {
+      "type": "decimal",
+      "min": 0
+    },
+    "estoque": {
+      "type": "integer",
+      "required": true,
+      "default": 0,
+      "min": 0
+    },
+    "estoque_minimo": {
+      "type": "integer",
+      "default": 0,
+      "min": 0
+    },
+    "estoque_reservado": {
+      "type": "integer",
+      "default": 0,
+      "min": 0
+    },
+    "codigo_sku": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "maxLength": 50
+    },
+    "codigo_barras": {
+      "type": "string",
+      "maxLength": 50
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    },
+    "criado_por": {
+      "type": "integer"
+    },
+    "atualizado_por": {
+      "type": "integer"
+    },
+    "imagens": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::imagem-produto.imagem-produto",
+      "mappedBy": "produto"
+    }
+  }
+}
+
+

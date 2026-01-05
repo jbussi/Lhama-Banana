@@ -1,0 +1,44 @@
+{
+  "kind": "collectionType",
+  "collectionName": "cupom_usado",
+  "info": {
+    "singularName": "cupom-usado",
+    "pluralName": "cupom-usados",
+    "displayName": "Cupom Usado",
+    "description": "Registro de uso de cupons"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "cupom": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::cupom.cupom",
+      "inversedBy": "cupons_usados"
+    },
+    "usuario": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::usuario.usuario"
+    },
+    "venda": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::venda.venda"
+    },
+    "valor_desconto_aplicado": {
+      "type": "decimal",
+      "required": true,
+      "min": 0
+    },
+    "data_uso": {
+      "type": "datetime",
+      "default": "now()"
+    }
+  }
+}
+
+
+

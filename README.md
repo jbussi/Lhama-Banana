@@ -135,9 +135,9 @@ docker compose up -d
 ```
 
 Isso irá iniciar:
-- **PostgreSQL** (apenas rede interna - `postgres:5432`)
-- **Flask** (porta 5000 - exposta externamente)
-- **Strapi** (apenas rede interna - `strapi:1337`, acessível via Flask em `/admin`)
+- **PostgreSQL** (porta 5432 - `localhost:5432`)
+- **Flask** (porta 5000 - `http://localhost:5000`)
+- **Strapi** (porta 1337 - `http://localhost:1337/admin`, também acessível via Flask em `/admin`)
 
 #### 3. Verificar Status
 

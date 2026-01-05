@@ -1,0 +1,46 @@
+{
+  "kind": "collectionType",
+  "collectionName": "pagamento_status_historico",
+  "info": {
+    "singularName": "pagamento-status-historico",
+    "pluralName": "pagamento-status-historicos",
+    "displayName": "Histórico de Status do Pagamento",
+    "description": "Histórico de alterações de status dos pagamentos"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "pagamento": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::pagamento.pagamento",
+      "inversedBy": "status_historico"
+    },
+    "status_anterior": {
+      "type": "string",
+      "maxLength": 50
+    },
+    "status_novo": {
+      "type": "string",
+      "required": true,
+      "maxLength": 50
+    },
+    "origem": {
+      "type": "enumeration",
+      "enum": ["webhook", "manual", "sistema"],
+      "default": "sistema"
+    },
+    "dados_adicionais": {
+      "type": "json"
+    },
+    "criado_em": {
+      "type": "datetime",
+      "default": "now()"
+    }
+  }
+}
+
+
+

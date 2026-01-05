@@ -1,0 +1,121 @@
+{
+  "kind": "collectionType",
+  "collectionName": "pagamentos",
+  "info": {
+    "singularName": "pagamento",
+    "pluralName": "pagamentos",
+    "displayName": "Pagamento",
+    "description": "Pagamentos das vendas"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "venda": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::venda.venda",
+      "inversedBy": "pagamentos"
+    },
+    "pagbank_transaction_id": {
+      "type": "string",
+      "unique": true,
+      "maxLength": 100
+    },
+    "pagbank_order_id": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "forma_pagamento_tipo": {
+      "type": "enumeration",
+      "enum": ["CREDIT_CARD", "PIX", "BOLETO"],
+      "required": true
+    },
+    "bandeira_cartao": {
+      "type": "string",
+      "maxLength": 50
+    },
+    "parcelas": {
+      "type": "integer",
+      "default": 1,
+      "min": 1
+    },
+    "valor_parcela": {
+      "type": "decimal",
+      "min": 0
+    },
+    "valor_pago": {
+      "type": "decimal",
+      "required": true,
+      "min": 0
+    },
+    "valor_original": {
+      "type": "decimal",
+      "min": 0
+    },
+    "status_pagamento": {
+      "type": "enumeration",
+      "enum": [
+        "PENDING",
+        "AUTHORIZED",
+        "PAID",
+        "WAITING",
+        "DECLINED",
+        "REFUNDED",
+        "CHARGEBACK",
+        "CANCELLED",
+        "EXPIRED"
+      ],
+      "default": "PENDING",
+      "required": true
+    },
+    "status_detalhe_pagamento": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "pagbank_qrcode_link": {
+      "type": "text"
+    },
+    "pagbank_qrcode_image": {
+      "type": "text"
+    },
+    "pagbank_qrcode_text": {
+      "type": "text"
+    },
+    "pagbank_boleto_link": {
+      "type": "text"
+    },
+    "pagbank_barcode_data": {
+      "type": "text"
+    },
+    "pagbank_boleto_expires_at": {
+      "type": "datetime"
+    },
+    "cartao_ultimos_digitos": {
+      "type": "string",
+      "maxLength": 4
+    },
+    "cartao_primeiros_digitos": {
+      "type": "string",
+      "maxLength": 6
+    },
+    "json_resposta_api": {
+      "type": "json"
+    },
+    "tentativas": {
+      "type": "integer",
+      "default": 1,
+      "min": 1
+    },
+    "status_historico": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::pagamento-status-historico.pagamento-status-historico",
+      "mappedBy": "pagamento"
+    }
+  }
+}
+
+
+

@@ -11,6 +11,8 @@
 <script type="module" src="{{ url_for('auth.static', filename='js/login.js') }}"></script>
     <h2>Bem-vindo de volta!</h2>
     
+    <div id="login-messages-container"></div>
+    
     {% if error %}
         <div class="error-message">
             <i class="fas fa-exclamation-circle"></i>
@@ -29,73 +31,56 @@
             <label for="password">Senha</label>
             <i class="fas fa-lock"></i>
             <input type="password" id="password" name="password" placeholder="Digite sua senha" required>
+            <span class="toggle-password" id="toggle-password-login">
+                <i class="fas fa-eye"></i>
+            </span>
         </div>
         
-        <!-- Link de 'Esqueceu a senha' temporariamente desativado -->
-        <!-- <div class="form-group" style="text-align: right; margin-bottom: 5px;">
-            <a href="#" style="font-size: 0.9rem; color: #666; cursor: not-allowed;" title="Funcionalidade em desenvolvimento">Esqueceu a senha?</a>
-        </div> -->
+        <div class="form-group" style="text-align: right; margin-bottom: 5px;">
+            <a href="#" id="forgot-password-link" style="font-size: 0.9rem; color: #40e0d0; text-decoration: none;">
+                Esqueceu a senha?
+            </a>
+        </div>
         
         <button id="submit" type="submit" class="auth-button">
             Entrar <i class="fas fa-arrow-right"></i>
         </button>
     </form>
     
-    <!-- Botão de login com Google temporariamente desativado -->
-    <!-- <div class="divider">
+    <div class="divider">
         <span>ou</span>
     </div>
     
-    <button type="button" class="auth-button google-login" style="background-color: #4285F4; margin-top: 20px; opacity: 0.6; cursor: not-allowed;" title="Login com Google em breve">
-        <i class="fab fa-google" style="margin-right: 10px;"></i> Login com Google (Em breve)
-    </button> -->
+    <button type="button" id="google-login-btn" class="auth-button" style="background-color: #4285F4; margin-top: 20px;">
+        <i class="fab fa-google" style="margin-right: 10px;"></i> Entrar com Google
+    </button>
     
     <div class="switch-auth">
         <p>Não tem uma conta? <a href="{{ url_for('auth.register_page') }}">Cadastre-se</a></p>
     </div>
-        
-    <script>
-        // Aguarda o carregamento completo do DOM
-        document.addEventListener('DOMContentLoaded', function() {
-            // Validação de formulário
-            const form = document.querySelector('form');
-            if (form) {
-                form.addEventListener('submit', function(e) {
-                    const username = document.getElementById('username');
-                    const password = document.getElementById('password');
-                    
-                    if (!username.value || !password.value) {
-                        e.preventDefault();
-                        alert('Por favor, preencha todos os campos.');
-                        return false;
-                    }
-                    return true;
-                });
-            }
 
-            // Configura o botão de mostrar/ocultar senha se existir
-            const togglePassword = document.querySelector('.toggle-password');
-            if (togglePassword) {
-                togglePassword.addEventListener('click', function() {
-                    const password = document.getElementById('password');
-                    const icon = this.querySelector('i');
-                    
-                    if (password && icon) {
-                        if (password.type === 'password') {
-                            password.type = 'text';
-                            icon.classList.remove('fa-eye');
-                            icon.classList.add('fa-eye-slash');
-                        } else {
-                            password.type = 'password';
-                            icon.classList.remove('fa-eye-slash');
-                            icon.classList.add('fa-eye');
-                        }
-                    }
-                });
-            }
-            
-            // Código de login com Google removido temporariamente
-        // Para implementar, será necessário configurar o OAuth do Google    }
-        });
-    </script>
+    <!-- Modal de Recuperação de Senha -->
+    <div id="forgot-password-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-key"></i> Recuperar Senha</h2>
+                <button class="modal-close" id="close-forgot-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Digite seu email e enviaremos um link para redefinir sua senha.</p>
+                <form id="forgot-password-form">
+                    <div class="form-group">
+                        <label for="forgot-email">Email</label>
+                        <i class="fas fa-envelope"></i>
+                        <input type="email" id="forgot-email" name="email" placeholder="Digite seu email" required>
+                    </div>
+                    <button type="submit" class="auth-button" id="send-reset-btn">
+                        <i class="fas fa-paper-plane"></i> Enviar Link de Recuperação
+                    </button>
+                </form>
+                <div id="forgot-message" style="margin-top: 1rem; display: none;"></div>
+            </div>
+        </div>
+    </div>
+        
 {% endblock %}

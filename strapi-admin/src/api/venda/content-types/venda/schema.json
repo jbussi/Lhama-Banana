@@ -1,0 +1,186 @@
+{
+  "kind": "collectionType",
+  "collectionName": "vendas",
+  "info": {
+    "singularName": "venda",
+    "pluralName": "vendas",
+    "displayName": "Venda / Pedido",
+    "description": "Pedidos e vendas do sistema"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "codigo_pedido": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "maxLength": 50
+    },
+    "usuario": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::usuario.usuario",
+      "inversedBy": "vendas"
+    },
+    "data_venda": {
+      "type": "datetime",
+      "default": "now()"
+    },
+    "valor_total": {
+      "type": "decimal",
+      "required": true,
+      "min": 0
+    },
+    "valor_frete": {
+      "type": "decimal",
+      "default": 0,
+      "min": 0
+    },
+    "valor_desconto": {
+      "type": "decimal",
+      "default": 0,
+      "min": 0
+    },
+    "valor_subtotal": {
+      "type": "decimal",
+      "required": true,
+      "min": 0
+    },
+    "cupom": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::cupom.cupom",
+      "inversedBy": "vendas"
+    },
+    "endereco_entrega_id": {
+      "type": "integer"
+    },
+    "nome_recebedor": {
+      "type": "string",
+      "maxLength": 255
+    },
+    "rua_entrega": {
+      "type": "string",
+      "required": true,
+      "maxLength": 255
+    },
+    "numero_entrega": {
+      "type": "string",
+      "required": true,
+      "maxLength": 50
+    },
+    "complemento_entrega": {
+      "type": "string",
+      "maxLength": 255
+    },
+    "bairro_entrega": {
+      "type": "string",
+      "required": true,
+      "maxLength": 255
+    },
+    "cidade_entrega": {
+      "type": "string",
+      "required": true,
+      "maxLength": 255
+    },
+    "estado_entrega": {
+      "type": "string",
+      "required": true,
+      "maxLength": 2
+    },
+    "cep_entrega": {
+      "type": "string",
+      "required": true,
+      "maxLength": 10
+    },
+    "telefone_entrega": {
+      "type": "string",
+      "maxLength": 20
+    },
+    "email_entrega": {
+      "type": "email",
+      "maxLength": 255
+    },
+    "status_pedido": {
+      "type": "enumeration",
+      "enum": [
+        "pendente",
+        "pendente_pagamento",
+        "processando_envio",
+        "enviado",
+        "entregue",
+        "cancelado_pelo_cliente",
+        "cancelado_pelo_vendedor",
+        "devolvido",
+        "reembolsado"
+      ],
+      "default": "pendente_pagamento"
+    },
+    "cliente_ip": {
+      "type": "string",
+      "maxLength": 45
+    },
+    "user_agent": {
+      "type": "text"
+    },
+    "origem": {
+      "type": "enumeration",
+      "enum": ["web", "mobile", "api"],
+      "default": "web"
+    },
+    "data_envio": {
+      "type": "datetime"
+    },
+    "data_entrega_estimada": {
+      "type": "date"
+    },
+    "data_entrega_real": {
+      "type": "datetime"
+    },
+    "observacoes": {
+      "type": "text"
+    },
+    "observacoes_cliente": {
+      "type": "text"
+    },
+    "prioridade": {
+      "type": "integer",
+      "default": 0,
+      "min": 0,
+      "max": 2
+    },
+    "responsavel": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::usuario.usuario"
+    },
+    "itens": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::item-venda.item-venda",
+      "mappedBy": "venda"
+    },
+    "pagamentos": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::pagamento.pagamento",
+      "mappedBy": "venda"
+    },
+    "etiquetas_frete": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::etiqueta-frete.etiqueta-frete",
+      "mappedBy": "venda"
+    },
+    "status_historico": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::venda-status-historico.venda-status-historico",
+      "mappedBy": "venda"
+    }
+  }
+}
+
+

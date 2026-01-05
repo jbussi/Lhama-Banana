@@ -1,0 +1,67 @@
+{
+  "kind": "collectionType",
+  "collectionName": "estampa",
+  "info": {
+    "singularName": "estampa",
+    "pluralName": "estampas",
+    "displayName": "Estampa",
+    "description": "Estampas disponíveis para produtos"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "nome": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "maxLength": 100
+    },
+    "descricao": {
+      "type": "text"
+    },
+    "imagem_url": {
+      "type": "string",
+      "required": true,
+      "maxLength": 2000
+    },
+    "categoria": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::categoria.categoria",
+      "inversedBy": "estampas"
+    },
+    "sexo": {
+      "type": "enumeration",
+      "enum": ["m", "f", "u"],
+      "default": "u"
+    },
+    "custo_por_metro": {
+      "type": "decimal",
+      "required": true,
+      "min": 0
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    },
+    "ordem_exibicao": {
+      "type": "integer",
+      "default": 0
+    },
+    "criado_por": {
+      "type": "integer"
+    },
+    "atualizado_por": {
+      "type": "integer"
+    },
+    "produtos": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::produto.produto",
+      "mappedBy": "estampa"
+    }
+  }
+}
+

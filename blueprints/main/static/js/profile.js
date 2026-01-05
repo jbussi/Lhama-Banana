@@ -1,7 +1,7 @@
 // Importações Firebase: essencial para usar os serviços de autenticação e inicializar o app
 // AJUSTE OS URLs ABAIXO CONFORME SUA CONFIGURAÇÃO DE CDN OU IMPORTMAP!
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getAuth, onAuthStateChanged, sendEmailVerification, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
 // Sua configuração do Firebase: ESSA DEVE SER A MESMA EM TODOS OS SEUS ARQUIVOS JS DE FRONTEND!
 const firebaseConfig = {
@@ -400,6 +400,428 @@ document.addEventListener('DOMContentLoaded', function() {
                 // FUTURO: Aqui você enviaria a imagem para o Cloud Storage for Firebase.
             };
             reader.readAsDataURL(e.target.files[0]);
+        }
+    });
+
+    // --- Funções de Verificação de Email e Alteração de Senha ---
+    
+    // Carrega o status de verificação de email
+    async function loadEmailVerificationStatus(user) {
+        try {
+            const idToken = await user.getIdToken(true); // Força refresh para obter status atualizado
+            
+            const response = await fetch("/api/auth/verify-email-status", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ id_token: idToken })
+            });
+
+            if (!response.ok) {
+                throw new Error("Erro ao verificar status de email");
+            }
+
+            const data = await response.json();
+            const emailVerified = data.email_verificado;
+            const statusText = document.getElementById('email-verification-text');
+            const resendBtn = document.getElementById('resend-verification-btn');
+
+            if (emailVerified) {
+                statusText.innerHTML = '<span class="email-verified"><i class="fas fa-check-circle"></i> Email verificado</span>';
+                resendBtn.style.display = 'none';
+            } else {
+                statusText.innerHTML = '<span class="email-unverified"><i class="fas fa-exclamation-circle"></i> Email não verificado. Verifique sua caixa de entrada.</span>';
+                resendBtn.style.display = 'inline-flex';
+            }
+        } catch (error) {
+            console.error("Erro ao carregar status de verificação:", error);
+            document.getElementById('email-verification-text').textContent = "Erro ao verificar status";
+        }
+    }
+
+    // Reenvia email de verificação
+    async function resendVerificationEmail(user) {
+        try {
+            const idToken = await user.getIdToken();
+            
+            // Chama Firebase para enviar email
+            await sendEmailVerification(user);
+            
+            // Notifica backend
+            await fetch("/api/auth/resend-verification", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ id_token: idToken })
+            });
+
+            alert("Email de verificação enviado! Verifique sua caixa de entrada e também a pasta de spam.");
+        } catch (error) {
+            console.error("Erro ao reenviar verificação:", error);
+            alert("Erro ao enviar email de verificação: " + error.message);
+        }
+    }
+
+    // Atualiza status de verificação
+    async function refreshVerificationStatus(user) {
+        const refreshBtn = document.getElementById('refresh-verification-btn');
+        const originalText = refreshBtn.innerHTML;
+        refreshBtn.disabled = true;
+        refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Atualizando...';
+        
+        try {
+            await loadEmailVerificationStatus(user);
+            alert("Status atualizado!");
+        } catch (error) {
+            alert("Erro ao atualizar status: " + error.message);
+        } finally {
+            refreshBtn.disabled = false;
+            refreshBtn.innerHTML = originalText;
+        }
+    }
+
+    // Alterna formulário de alteração de senha
+    function toggleChangePasswordForm() {
+        const form = document.getElementById('change-password-form');
+        const btn = document.getElementById('change-password-btn');
+        
+        if (form.style.display === 'none') {
+            form.style.display = 'block';
+            btn.innerHTML = '<i class="fas fa-times"></i> Cancelar';
+        } else {
+            form.style.display = 'none';
+            form.reset();
+            btn.innerHTML = '<i class="fas fa-edit"></i> Alterar Senha';
+        }
+    }
+
+    // Salva nova senha
+    async function saveNewPassword(user) {
+        const currentPassword = document.getElementById('current-password').value;
+        const newPassword = document.getElementById('new-password').value;
+        const confirmPassword = document.getElementById('confirm-password').value;
+
+        // Validações
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            alert("Por favor, preencha todos os campos.");
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            alert("A nova senha deve ter pelo menos 6 caracteres.");
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            alert("As senhas não coincidem.");
+            return;
+        }
+
+        if (currentPassword === newPassword) {
+            alert("A nova senha deve ser diferente da senha atual.");
+            return;
+        }
+
+        try {
+            // Reautenticar usuário (necessário para alterar senha no Firebase)
+            const credential = EmailAuthProvider.credential(user.email, currentPassword);
+            await reauthenticateWithCredential(user, credential);
+
+            // Atualizar senha no Firebase
+            await updatePassword(user, newPassword);
+
+            // Notificar backend
+            const idToken = await user.getIdToken(true);
+            const response = await fetch("/api/auth/change-password", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    id_token: idToken,
+                    current_password: currentPassword,
+                    new_password: newPassword
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.erro || "Erro ao alterar senha");
+            }
+
+            alert("Senha alterada com sucesso!");
+            toggleChangePasswordForm(); // Fecha o formulário
+        } catch (error) {
+            console.error("Erro ao alterar senha:", error);
+            
+            let errorMessage = "Erro ao alterar senha: ";
+            if (error.code === 'auth/wrong-password') {
+                errorMessage += "Senha atual incorreta.";
+            } else if (error.code === 'auth/weak-password') {
+                errorMessage += "A nova senha é muito fraca.";
+            } else {
+                errorMessage += error.message;
+            }
+            
+            alert(errorMessage);
+        }
+    }
+
+    // Event listeners para segurança
+    document.getElementById('resend-verification-btn')?.addEventListener('click', async () => {
+        const user = auth.currentUser;
+        if (user) {
+            await resendVerificationEmail(user);
+        }
+    });
+
+    document.getElementById('refresh-verification-btn')?.addEventListener('click', async () => {
+        const user = auth.currentUser;
+        if (user) {
+            await refreshVerificationStatus(user);
+        }
+    });
+
+    document.getElementById('change-password-btn')?.addEventListener('click', toggleChangePasswordForm);
+    document.getElementById('cancel-password-btn')?.addEventListener('click', toggleChangePasswordForm);
+    document.getElementById('save-password-btn')?.addEventListener('click', async () => {
+        const user = auth.currentUser;
+        if (user) {
+            await saveNewPassword(user);
+        }
+    });
+
+    // Carrega status de verificação quando o usuário estiver logado
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            await loadEmailVerificationStatus(user);
+            await loadMFAStatus(user);
+        }
+    });
+
+    // --- Funções de 2FA (Verificação em Duas Etapas) ---
+    
+    let mfaSecret = null; // Armazena secret temporário durante setup
+    
+    // Carrega status de 2FA
+    async function loadMFAStatus(user) {
+        try {
+            const idToken = await user.getIdToken();
+            
+            const response = await fetch("/api/auth/mfa/status", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ id_token: idToken })
+            });
+
+            if (!response.ok) {
+                // Se não for admin, não mostrar seção 2FA
+                const mfaSection = document.getElementById('mfa-section');
+                if (mfaSection) mfaSection.style.display = 'none';
+                return;
+            }
+
+            const data = await response.json();
+            const mfaSection = document.getElementById('mfa-section');
+            const statusText = document.getElementById('mfa-status-text');
+            const enableBtn = document.getElementById('enable-mfa-btn');
+            const disableBtn = document.getElementById('disable-mfa-btn');
+
+            if (!mfaSection || !data.is_admin) {
+                if (mfaSection) mfaSection.style.display = 'none';
+                return;
+            }
+
+            // Mostrar seção apenas para admins
+            mfaSection.style.display = 'flex';
+
+            if (data.mfa_enabled) {
+                statusText.innerHTML = '<span class="email-verified"><i class="fas fa-check-circle"></i> 2FA habilitado</span>';
+                enableBtn.style.display = 'none';
+                disableBtn.style.display = 'inline-flex';
+            } else {
+                statusText.innerHTML = '<span class="email-unverified"><i class="fas fa-exclamation-circle"></i> 2FA não habilitado</span>';
+                enableBtn.style.display = 'inline-flex';
+                disableBtn.style.display = 'none';
+            }
+        } catch (error) {
+            console.error("Erro ao carregar status 2FA:", error);
+            const mfaSection = document.getElementById('mfa-section');
+            if (mfaSection) mfaSection.style.display = 'none';
+        }
+    }
+
+    // Iniciar setup de 2FA
+    async function setupMFA(user) {
+        try {
+            const idToken = await user.getIdToken();
+            
+            const response = await fetch("/api/auth/mfa/setup", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ id_token: idToken })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.erro || "Erro ao configurar 2FA");
+            }
+
+            const data = await response.json();
+            mfaSecret = data.secret; // Armazenar secret temporariamente
+            
+            // Mostrar QR code
+            document.getElementById('mfa-qr-code').src = data.qr_code;
+            document.getElementById('mfa-manual-key').value = data.manual_entry_key;
+            
+            // Mostrar formulário de setup
+            document.getElementById('mfa-setup-form').style.display = 'block';
+            document.getElementById('enable-mfa-btn').style.display = 'none';
+            
+        } catch (error) {
+            console.error("Erro ao configurar 2FA:", error);
+            alert("Erro ao configurar 2FA: " + error.message);
+        }
+    }
+
+    // Confirmar e habilitar 2FA
+    async function confirmEnableMFA(user) {
+        const code = document.getElementById('mfa-verify-code').value;
+        
+        if (!code || code.length !== 6) {
+            alert("Por favor, digite o código de 6 dígitos do seu app autenticador.");
+            return;
+        }
+
+        if (!mfaSecret) {
+            alert("Erro: Secret não encontrado. Por favor, inicie o setup novamente.");
+            return;
+        }
+
+        try {
+            const idToken = await user.getIdToken();
+            
+            const response = await fetch("/api/auth/mfa/enable", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    id_token: idToken,
+                    secret: mfaSecret,
+                    code: code
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.erro || "Erro ao habilitar 2FA");
+            }
+
+            alert("2FA habilitado com sucesso!");
+            
+            // Limpar formulário
+            document.getElementById('mfa-setup-form').style.display = 'none';
+            document.getElementById('mfa-verify-code').value = '';
+            mfaSecret = null;
+            
+            // Recarregar status
+            await loadMFAStatus(user);
+            
+        } catch (error) {
+            console.error("Erro ao habilitar 2FA:", error);
+            alert("Erro ao habilitar 2FA: " + error.message);
+        }
+    }
+
+    // Desabilitar 2FA
+    async function disableMFA(user) {
+        const code = document.getElementById('mfa-disable-code').value;
+        
+        if (!code || code.length !== 6) {
+            alert("Por favor, digite o código de 6 dígitos do seu app autenticador para confirmar.");
+            return;
+        }
+
+        try {
+            const idToken = await user.getIdToken();
+            
+            const response = await fetch("/api/auth/mfa/disable", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    id_token: idToken,
+                    code: code
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.erro || "Erro ao desabilitar 2FA");
+            }
+
+            alert("2FA desabilitado com sucesso!");
+            
+            // Limpar formulário
+            document.getElementById('mfa-disable-form').style.display = 'none';
+            document.getElementById('mfa-disable-code').value = '';
+            
+            // Recarregar status
+            await loadMFAStatus(user);
+            
+        } catch (error) {
+            console.error("Erro ao desabilitar 2FA:", error);
+            alert("Erro ao desabilitar 2FA: " + error.message);
+        }
+    }
+
+    // Event listeners para 2FA
+    document.getElementById('enable-mfa-btn')?.addEventListener('click', async () => {
+        const user = auth.currentUser;
+        if (user) {
+            await setupMFA(user);
+        }
+    });
+
+    document.getElementById('disable-mfa-btn')?.addEventListener('click', () => {
+        document.getElementById('mfa-disable-form').style.display = 'block';
+        document.getElementById('disable-mfa-btn').style.display = 'none';
+    });
+
+    document.getElementById('cancel-mfa-setup-btn')?.addEventListener('click', () => {
+        document.getElementById('mfa-setup-form').style.display = 'none';
+        document.getElementById('mfa-verify-code').value = '';
+        mfaSecret = null;
+        const user = auth.currentUser;
+        if (user) loadMFAStatus(user);
+    });
+
+    document.getElementById('cancel-mfa-disable-btn')?.addEventListener('click', () => {
+        document.getElementById('mfa-disable-form').style.display = 'none';
+        document.getElementById('mfa-disable-code').value = '';
+        const user = auth.currentUser;
+        if (user) loadMFAStatus(user);
+    });
+
+    document.getElementById('confirm-mfa-btn')?.addEventListener('click', async () => {
+        const user = auth.currentUser;
+        if (user) {
+            await confirmEnableMFA(user);
+        }
+    });
+
+    document.getElementById('confirm-disable-mfa-btn')?.addEventListener('click', async () => {
+        const user = auth.currentUser;
+        if (user) {
+            await disableMFA(user);
         }
     });
 });

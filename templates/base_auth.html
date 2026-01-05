@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/base/typhography.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/base/animations.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/base/colors.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/message-helper.css') }}">
     {% block page_css %}{% endblock %}
 
     <title>LhamaBanana - {% block title %}{% endblock %}</title>
@@ -50,5 +51,6 @@
             });
         });
     </script>
+    <script src="{{ url_for('static', filename='js/message-helper.js') }}"></script>
 </body>
 </html>

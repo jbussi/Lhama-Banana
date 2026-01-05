@@ -1,0 +1,99 @@
+{
+  "kind": "collectionType",
+  "collectionName": "usuarios",
+  "info": {
+    "singularName": "usuario",
+    "pluralName": "usuarios",
+    "displayName": "Usuário",
+    "description": "Usuários e clientes do sistema"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "firebase_uid": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "maxLength": 128
+    },
+    "nome": {
+      "type": "string",
+      "required": true,
+      "maxLength": 100
+    },
+    "email": {
+      "type": "email",
+      "required": true,
+      "unique": true,
+      "maxLength": 100
+    },
+    "genero": {
+      "type": "enumeration",
+      "enum": ["m", "f", "u"],
+      "default": "u"
+    },
+    "cpf": {
+      "type": "string",
+      "unique": true,
+      "maxLength": 11
+    },
+    "telefone": {
+      "type": "string",
+      "maxLength": 15
+    },
+    "data_nascimento": {
+      "type": "date"
+    },
+    "ultimo_login": {
+      "type": "datetime"
+    },
+    "imagem_url": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "role": {
+      "type": "enumeration",
+      "enum": ["user", "admin", "moderator"],
+      "default": "user",
+      "required": true
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    },
+    "email_verificado": {
+      "type": "boolean",
+      "default": false
+    },
+    "aceita_marketing": {
+      "type": "boolean",
+      "default": false
+    },
+    "total_pedidos": {
+      "type": "integer",
+      "default": 0,
+      "min": 0
+    },
+    "total_gasto": {
+      "type": "decimal",
+      "default": 0,
+      "min": 0
+    },
+    "enderecos": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::endereco.endereco",
+      "mappedBy": "usuario"
+    },
+    "vendas": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::venda.venda",
+      "mappedBy": "usuario"
+    }
+  }
+}
+
+

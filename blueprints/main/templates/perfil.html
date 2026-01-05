@@ -214,6 +214,119 @@
                 </form>
             </section>
 
+            <!-- Seção de Segurança e Verificação -->
+            <section class="profile-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-shield-alt"></i> Segurança da Conta</h2>
+                </div>
+                
+                <!-- Status de Verificação de Email -->
+                <div class="security-item" id="email-verification-status">
+                    <div class="security-info">
+                        <h3><i class="fas fa-envelope"></i> Verificação de Email</h3>
+                        <p id="email-verification-text">Verificando status...</p>
+                    </div>
+                    <div class="security-actions">
+                        <button class="btn btn-outline" id="resend-verification-btn" style="display: none;">
+                            <i class="fas fa-paper-plane"></i> Reenviar Verificação
+                        </button>
+                        <button class="btn btn-outline" id="refresh-verification-btn">
+                            <i class="fas fa-sync-alt"></i> Atualizar Status
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Alteração de Senha -->
+                <div class="security-item">
+                    <div class="security-info">
+                        <h3><i class="fas fa-key"></i> Alterar Senha</h3>
+                        <p>Altere sua senha para manter sua conta segura</p>
+                    </div>
+                    <div class="security-actions">
+                        <button class="btn btn-outline" id="change-password-btn">
+                            <i class="fas fa-edit"></i> Alterar Senha
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Formulário de Alteração de Senha (inicialmente oculto) -->
+                <form id="change-password-form" style="display: none;" class="security-form">
+                    <div class="form-group">
+                        <label for="current-password">Senha Atual</label>
+                        <input type="password" id="current-password" class="edit-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="new-password">Nova Senha</label>
+                        <input type="password" id="new-password" class="edit-input" required minlength="6">
+                        <small class="form-text">Mínimo de 6 caracteres</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm-password">Confirmar Nova Senha</label>
+                        <input type="password" id="confirm-password" class="edit-input" required minlength="6">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-password-btn">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="save-password-btn">Salvar Nova Senha</button>
+                    </div>
+                </form>
+
+                <!-- Verificação em Duas Etapas (2FA) - Apenas para Administradores -->
+                <div class="security-item" id="mfa-section" style="display: none;">
+                    <div class="security-info">
+                        <h3><i class="fas fa-shield-alt"></i> Verificação em Duas Etapas (2FA)</h3>
+                        <p id="mfa-status-text">Verificando status...</p>
+                    </div>
+                    <div class="security-actions">
+                        <button class="btn btn-outline" id="enable-mfa-btn" style="display: none;">
+                            <i class="fas fa-key"></i> Habilitar 2FA
+                        </button>
+                        <button class="btn btn-outline" id="disable-mfa-btn" style="display: none;">
+                            <i class="fas fa-times"></i> Desabilitar 2FA
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Formulário de Configuração 2FA (inicialmente oculto) -->
+                <div id="mfa-setup-form" style="display: none;" class="security-form">
+                    <div class="form-group">
+                        <label>Passo 1: Escaneie o QR Code</label>
+                        <div style="text-align: center; margin: 1rem 0;">
+                            <img id="mfa-qr-code" src="" alt="QR Code 2FA" style="max-width: 250px; border: 1px solid #ddd; border-radius: 8px; padding: 10px; background: white;">
+                        </div>
+                        <p style="font-size: 0.9rem; color: #666; text-align: center;">
+                            Use um app autenticador como Google Authenticator, Authy ou Microsoft Authenticator
+                        </p>
+                    </div>
+                    <div class="form-group">
+                        <label>Passo 2: Digite a chave manualmente (opcional)</label>
+                        <input type="text" id="mfa-manual-key" class="edit-input" readonly style="font-family: monospace;">
+                        <small class="form-text">Use esta chave se não conseguir escanear o QR code</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="mfa-verify-code">Passo 3: Digite o código de 6 dígitos</label>
+                        <input type="text" id="mfa-verify-code" class="edit-input" placeholder="000000" maxlength="6" pattern="[0-9]{6}">
+                        <small class="form-text">Digite o código de 6 dígitos do seu app autenticador</small>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-mfa-setup-btn">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="confirm-mfa-btn">Confirmar e Habilitar</button>
+                    </div>
+                </div>
+
+                <!-- Formulário para Desabilitar 2FA (inicialmente oculto) -->
+                <div id="mfa-disable-form" style="display: none;" class="security-form">
+                    <div class="form-group">
+                        <label for="mfa-disable-code">Digite o código 2FA para confirmar</label>
+                        <input type="text" id="mfa-disable-code" class="edit-input" placeholder="000000" maxlength="6" pattern="[0-9]{6}">
+                        <small class="form-text">É necessário confirmar com um código 2FA para desabilitar</small>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" id="cancel-mfa-disable-btn">Cancelar</button>
+                        <button type="button" class="btn btn-danger" id="confirm-disable-mfa-btn">Desabilitar 2FA</button>
+                    </div>
+                </div>
+            </section>
+
             <!-- Seção de Histórico de Pedidos -->
             <section class="profile-section">
                 <div class="section-header">

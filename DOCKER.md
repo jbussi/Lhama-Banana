@@ -106,13 +106,36 @@ docker compose exec postgres psql -U postgres -d sistema_usuarios
 Após subir os containers:
 
 - **Flask (E-commerce)**: http://localhost:5000
-- **Strapi (Admin)**: http://localhost:5000/admin (via proxy reverso do Flask)
-- **PostgreSQL**: Apenas acessível internamente via `postgres:5432`
+- **Strapi (Admin)**: 
+  - Direto: http://localhost:1337/admin
+  - Via proxy Flask: http://localhost:5000/admin
+- **PostgreSQL**: 
+  - Host: `localhost`
+  - Porta: `5432`
+  - Database: `sistema_usuarios`
+  - User: `postgres`
+  - Password: (definido no `.env`)
 
-### Acesso Interno aos Serviços
+### Acesso aos Serviços
 
-Para acessar serviços internos durante desenvolvimento/testes:
+**Via Navegador:**
+- Flask: http://localhost:5000
+- Strapi: http://localhost:1337/admin
 
+**Via Cliente PostgreSQL:**
+```bash
+# Usando psql
+psql -h localhost -U postgres -d sistema_usuarios
+
+# Ou usando ferramentas gráficas (DBeaver, pgAdmin, etc.)
+# Host: localhost
+# Port: 5432
+# Database: sistema_usuarios
+# User: postgres
+# Password: (do arquivo .env)
+```
+
+**Acesso Interno (dentro dos containers):**
 ```bash
 # Acessar PostgreSQL via container Flask
 docker compose exec flask psql -h postgres -U postgres -d sistema_usuarios

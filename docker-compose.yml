@@ -13,12 +13,14 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-far111111}
       POSTGRES_DB: ${DB_NAME:-sistema_usuarios}
       PGDATA: /var/lib/postgresql/data/pgdata
-    # Porta não exposta externamente - acesso apenas via rede interna
-    # Acessível internamente via: postgres:5432
+    # Porta exposta para acesso local (desenvolvimento)
+    ports:
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./db/seeds.sql:/docker-entrypoint-initdb.d/02_seeds.sql:ro
+      - ./db/init-metabase.sh:/docker-entrypoint-initdb.d/00_init-metabase.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-sistema_usuarios}"]
       interval: 10s
@@ -68,6 +70,10 @@ services:
       # Strapi
       STRAPI_URL: http://strapi:1337
       STRAPI_ENABLED: ${STRAPI_ENABLED:-true}
+      
+      # Metabase
+      METABASE_URL: http://metabase:3000
+      METABASE_ENABLED: ${METABASE_ENABLED:-true}
     ports:
       - "${FLASK_PORT:-5000}:5000"
     volumes:
@@ -118,14 +124,22 @@ services:
       TRANSFER_TOKEN_SALT: ${STRAPI_TRANSFER_TOKEN_SALT:-transfer-token-salt-12345}
       JWT_SECRET: ${STRAPI_JWT_SECRET:-jwt-secret-12345}
       
-      # Public URL (para comunicação interna)
-      PUBLIC_URL: ${STRAPI_PUBLIC_URL:-http://strapi:1337}
-    # Porta não exposta externamente - acesso apenas via rede interna
-    # Acessível internamente via: strapi:1337
+      # Public URL (para acesso local)
+      PUBLIC_URL: ${STRAPI_PUBLIC_URL:-http://localhost:1337}
+      
+      # Flags para desabilitar banners promocionais
+      FLAG_NPS: ${FLAG_NPS:-false}
+      FLAG_PROMOTE_EE: ${FLAG_PROMOTE_EE:-false}
+      FLAG_PROMOTE_TRIAL: ${FLAG_PROMOTE_TRIAL:-false}
+      FLAG_SHOW_TRIAL: ${FLAG_SHOW_TRIAL:-false}
+    # Porta exposta para acesso local (desenvolvimento)
+    ports:
+      - "${STRAPI_PORT:-1337}:1337"
     volumes:
       - strapi_data:/app/.tmp
       - strapi_uploads:/app/public/uploads
       - ./strapi-admin:/app
+      - /app/node_modules
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,6 +151,57 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  # =====================================================
+  # Metabase Analytics Dashboard
+  # =====================================================
+  metabase:
+    image: metabase/metabase:latest
+    container_name: lhama_banana_metabase
+    restart: unless-stopped
+    environment:
+      # Database do Metabase (banco interno para armazenar configurações)
+      # Usa H2 embutido por padrão, mas pode ser configurado para PostgreSQL
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: ${METABASE_DB_NAME:-metabase}
+      MB_DB_PORT: 5432
+      MB_DB_USER: ${DB_USER:-postgres}
+      MB_DB_PASS: ${DB_PASSWORD:-far111111}
+      MB_DB_HOST: postgres
+      
+      # Configurações do Metabase
+      MB_ENCRYPTION_SECRET_KEY: ${METABASE_ENCRYPTION_SECRET:-metabase-encryption-secret-key-change-in-production}
+      MB_SITE_NAME: "LhamaBanana Analytics"
+      MB_SITE_LOCALE: pt_BR
+      MB_TIMEZONE: America/Sao_Paulo
+      
+      # URL pública (via proxy Flask)
+      MB_SITE_URL: ${METABASE_SITE_URL:-http://localhost:5000/analytics}
+      
+      # Configurações de performance
+      JAVA_TIMEZONE: America/Sao_Paulo
+      MB_JETTY_THREADS: 50
+      MB_JETTY_REQUEST_HEADER_SIZE: 16384
+      
+      # Desabilitar atualizações automáticas
+      MB_CHECK_FOR_UPDATES: false
+    # Porta exposta para desenvolvimento/testes (acesso direto sem autenticação)
+    # TODO: Remover em produção e usar apenas via proxy Flask (/analytics)
+    ports:
+      - "3000:3000"
+    volumes:
+      - metabase_data:/metabase-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lhama_banana_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
 
 # =====================================================
 # Volumes
@@ -154,6 +219,12 @@ volumes:
     driver: local
   strapi_uploads:
     driver: local
+  metabase_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./metabase/data
 
 # =====================================================
 # Networks

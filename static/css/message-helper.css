@@ -1,0 +1,140 @@
+/* Sistema de Mensagens Inline */
+
+.messages-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 400px;
+    pointer-events: none;
+}
+
+.inline-message {
+    background: white;
+    border-radius: 8px;
+    padding: 14px 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    opacity: 0;
+    transform: translateX(400px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: all;
+    position: relative;
+    border-left: 4px solid;
+    min-width: 300px;
+    max-width: 400px;
+}
+
+.inline-message.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.inline-message i:first-child {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.inline-message span {
+    flex: 1;
+    font-size: 0.95rem;
+    line-height: 1.4;
+    color: #333;
+}
+
+.inline-message-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    color: #999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+}
+
+.inline-message-close:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #333;
+}
+
+.inline-message-close i {
+    font-size: 12px;
+}
+
+/* Tipos de mensagem */
+.inline-message-success {
+    border-left-color: #4caf50;
+    background: #f1f8f4;
+}
+
+.inline-message-success i:first-child {
+    color: #4caf50;
+}
+
+.inline-message-error {
+    border-left-color: #f44336;
+    background: #fff5f5;
+}
+
+.inline-message-error i:first-child {
+    color: #f44336;
+}
+
+.inline-message-info {
+    border-left-color: #2196f3;
+    background: #f0f7ff;
+}
+
+.inline-message-info i:first-child {
+    color: #2196f3;
+}
+
+.inline-message-warning {
+    border-left-color: #ff9800;
+    background: #fff8f0;
+}
+
+.inline-message-warning i:first-child {
+    color: #ff9800;
+}
+
+/* Mensagens dentro de formulários */
+.form-group .inline-message {
+    position: relative;
+    transform: translateY(-10px);
+    margin-top: 8px;
+    margin-bottom: 0;
+    min-width: auto;
+    max-width: 100%;
+}
+
+.form-group .inline-message.show {
+    transform: translateY(0);
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .messages-container {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        max-width: none;
+    }
+
+    .inline-message {
+        min-width: auto;
+        max-width: 100%;
+    }
+}
+

@@ -1,0 +1,56 @@
+{
+  "kind": "collectionType",
+  "collectionName": "itens_venda",
+  "info": {
+    "singularName": "item-venda",
+    "pluralName": "item-vendas",
+    "displayName": "Item da Venda",
+    "description": "Itens de cada venda"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "venda": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::venda.venda",
+      "inversedBy": "itens"
+    },
+    "produto": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::produto.produto"
+    },
+    "quantidade": {
+      "type": "integer",
+      "required": true,
+      "min": 1
+    },
+    "preco_unitario": {
+      "type": "decimal",
+      "required": true,
+      "min": 0
+    },
+    "subtotal": {
+      "type": "decimal",
+      "required": true,
+      "min": 0
+    },
+    "nome_produto_snapshot": {
+      "type": "string",
+      "required": true,
+      "maxLength": 255
+    },
+    "sku_produto_snapshot": {
+      "type": "string",
+      "maxLength": 50
+    },
+    "detalhes_produto_snapshot": {
+      "type": "json"
+    }
+  }
+}
+
+

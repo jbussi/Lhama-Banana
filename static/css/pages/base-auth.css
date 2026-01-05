@@ -124,9 +124,10 @@
 
 .form-group input[type="text"],
 .form-group input[type="email"],
+.form-group input[type="password"],
 .form-group input {
     width: 100%;
-    padding: 0 15px 0 40px;
+    padding: 0 45px 0 40px;
     border: 2px solid #e0e0e0;
     border-radius: 12px;
     font-size: 0.95rem;
@@ -165,6 +166,35 @@
     font-size: 14px;
     pointer-events: none;
     z-index: 1;
+}
+
+/* Toggle password (olho) */
+.toggle-password {
+    position: absolute;
+    right: 15px;
+    bottom: 15px;
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    z-index: 2;
+    transition: all 0.3s ease;
+}
+
+.toggle-password:hover {
+    color: var(--cor-principal-turquesa);
+    transform: scale(1.1);
+}
+
+.toggle-password i {
+    font-size: 14px;
+    pointer-events: none;
+    position: static;
+    width: auto;
+    height: auto;
 }
 
 .auth-button {
