@@ -26,7 +26,21 @@
                         <div class="section-icon">🚚</div>
                     </div>
                     
-                    <div class="form-row">
+                    <!-- Endereços Salvos (se usuário logado) -->
+                    <div id="saved-addresses-section" style="display: none;">
+                        <h3 style="margin-bottom: 1rem; color: #2d3436; font-size: 1.1rem;">
+                            <i class="fas fa-map-marker-alt" style="color: #40e0d0; margin-right: 0.5rem;"></i>
+                            Usar Endereço Salvo
+                        </h3>
+                        <div id="saved-addresses-list" style="margin-bottom: 1.5rem;"></div>
+                        <div style="margin-bottom: 1.5rem; padding-top: 1rem; border-top: 1px solid #e9ecef;">
+                            <button type="button" id="use-new-address-btn" class="btn-outline" style="display: none;">
+                                <i class="fas fa-plus"></i> Usar Novo Endereço
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="address-form" class="form-row">
                         <div class="form-group">
                             <label for="nome_recebedor">Nome Completo *</label>
                             <input type="text" id="nome_recebedor" name="nome_recebedor" required>
@@ -131,7 +145,7 @@
                     
                     <div id="shippingOptions" class="shipping-options">
                         <div class="shipping-loading">
-                            <div class="loading-spinner animate-spin"></div>
+                            <div class="loading-spinner"><i class="fas fa-spinner"></i></div>
                             <p>Calculando frete...</p>
                         </div>
                     </div>
@@ -266,7 +280,7 @@
 <!-- Loading Overlay -->
 <div id="checkoutLoading" class="loading-overlay" style="display: none;">
     <div class="loading-content">
-        <div class="loading-spinner animate-spin"></div>
+        <div class="loading-spinner"><i class="fas fa-spinner"></i></div>
         <h3>Processando seu pedido...</h3>
         <p>Por favor, aguarde um momento</p>
     </div>

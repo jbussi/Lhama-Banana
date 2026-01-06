@@ -11,8 +11,7 @@ import firebase_admin
 from firebase_admin import credentials
 from flask import Flask
 
-from blueprints import init_db_pool
-from blueprints.services.db import close_db_connection
+from blueprints.services.db import init_db_pool, close_db_connection
 
 _db_pool_instance = None
 _firebase_initialized = False

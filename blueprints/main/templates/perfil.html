@@ -11,6 +11,9 @@
     
 <div class="profile-page">
     <div class="profile-container">
+        <!-- Container para mensagens inline -->
+        <div id="profile-messages-container" class="profile-messages-container"></div>
+        
         <!-- Cabeçalho do Perfil -->
         <div class="profile-header">
             <div class="profile-avatar">
@@ -22,6 +25,9 @@
             </div>
             <h1>Olá, <span id="profile-name"></span>!</h1>
             <p class="member-since">Membro desde <span id="profile-join-date"></span></p>
+            <button class="btn btn-outline" id="logout-btn" style="margin-top: 1rem;">
+                <i class="fas fa-sign-out-alt"></i> Sair
+            </button>
         </div>
 
         <div class="profile-sections">
@@ -147,7 +153,12 @@
                         </div>
                         <div class="form-group">
                             <label for="address-cep">CEP</label>
-                            <input type="text" id="address-cep" class="edit-input" placeholder="00000-000">
+                            <div class="cep-input-group">
+                                <input type="text" id="address-cep" class="edit-input" placeholder="00000-000" maxlength="9">
+                                <button type="button" id="buscar-cep-btn" class="btn-cep-buscar">
+                                    <i class="fas fa-search"></i> Buscar
+                                </button>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="address-street">Rua</label>
@@ -328,17 +339,17 @@
             </section>
 
             <!-- Seção de Histórico de Pedidos -->
-            <section class="profile-section">
+            <section class="profile-section" id="orders-section">
                 <div class="section-header">
                     <h2><i class="fas fa-shopping-bag"></i> Meus Pedidos</h2>
                 </div>
                 
-                <div class="empty-state">
+                <div class="empty-state" id="orders-container">
                     <i class="fas fa-shopping-basket"></i>
                     <h3>Nenhum pedido encontrado</h3>
                     <p>Você ainda não realizou nenhum pedido em nossa loja. Aproveite para conhecer nossos produtos!</p>
-                    <a href="{{ url_for('produtos.produtos_page') }}" class="btn btn-primary">
-                        <i class="fas fa-shopping-cart"></i> Ir para a Loja
+                    <a href="{{ url_for('produtos.produtos_page') }}" class="btn-shop-now">
+                        <i class="fas fa-shopping-bag"></i> Ir para a Loja
                     </a>
                 </div>
             </section>

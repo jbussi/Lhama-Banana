@@ -33,6 +33,8 @@ document.addEventListener('DOMContentLoaded', function() {
 	};
 	
 	let selectedShippingOption = null;
+	let savedAddresses = [];
+	let selectedSavedAddressId = null;
     
 	/**
 	 * Formata valor monetário em R$
@@ -40,6 +42,165 @@ document.addEventListener('DOMContentLoaded', function() {
 	function formatCurrency(value) {
 		return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 	}
+	
+	/**
+	 * Carrega endereços salvos do usuário (se logado)
+	 */
+	async function loadSavedAddresses() {
+		try {
+			// Verificar se Firebase está disponível via import dinâmico
+			let firebaseAuth = null;
+			try {
+				const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+				const { getAuth, onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+				
+				const firebaseConfig = {
+					apiKey: "AIzaSyDd13Tl9dJaUqIvNhGWakoEbpYqw7ZrB7Y",
+					authDomain: "lhamabanana-981d5.firebaseapp.com",
+					projectId: "lhamabanana-981d5",
+					storageBucket: "lhamabanana-981d5.firebasestorage.app",
+					messagingSenderId: "209130422039",
+					appId: "1:209130422039:web:70fcf2089fa90715364152",
+					measurementId: "G-4XQSZZB0JK"
+				};
+				
+				const app = initializeApp(firebaseConfig);
+				firebaseAuth = getAuth(app);
+			} catch (error) {
+				console.log('[Checkout] Firebase não disponível:', error);
+				return;
+			}
+			
+			if (!firebaseAuth) return;
+			
+			// Aguardar o estado de autenticação
+			return new Promise((resolve) => {
+				onAuthStateChanged(firebaseAuth, async (user) => {
+					if (!user) {
+						console.log('[Checkout] Usuário não logado');
+						resolve();
+						return;
+					}
+					
+					try {
+						const idToken = await user.getIdToken();
+						const response = await fetch('/api/addresses', {
+							method: 'GET',
+							headers: {
+								'Authorization': `Bearer ${idToken}`
+							}
+						});
+						
+						if (response.ok) {
+							const result = await response.json();
+							if (result.addresses && Array.isArray(result.addresses) && result.addresses.length > 0) {
+								savedAddresses = result.addresses;
+								renderSavedAddresses();
+							}
+						}
+					} catch (error) {
+						console.error('[Checkout] Erro ao carregar endereços salvos:', error);
+					}
+					resolve();
+				});
+			});
+		} catch (error) {
+			console.error('[Checkout] Erro ao carregar endereços salvos:', error);
+		}
+	}
+	
+	/**
+	 * Renderiza a lista de endereços salvos
+	 */
+	function renderSavedAddresses() {
+		const section = document.getElementById('saved-addresses-section');
+		const list = document.getElementById('saved-addresses-list');
+		const addressForm = document.getElementById('address-form');
+		const useNewAddressBtn = document.getElementById('use-new-address-btn');
+		
+		if (!section || !list) return;
+		
+		if (savedAddresses.length === 0) {
+			section.style.display = 'none';
+			if (addressForm) addressForm.style.display = 'flex';
+			return;
+		}
+		
+		section.style.display = 'block';
+		
+		let html = '<div style="display: flex; flex-direction: column; gap: 1rem;">';
+		savedAddresses.forEach(address => {
+			const typeText = { 'home': 'Casa', 'work': 'Trabalho', 'other': 'Outro' }[address.type] || 'Endereço';
+			const formattedCep = address.zipcode ? address.zipcode.replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
+			
+			html += `
+				<label style="display: flex; align-items: flex-start; padding: 1rem; border: 2px solid #e9ecef; border-radius: 8px; cursor: pointer; transition: all 0.3s; background: #fff;" 
+				       onmouseover="this.style.borderColor='#40e0d0'; this.style.boxShadow='0 2px 8px rgba(64, 224, 208, 0.2)'" 
+				       onmouseout="this.style.borderColor='#e9ecef'; this.style.boxShadow='none'">
+					<input type="radio" name="saved_address" value="${address.id}" style="margin-right: 1rem; margin-top: 0.25rem;" 
+					       onchange="selectSavedAddress(${address.id})">
+					<div style="flex: 1;">
+						<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+							<strong style="color: #2d3436;">${typeText}</strong>
+							${address.isDefault ? '<span style="background: #40e0d0; color: white; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">Padrão</span>' : ''}
+						</div>
+						<p style="margin: 0.25rem 0; color: #6c757d; font-size: 0.9rem;">${address.street}, ${address.number}${address.complement ? ', ' + address.complement : ''}</p>
+						<p style="margin: 0.25rem 0; color: #6c757d; font-size: 0.9rem;">${address.neighborhood} - ${address.city}/${address.state}</p>
+						<p style="margin: 0.25rem 0; color: #6c757d; font-size: 0.9rem;">CEP: ${formattedCep}</p>
+						${address.phone ? `<p style="margin: 0.25rem 0; color: #6c757d; font-size: 0.9rem;">Telefone: ${address.phone}</p>` : ''}
+					</div>
+				</label>
+			`;
+		});
+		html += '</div>';
+		list.innerHTML = html;
+		
+		if (useNewAddressBtn) {
+			useNewAddressBtn.style.display = 'inline-flex';
+			useNewAddressBtn.onclick = () => {
+				selectedSavedAddressId = null;
+				document.querySelectorAll('input[name="saved_address"]').forEach(radio => radio.checked = false);
+				if (addressForm) addressForm.style.display = 'flex';
+			};
+		}
+	}
+	
+	/**
+	 * Seleciona um endereço salvo e preenche o formulário
+	 */
+	window.selectSavedAddress = function(addressId) {
+		selectedSavedAddressId = addressId;
+		const address = savedAddresses.find(addr => addr.id === addressId);
+		if (!address) return;
+		
+		// Preencher formulário com dados do endereço salvo
+		if (ruaInput) ruaInput.value = address.street || '';
+		if (numeroInput) numeroInput.value = address.number || '';
+		if (complementoInput) complementoInput.value = address.complement || '';
+		if (bairroInput) bairroInput.value = address.neighborhood || '';
+		if (cidadeInput) cidadeInput.value = address.city || '';
+		if (estadoSelect) estadoSelect.value = address.state || '';
+		if (cepInput) {
+			const formattedCep = address.zipcode ? address.zipcode.replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
+			cepInput.value = formattedCep;
+		}
+		
+		// Preencher telefone se disponível
+		if (address.phone) {
+			const phoneMatch = address.phone.match(/^(\d{2})(\d{4,5}\d{4})$/);
+			if (phoneMatch) {
+				const phoneAreaInput = document.getElementById('phone_area');
+				const phoneNumberInput = document.getElementById('phone_number');
+				if (phoneAreaInput) phoneAreaInput.value = phoneMatch[1];
+				if (phoneNumberInput) {
+					const number = phoneMatch[2];
+					phoneNumberInput.value = number.length === 8 ? 
+						number.replace(/^(\d{4})(\d{4})$/, '$1-$2') : 
+						number.replace(/^(\d{5})(\d{4})$/, '$1-$2');
+				}
+			}
+		}
+	};
     
 	async function getAuthHeaders() {
 		const headers = { 'Content-Type': 'application/json' };
@@ -69,6 +230,9 @@ document.addEventListener('DOMContentLoaded', function() {
 			return { items: [], total_value: 0 };
 		}
 	}
+	
+	// Carregar endereços salvos quando a página carregar
+	loadSavedAddresses();
     
 	function renderCartItems() {
 		if (!cartItemsContainer) return;
@@ -193,7 +357,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			return;
 		}
 		console.log('[Checkout] Calculando frete para CEP:', cleanCEP);
-		shippingOptionsContainer.innerHTML = `<div style="text-align: center; padding: 20px;"><div class="loading-spinner animate-spin" style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; margin: 0 auto 10px;"></div><p>Calculando frete...</p></div>`;
+		shippingOptionsContainer.innerHTML = `<div style="text-align: center; padding: 20px;"><div class="loading-spinner" style="font-size: 2rem; margin: 0 auto 10px;"><i class="fas fa-spinner"></i></div><p>Calculando frete...</p></div>`;
 		try {
 			const headers = await getAuthHeaders();
 			const response = await fetch('/api/shipping/calculate', { 
@@ -409,14 +573,19 @@ document.addEventListener('DOMContentLoaded', function() {
 				return;
 			}
 			
+			// Verificar se está usando um endereço salvo
+			let endereco_id = selectedSavedAddressId;
+			
 			// Preparar dados do checkout
 			const checkoutData = {
 				shipping_info: {
+					endereco_id: endereco_id,  // Incluir ID do endereço salvo se selecionado
 					nome_recebedor: nomeRecebedorInput.value.trim(),
 					email: emailInput.value.trim(),
 					cpf_cnpj: cpfCnpj,
 					phone_area: phoneArea,
 					phone_number: phoneNumber,
+					telefone: phoneArea + phoneNumber,  // Telefone completo para o backend
 					cep: cepInput.value.replace(/\D/g, ''),
 					rua: ruaInput.value.trim(),
 					numero: numeroInput.value.trim(),

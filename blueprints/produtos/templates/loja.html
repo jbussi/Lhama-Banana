@@ -14,57 +14,76 @@
         <p class="page-subtitle">Encontre os melhores produtos com estampas exclusivas de lhamas</p>
     </div>
     
-    <!-- Seção de Filtros (Adicionado IDs para futura manipulação via JS) -->
-    <section class="filters-section">
-        <div class="filter-group">
-            <h3>Categorias</h3>
-            <div class="filter-options" id="category-filters">
-                <!-- Filtros de categoria serão injetados aqui pelo JS (ou pode manter estáticos se preferir) -->
-                <button class="filter-btn active">Todos</button>
-                <button class="filter-btn">Camisetas</button>
-                <button class="filter-btn">Regatas</button>
-                <button class="filter-btn">Acessórios</button>
-                <button class="filter-btn">Kits</button>
+    <div class="shop-layout">
+        <!-- Barra Lateral de Filtros -->
+        <aside class="filters-sidebar" id="filters-sidebar">
+            <div class="filters-header">
+                <h2>Filtros</h2>
+                <button class="clear-filters-btn" id="clear-filters-btn">Limpar Filtros</button>
             </div>
-        </div>
+            
+            <!-- Filtro de Categorias -->
+            <div class="filter-group">
+                <h3 class="filter-title">
+                    <i class="fas fa-tags"></i> Categorias
+                </h3>
+                <div class="filter-options" id="category-filters">
+                    <div class="filter-loading">Carregando categorias...</div>
+                </div>
+            </div>
+            
+            <!-- Filtro de Tamanhos -->
+            <div class="filter-group">
+                <h3 class="filter-title">
+                    <i class="fas fa-ruler"></i> Tamanhos
+                </h3>
+                <div class="filter-options" id="size-filters">
+                    <div class="filter-loading">Carregando tamanhos...</div>
+                </div>
+            </div>
+            
+            <!-- Filtro de Estampas -->
+            <div class="filter-group">
+                <h3 class="filter-title">
+                    <i class="fas fa-palette"></i> Estampas
+                </h3>
+                <div class="filter-options filter-options-images" id="estampa-filters">
+                    <div class="filter-loading">Carregando estampas...</div>
+                </div>
+            </div>
+            
+            <!-- Filtro de Preço -->
+            <div class="filter-group">
+                <h3 class="filter-title">
+                    <i class="fas fa-dollar-sign"></i> Preço
+                </h3>
+                <div class="filter-options" id="price-filters">
+                    <div class="filter-loading">Carregando faixas de preço...</div>
+                </div>
+            </div>
+        </aside>
         
-        <div class="filter-group">
-            <h3>Tamanhos</h3>
-            <div class="filter-options" id="size-filters">
-                <!-- Filtros de tamanho serão injetados aqui pelo JS (ou pode manter estáticos se preferir) -->
-                <button class="filter-btn">P</button>
-                <button class="filter-btn">M</button>
-                <button class="filter-btn">G</button>
-                <button class="filter-btn">GG</button>
-                <button class="filter-btn">Único</button>
+        <!-- Área Principal de Produtos -->
+        <main class="products-main">
+            <div class="products-header">
+                <div class="products-count" id="products-count">
+                    <span id="products-count-text">Carregando produtos...</span>
+                </div>
+                <button class="toggle-filters-btn" id="toggle-filters-btn">
+                    <i class="fas fa-filter"></i> Filtros
+                </button>
             </div>
-        </div>
-        
-        <div class="filter-group">
-            <h3>Preço</h3>
-            <div class="filter-options" id="price-filters">
-                <!-- Filtros de preço serão injetados aqui pelo JS (ou pode manter estáticos se preferir) -->
-                <button class="filter-btn">Até R$ 50</button>
-                <button class="filter-btn">R$ 50 - R$ 100</button>
-                <button class="filter-btn">Acima de R$ 100</button>
+            
+            <!-- Grid de Produtos -->
+            <div class="product-grid" id="product-grid">
+                <div class="loading-message">Carregando produtos...</div>
             </div>
-        </div>
-    </section>
-    
-    <!-- Grid de Produtos (ADICIONADO ID - CRUCIAL) -->
-    <div class="product-grid" id="product-grid">
-        <!-- PRODUTOS SERÃO INJETADOS AQUI PELO JAVASCRIPT -->
-        <!-- O conteúdo estático dos produtos 1, 2, 3, 4 foi REMOVIDO daqui -->
-    </div>
-    
-    <!-- Paginação (Adicionado ID para futura manipulação via JS) -->
-    <div class="pagination" id="pagination">
-        <!-- Paginação será injetada aqui pelo JS (ou pode manter estática se preferir) -->
-        <a href="#" class="page-link"><i class="fas fa-chevron-left"></i></a>
-        <a href="#" class="page-link active">1</a>
-        <a href="#" class="page-link">2</a>
-        <a href="#" class="page-link">3</a>
-        <a href="#" class="page-link"><i class="fas fa-chevron-right"></i></a>
+            
+            <!-- Paginação -->
+            <div class="pagination" id="pagination">
+                <!-- Paginação será injetada aqui pelo JS -->
+            </div>
+        </main>
     </div>
 </div>
 

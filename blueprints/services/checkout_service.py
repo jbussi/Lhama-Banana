@@ -35,19 +35,24 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
         codigo_pedido = f"LB-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}-{os.urandom(4).hex().upper()}"
 
         # 2. Inserir na tabela 'vendas'
+        # Verificar se há endereco_id no shipping_info (quando usuário usa endereço salvo)
+        endereco_id = shipping_info.get('endereco_id')
+        
         cur.execute("""
             INSERT INTO vendas (
                 codigo_pedido, usuario_id, valor_total, valor_frete, valor_desconto,
-                nome_recebedor, rua_entrega, numero_entrega, complemento_entrega, bairro_entrega,
-                cidade_entrega, estado_entrega, cep_entrega,
+                endereco_entrega_id, nome_recebedor, rua_entrega, numero_entrega, complemento_entrega, 
+                bairro_entrega, cidade_entrega, estado_entrega, cep_entrega, telefone_entrega, email_entrega,
                 status_pedido, cliente_ip, user_agent
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id;
         """, (
             codigo_pedido, user_id, total_value, freight_value, discount_value,
+            endereco_id,  # Vincular endereço salvo se fornecido
             shipping_info.get('nome_recebedor'), shipping_info.get('rua'), shipping_info.get('numero'),
             shipping_info.get('complemento'), shipping_info.get('bairro'),
             shipping_info.get('cidade'), shipping_info.get('estado'), shipping_info.get('cep'),
+            shipping_info.get('telefone'), shipping_info.get('email'),
             'pendente_pagamento', # Status inicial
             client_ip, user_agent
         ))
@@ -250,26 +255,79 @@ def call_pagbank_api(endpoint_url: str, api_token: str, payload: Dict) -> Dict:
         
         # PagBank retorna 200 ou 201 para sucesso
         if response.status_code in [200, 201]:
-            return response.json()
+            try:
+                response_data = response.json()
+                
+                # Validar estrutura básica da resposta
+                if not isinstance(response_data, dict):
+                    raise Exception("Resposta do PagBank não é um objeto JSON válido")
+                
+                # Validar que a resposta contém charges
+                charges = response_data.get('charges', [])
+                if not charges or len(charges) == 0:
+                    raise Exception("Resposta do PagBank não contém informações de cobrança")
+                
+                current_app.logger.info(f"Resposta PagBank válida: {len(charges)} charge(s)")
+                return response_data
+                
+            except json.JSONDecodeError as e:
+                current_app.logger.error(f"Erro ao decodificar JSON da resposta PagBank: {e}")
+                current_app.logger.error(f"Resposta recebida: {response.text[:500]}")
+                raise Exception(f"Resposta inválida do PagBank: não é um JSON válido")
         else:
+            # Tratar diferentes códigos de erro HTTP
             error_data = {}
+            error_message = f"Erro na API do PagBank (HTTP {response.status_code})"
+            
             try:
                 error_data = response.json()
-            except:
-                error_data = {'error': response.text[:500]}
+                
+                # Extrair mensagem de erro específica se disponível
+                if 'error' in error_data:
+                    error_message = f"Erro do PagBank: {error_data.get('error', {}).get('message', error_message)}"
+                elif 'message' in error_data:
+                    error_message = f"Erro do PagBank: {error_data.get('message')}"
+                elif 'errors' in error_data and isinstance(error_data['errors'], list) and len(error_data['errors']) > 0:
+                    error_message = f"Erro do PagBank: {error_data['errors'][0].get('message', error_message)}"
+                    
+            except json.JSONDecodeError:
+                # Se não conseguir parsear JSON, usar o texto da resposta
+                error_text = response.text[:500]
+                error_data = {'error': error_text, 'status_code': response.status_code}
+                
+                # Mensagens específicas por código de status
+                if response.status_code == 400:
+                    error_message = "Dados de pagamento inválidos. Verifique as informações e tente novamente."
+                elif response.status_code == 401:
+                    error_message = "Erro de autenticação no gateway de pagamento. Entre em contato com o suporte."
+                elif response.status_code == 403:
+                    error_message = "Acesso negado ao gateway de pagamento. Entre em contato com o suporte."
+                elif response.status_code == 404:
+                    error_message = "Endpoint do gateway de pagamento não encontrado. Entre em contato com o suporte."
+                elif response.status_code >= 500:
+                    error_message = "Erro interno no gateway de pagamento. Tente novamente em alguns instantes."
+                else:
+                    error_message = f"Erro ao processar pagamento (código {response.status_code})"
             
             current_app.logger.error(f"Erro PagBank: {response.status_code} - {error_data}")
-            raise Exception(f"Erro na API do PagBank: {response.status_code} - {error_data}")
+            raise Exception(f"{error_message} (HTTP {response.status_code})")
             
     except requests.exceptions.Timeout:
-        raise Exception("Timeout na comunicação com PagBank")
-    except requests.exceptions.ConnectionError:
-        raise Exception("Erro de conexão com PagBank")
+        current_app.logger.error("Timeout na comunicação com PagBank (30s)")
+        raise Exception("Tempo de resposta do gateway de pagamento excedido. Tente novamente.")
+    except requests.exceptions.ConnectionError as e:
+        current_app.logger.error(f"Erro de conexão com PagBank: {e}")
+        raise Exception("Erro de conexão com o gateway de pagamento. Verifique sua conexão e tente novamente.")
     except requests.exceptions.RequestException as e:
-        raise Exception(f"Erro ao comunicar com a API do PagBank: {e}")
-    except json.JSONDecodeError as e:
-        current_app.logger.error(f"Erro ao decodificar JSON da resposta PagBank: {e}")
-        raise Exception("Resposta inválida do PagBank")
+        current_app.logger.error(f"Erro na requisição ao PagBank: {e}")
+        raise Exception(f"Erro ao comunicar com o gateway de pagamento: {str(e)}")
+    except Exception as e:
+        # Re-lançar exceções que já foram tratadas
+        if "Erro" in str(e) or "Erro do PagBank" in str(e) or "Resposta" in str(e):
+            raise
+        # Tratar outras exceções inesperadas
+        current_app.logger.error(f"Erro inesperado ao chamar PagBank: {e}")
+        raise Exception(f"Erro inesperado ao processar pagamento: {str(e)}")
 
 def create_pagbank_payload(cart_items: List[Dict], shipping_info: Dict, 
                            payment_data: Dict, customer_data: Dict) -> Dict:
@@ -359,36 +417,23 @@ def create_pagbank_payload(cart_items: List[Dict], shipping_info: Dict,
             if not card_holder_tax_id:
                 card_holder_tax_id = str(customer_data.get('tax_id', '')).replace('.', '').replace('-', '').replace('/', '').strip()
             
-            # Para cartão, usar token se disponível, senão usar dados diretos (sandbox)
-            if payment_data.get('card_token'):
-                charge["payment_method"].update({
-                    "capture": True,  # Campo obrigatório: captura imediata
-                    "card": {
-                        "id": payment_data.get('card_token'),  # ID do token do cartão
-                        "security_code": payment_data.get('security_code', ''),  # CVV ainda necessário
-                        "holder": {
-                            "name": payment_data.get('card_holder_name', '') or customer_data.get('name', ''),
-                            "tax_id": card_holder_tax_id
-                        }
-                    },
-                    "installments": payment_data.get('installments', 1)
-                })
-            else:
-                # Fallback para dados diretos (apenas sandbox/teste)
-                charge["payment_method"].update({
-                    "capture": True,  # Campo obrigatório: captura imediata
-                    "card": {
-                        "number": payment_data.get('card_number', '').replace(' ', ''),
-                        "exp_month": exp_month_int,  # Número inteiro
-                        "exp_year": exp_year_int,  # Número inteiro de 4 dígitos
-                        "security_code": payment_data.get('card_cvv', ''),
-                        "holder": {
-                            "name": payment_data.get('card_holder_name', '') or customer_data.get('name', ''),
-                            "tax_id": card_holder_tax_id
-                        }
-                    },
-                    "installments": payment_data.get('installments', 1)
-                })
+            # Validar que temos token do cartão (obrigatório)
+            if not payment_data.get('card_token'):
+                raise Exception("Token do cartão é obrigatório para pagamento com cartão de crédito")
+            
+            # Para cartão, usar token (única forma suportada)
+            charge["payment_method"].update({
+                "capture": True,  # Campo obrigatório: captura imediata
+                "card": {
+                    "id": payment_data.get('card_token'),  # ID do token do cartão
+                    "security_code": payment_data.get('security_code', ''),  # CVV ainda necessário
+                    "holder": {
+                        "name": payment_data.get('card_holder_name', '') or customer_data.get('name', ''),
+                        "tax_id": card_holder_tax_id
+                    }
+                },
+                "installments": payment_data.get('installments', 1)
+            })
         elif payment_method_type == 'PIX':
             charge["payment_method"].update({
                 "pix": {

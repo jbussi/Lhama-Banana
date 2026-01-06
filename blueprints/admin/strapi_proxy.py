@@ -7,6 +7,7 @@ Autenticação temporariamente desabilitada para configuração inicial.
 from flask import request, Response, current_app
 import requests
 from . import admin_bp
+from .decorators import admin_required_email
 
 # URL base do Strapi (configurável via variável de ambiente)
 # No Docker, usa o nome do serviço para comunicação interna
@@ -17,10 +18,11 @@ def get_strapi_url():
     return current_app.config.get('STRAPI_URL', STRAPI_URL)
 
 @admin_bp.route('/', methods=['GET'])
+@admin_required_email
 def admin_root():
     """
     Rota raiz do admin - faz proxy para o Strapi admin.
-    Autenticação temporariamente desabilitada para configuração.
+    Protegido com autenticação admin.
     """
     strapi_base_url = get_strapi_url()
     # O Strapi tem seu admin em /admin, então fazemos proxy direto
@@ -80,12 +82,13 @@ def admin_root():
         )
 
 @admin_bp.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'])
+@admin_required_email
 def strapi_proxy(path):
     """
     Proxy reverso para o Strapi.
     Todas as requisições para /admin/* são redirecionadas para o Strapi.
     Mapeia /admin/* para /* no Strapi.
-    Autenticação temporariamente desabilitada para configuração.
+    Protegido com autenticação admin.
     """
     
     # URL do Strapi - mapear /admin/* para /* no Strapi

@@ -74,6 +74,9 @@ document.addEventListener('DOMContentLoaded', function() {
       // Verificar se é login Google (providerId === 'google.com')
       const isGoogleAuth = user.providerData && user.providerData.some(provider => provider.providerId === 'google.com');
       
+      // Esconder loader se estiver visível
+      LoadingHelper.hidePageLoader();
+      
       if (!isGoogleAuth && (!user.emailVerified || data.requer_verificacao)) {
         try {
           // Aguardar um pouco para garantir que o usuário foi criado no Firebase
@@ -81,35 +84,52 @@ document.addEventListener('DOMContentLoaded', function() {
           
           await sendEmailVerification(user);
           
-          alert(
-            "Conta criada com sucesso!\n\n" +
-            "Um email de verificação foi enviado para " + user.email + ".\n\n" +
-            "Por favor, verifique sua caixa de entrada e também a pasta de spam.\n" +
-            "O link de verificação expira em 3 dias."
-          );
+          const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
+          if (container && window.MessageHelper) {
+            MessageHelper.showSuccess(
+              `Conta criada com sucesso! Um email de verificação foi enviado para ${user.email}. Verifique sua caixa de entrada e também a pasta de spam. O link expira em 3 dias.`,
+              container,
+              10000
+            );
+          }
         } catch (emailError) {
           console.error("Erro ao enviar email de verificação:", emailError);
           
           // Mesmo se falhar, informar o usuário
-          alert(
-            "Conta criada com sucesso!\n\n" +
-            "Por favor, verifique seu email para confirmar sua conta.\n" +
-            "Se não receber o email, você pode solicitar um novo na página de login."
-          );
+          const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
+          if (container && window.MessageHelper) {
+            MessageHelper.showWarning(
+              "Conta criada com sucesso! Por favor, verifique seu email para confirmar sua conta. Se não receber o email, você pode solicitar um novo na página de login.",
+              container,
+              10000
+            );
+          }
         }
       } else if (isGoogleAuth) {
         // Login Google já vem com email verificado
-        alert("Conta criada com sucesso! Seu email já está verificado.");
+        const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
+        if (container && window.MessageHelper) {
+          MessageHelper.showSuccess("Conta criada com sucesso! Seu email já está verificado.", container);
+        }
       } else {
-        alert("Conta criada com sucesso!");
+        const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
+        if (container && window.MessageHelper) {
+          MessageHelper.showSuccess("Conta criada com sucesso!", container);
+        }
       }
 
-      // Redirecionar para login
-      window.location.href = "/auth/login";
+      // Redirecionar para login após 2 segundos
+      setTimeout(() => {
+        window.location.href = "/auth/login";
+      }, 2000);
       
     } catch (error) {
       console.error("Erro no fluxo de registro:", error);
-      alert("Erro ao criar conta: " + error.message);
+      LoadingHelper.hidePageLoader();
+      const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
+      if (container && window.MessageHelper) {
+        MessageHelper.showError("Erro ao criar conta: " + error.message, container);
+      }
     }
   }
 
@@ -125,19 +145,31 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Validações
     if (!username || !email || !password || !confirmPassword) {
-      alert('Por favor, preencha todos os campos obrigatórios.');
+      const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
+      if (container && window.MessageHelper) {
+        MessageHelper.showError('Por favor, preencha todos os campos obrigatórios.', container);
+      }
       return;
     }
 
     if (password !== confirmPassword) {
-      alert('As senhas não coincidem.');
+      const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
+      if (container && window.MessageHelper) {
+        MessageHelper.showError('As senhas não coincidem.', container);
+      }
       return;
     }
 
     if (!terms || !terms.checked) {
-      alert('Você precisa aceitar os Termos de Uso e Política de Privacidade.');
+      const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
+      if (container && window.MessageHelper) {
+        MessageHelper.showError('Você precisa aceitar os Termos de Uso e Política de Privacidade.', container);
+      }
       return;
     }
+
+    // Mostrar loading no botão
+    const buttonState = LoadingHelper.setButtonLoading(submit, "Criando conta...");
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -163,7 +195,12 @@ document.addEventListener('DOMContentLoaded', function() {
           errorMessage += error.message;
       }
       
-      alert(errorMessage);
+      const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
+      if (container && window.MessageHelper) {
+        MessageHelper.showError(errorMessage, container);
+      }
+    } finally {
+      LoadingHelper.restoreButton(submit, buttonState);
     }
   });
 
@@ -175,9 +212,16 @@ document.addEventListener('DOMContentLoaded', function() {
       const terms = document.querySelector('input[name="terms"]');
       
       if (!terms || !terms.checked) {
-        alert('Você precisa aceitar os Termos de Uso e Política de Privacidade.');
+        const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
+        if (container && window.MessageHelper) {
+          MessageHelper.showError('Você precisa aceitar os Termos de Uso e Política de Privacidade.', container);
+        }
         return;
       }
+      
+      // Mostrar page loader e desabilitar botão
+      LoadingHelper.showPageLoader();
+      const buttonState = LoadingHelper.setButtonLoading(googleRegisterBtn, "Conectando...");
       
       try {
         const userCredential = await signInWithPopup(auth, googleProvider);
@@ -196,7 +240,13 @@ document.addEventListener('DOMContentLoaded', function() {
           errorMessage += error.message;
         }
         
-        alert(errorMessage);
+        const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
+        if (container && window.MessageHelper) {
+          MessageHelper.showError(errorMessage, container);
+        }
+        LoadingHelper.hidePageLoader();
+      } finally {
+        LoadingHelper.restoreButton(googleRegisterBtn, buttonState);
       }
     });
   }

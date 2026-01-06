@@ -6,98 +6,8 @@ from ..services import (
 )
 import psycopg2.extras
 from ..services.user_service import get_user_by_firebase_uid
-import datetime
-import uuid
 
 checkout_api_bp = Blueprint('checkout_api', __name__, url_prefix='/api/checkout')
-
-def simulate_pagbank_response(payment_method: str, total_value: float, codigo_pedido: str) -> dict:
-    """
-    Simula uma resposta do PagBank para desenvolvimento/testes.
-    Isso permite testar o fluxo de checkout sem precisar da API real.
-    """
-    current_app.logger.info(f"[PagBank Simulation] Simulando resposta para método: {payment_method}, valor: {total_value}")
-    
-    # Criar resposta simulada baseada no método de pagamento
-    base_response = {
-        "id": f"sim-{uuid.uuid4().hex[:16]}",
-        "reference_id": codigo_pedido,
-        "status": "ACTIVE",
-        "created_at": datetime.datetime.now().isoformat(),
-        "charges": []
-    }
-    
-    if payment_method == 'PIX':
-        # Gerar QR Code PIX simulado
-        pix_qr_code_text = f"00020126360014BR.GOV.BCB.PIX0114+55119999999990204000053039865404{int(total_value):.2f}5802BR5913LHAMABANANA6009SAO PAULO62070503***6304{uuid.uuid4().hex[:4].upper()}"
-        base_response["charges"] = [{
-            "id": f"charge-pix-{uuid.uuid4().hex[:12]}",
-            "reference_id": codigo_pedido,
-            "status": "WAITING",
-            "amount": {
-                "value": int(total_value * 100),  # Em centavos
-                "currency": "BRL"
-            },
-            "payment_method": {
-                "type": "PIX",
-                "pix": {
-                    "qr_codes": [{
-                        "id": f"qrcode-{uuid.uuid4().hex[:12]}",
-                        "text": pix_qr_code_text,
-                        "links": [{
-                            "href": f"https://sandbox.pagseguro.uol.com.br/pix/qr-code/{uuid.uuid4().hex[:16]}",
-                            "rel": "self",
-                            "media": "image/png"
-                        }]
-                    }]
-                }
-            }
-        }]
-    elif payment_method == 'BOLETO':
-        base_response["charges"] = [{
-            "id": f"charge-boleto-{uuid.uuid4().hex[:12]}",
-            "reference_id": codigo_pedido,
-            "status": "WAITING",
-            "amount": {
-                "value": int(total_value * 100),
-                "currency": "BRL"
-            },
-            "payment_method": {
-                "type": "BOLETO",
-                "boleto": {
-                    "barcode": {
-                        "content": f"34191.09008 00000.123456 78901.234567 8 {int(total_value * 100):011d}"
-                    },
-                    "links": [{
-                        "href": f"https://sandbox.pagseguro.uol.com.br/boleto/{uuid.uuid4().hex[:16]}",
-                        "rel": "self",
-                        "media": "application/pdf"
-                    }],
-                    "due_date": (datetime.datetime.now() + datetime.timedelta(days=3)).strftime('%Y-%m-%d')
-                }
-            }
-        }]
-    elif payment_method == 'CREDIT_CARD':
-        base_response["charges"] = [{
-            "id": f"charge-card-{uuid.uuid4().hex[:12]}",
-            "reference_id": codigo_pedido,
-            "status": "PAID",  # Em simulação, considerar como pago
-            "amount": {
-                "value": int(total_value * 100),
-                "currency": "BRL"
-            },
-            "payment_method": {
-                "type": "CREDIT_CARD",
-                "card": {
-                    "brand": "VISA",
-                    "first_digits": "411111",
-                    "last_digits": "1111"
-                },
-                "installments": 1
-            }
-        }]
-    
-    return base_response
 
 @checkout_api_bp.route('/process', methods=['POST'])
 def process_checkout():
@@ -300,6 +210,16 @@ def process_checkout():
 
             # 10. Chamar API do PagBank
             api_token = current_app.config.get('PAGBANK_API_TOKEN')
+            
+            # Validar token antes de chamar a API
+            if not api_token or api_token.strip() == '':
+                current_app.logger.error("[PagBank] Token de API não configurado")
+                conn.rollback()
+                return jsonify({
+                    "erro": "Configuração de pagamento inválida. Entre em contato com o suporte.",
+                    "detalhes": "Token de API do PagBank não configurado"
+                }), 500
+            
             # Usar a URL do ambiente correto (sandbox ou production)
             pagbank_env = current_app.config.get('PAGBANK_ENVIRONMENT', 'sandbox')
             if pagbank_env == 'production':
@@ -307,22 +227,65 @@ def process_checkout():
             else:
                 api_url = current_app.config.get('PAGBANK_SANDBOX_API_URL')
             
-            # Modo de teste/simulação para desenvolvimento
-            use_simulation = current_app.config.get('PAGBANK_SIMULATION_MODE', False) or not api_token or api_token == ''
+            # Validar URL da API
+            if not api_url or api_url.strip() == '':
+                current_app.logger.error("[PagBank] URL da API não configurada")
+                conn.rollback()
+                return jsonify({
+                    "erro": "Configuração de pagamento inválida. Entre em contato com o suporte.",
+                    "detalhes": "URL da API do PagBank não configurada"
+                }), 500
             
-            if use_simulation:
-                current_app.logger.warning("[PagBank] Modo de simulação ativado - não chamando API real")
-                pagbank_response = simulate_pagbank_response(payment_method, final_total, codigo_pedido)
-            else:
-                try:
-                    pagbank_response = call_pagbank_api(api_url, api_token, pagbank_payload)
-                except Exception as api_error:
-                    current_app.logger.error(f"Erro ao chamar API do PagBank: {api_error}")
-                    # Em caso de erro, usar simulação para não quebrar o fluxo
-                    current_app.logger.warning("[PagBank] Usando modo de simulação devido a erro na API")
-                    pagbank_response = simulate_pagbank_response(payment_method, final_total, codigo_pedido)
-                    # Adicionar flag de aviso na resposta
-                    pagbank_response['_simulation_mode'] = True
+            # Chamar API do PagBank - confiar apenas na resposta real
+            try:
+                current_app.logger.info(f"[PagBank] Chamando API: {api_url} (ambiente: {pagbank_env})")
+                pagbank_response = call_pagbank_api(api_url, api_token, pagbank_payload)
+                
+                # Validar resposta do PagBank
+                if not pagbank_response:
+                    raise Exception("Resposta vazia do PagBank")
+                
+                # Verificar se a resposta contém charges
+                charges = pagbank_response.get('charges', [])
+                if not charges or len(charges) == 0:
+                    raise Exception("Resposta do PagBank não contém informações de cobrança")
+                
+                current_app.logger.info(f"[PagBank] Resposta recebida com sucesso. Charges: {len(charges)}")
+                
+            except Exception as api_error:
+                current_app.logger.error(f"[PagBank] Erro ao chamar API: {api_error}")
+                import traceback
+                current_app.logger.error(f"[PagBank] Traceback: {traceback.format_exc()}")
+                
+                # Rollback da transação do pedido
+                conn.rollback()
+                
+                # Determinar mensagem de erro apropriada
+                error_message = "Erro ao processar pagamento"
+                error_details = str(api_error)
+                
+                # Mensagens específicas para diferentes tipos de erro
+                if "Timeout" in str(api_error) or "timeout" in str(api_error).lower():
+                    error_message = "Tempo de resposta do gateway de pagamento excedido. Tente novamente."
+                    error_details = "O servidor de pagamento demorou muito para responder."
+                elif "Connection" in str(api_error) or "conexão" in str(api_error).lower():
+                    error_message = "Erro de conexão com o gateway de pagamento. Verifique sua conexão e tente novamente."
+                    error_details = "Não foi possível conectar ao servidor de pagamento."
+                elif "401" in str(api_error) or "Unauthorized" in str(api_error):
+                    error_message = "Erro de autenticação no gateway de pagamento. Entre em contato com o suporte."
+                    error_details = "Credenciais de pagamento inválidas."
+                elif "400" in str(api_error) or "Bad Request" in str(api_error):
+                    error_message = "Dados de pagamento inválidos. Verifique as informações e tente novamente."
+                    error_details = "A requisição foi rejeitada pelo gateway de pagamento."
+                elif "500" in str(api_error) or "Internal Server Error" in str(api_error):
+                    error_message = "Erro interno no gateway de pagamento. Tente novamente em alguns instantes."
+                    error_details = "O servidor de pagamento está temporariamente indisponível."
+                
+                # Retornar erro detalhado
+                return jsonify({
+                    "erro": error_message,
+                    "detalhes": error_details if current_app.config.get('DEBUG', False) else None
+                }), 500
 
             # 11. Salvar resposta do pagamento
             payment_id = create_payment_entry(venda_id, payment_data, pagbank_response)
@@ -367,32 +330,17 @@ def process_checkout():
             # Adicionar dados específicos do pagamento da resposta do PagBank
             charges = pagbank_response.get('charges', [])
             
-            # Se não houver charges, usar o método de pagamento enviado para gerar resposta básica
-            if not charges:
-                current_app.logger.warning(f"[PagBank] Resposta não contém charges, usando método de pagamento: {payment_method}")
-                # Gerar resposta básica baseada no método
-                if payment_method == 'PIX':
-                    response_data.update({
-                        'payment_method_type': 'pix',
-                        'pix_qr_code_link': f'https://sandbox.pagseguro.uol.com.br/pix/qr-code/sim-{uuid.uuid4().hex[:16]}',
-                        'pix_qr_code_text': f'00020126360014BR.GOV.BCB.PIX0114+55119999999990204000053039865404{int(final_total):.2f}5802BR5913LHAMABANANA6009SAO PAULO62070503***6304{uuid.uuid4().hex[:4].upper()}',
-                        '_simulation_mode': True
-                    })
-                elif payment_method == 'BOLETO':
-                    response_data.update({
-                        'payment_method_type': 'boleto',
-                        'boleto_link': f'https://sandbox.pagseguro.uol.com.br/boleto/sim-{uuid.uuid4().hex[:16]}',
-                        'boleto_barcode': f'34191.09008 00000.123456 78901.234567 8 {int(final_total * 100):011d}',
-                        '_simulation_mode': True
-                    })
-                elif payment_method == 'CREDIT_CARD':
-                    response_data.update({
-                        'payment_method_type': 'credit_card',
-                        'status': 'pending',
-                        'payment_approved': False,
-                        '_simulation_mode': True
-                    })
-            elif charges:
+            # Validar que temos charges (já validado antes, mas garantir)
+            if not charges or len(charges) == 0:
+                current_app.logger.error(f"[PagBank] Resposta inválida: sem charges")
+                conn.rollback()
+                return jsonify({
+                    "erro": "Resposta inválida do gateway de pagamento. Tente novamente.",
+                    "detalhes": "A resposta do PagBank não contém informações de cobrança válidas"
+                }), 500
+            
+            # Processar charges da resposta do PagBank
+            if charges:
                 charge = charges[0]
                 payment_method_type = charge.get('payment_method', {}).get('type', '').upper()
                 
@@ -421,12 +369,13 @@ def process_checkout():
                                 'pix_qr_code_text': qr_code.get('text', '')
                             })
                     else:
-                        # Fallback: retornar dados básicos do PIX
-                        response_data.update({
-                            'payment_method_type': 'pix',
-                            'pix_qr_code_link': pix_data.get('link', ''),
-                            'pix_qr_code_text': pix_data.get('qr_code_text', '')
-                        })
+                        # Se não encontrou QR code na estrutura esperada, logar erro
+                        current_app.logger.error(f"[PagBank] Estrutura de resposta PIX inválida: {pix_data}")
+                        conn.rollback()
+                        return jsonify({
+                            "erro": "Resposta inválida do gateway de pagamento. Tente novamente.",
+                            "detalhes": "A resposta do PagBank não contém QR Code PIX válido"
+                        }), 500
                         
                 elif payment_method_type == 'BOLETO':
                     boleto_data = charge.get('payment_method', {}).get('boleto', {})

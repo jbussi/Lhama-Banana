@@ -41,34 +41,74 @@ document.addEventListener('DOMContentLoaded', async function() {
         try {
             const response = await fetch('/api/cart', {
                 method: 'GET',
-                headers: await getAuthHeaders() // Usar await aqui
+                headers: await getAuthHeaders()
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                console.error('Erro detalhado ao buscar carrinho:', errorData);
-                throw new Error(`HTTP error! status: ${response.status} - ${errorData.erro || 'Erro desconhecido'}`);
+            // Verificar se a resposta foi bem-sucedida
+            if (response.ok) {
+                try {
+                    const cartData = await response.json();
+                    console.log("Dados do carrinho recebidos:", cartData);
+                    renderCart(cartData);
+                    return;
+                } catch (jsonError) {
+                    console.error('Erro ao parsear JSON da resposta:', jsonError);
+                    // Se não conseguir parsear JSON mas a resposta foi OK, tratar como vazio
+                    renderCart({ items: [], total_value: 0 });
+                    return;
+                }
             }
 
-            const cartData = await response.json();
-            console.log("Dados do carrinho recebidos:", cartData);
-            renderCart(cartData);
+            // Se a resposta não foi OK, verificar o status
+            const status = response.status;
+            console.log('Resposta não OK, status:', status);
+
+            // Apenas mostrar erro para status 500 (erro interno do servidor)
+            // Outros status (404, 401, etc) são tratados como carrinho vazio
+            if (status === 500) {
+                let errorMessage = 'Não foi possível carregar o carrinho. Tente novamente mais tarde.';
+                
+                // Tentar obter mensagem de erro do backend
+                try {
+                    const errorData = await response.json();
+                    if (errorData.erro) {
+                        errorMessage = errorData.erro;
+                    }
+                } catch (e) {
+                    // Se não conseguir parsear JSON, usar mensagem padrão
+                    console.log('Não foi possível parsear resposta de erro');
+                }
+                
+                const messagesContainer = document.getElementById('cart-messages-container');
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showError(errorMessage, messagesContainer);
+                } else {
+                    cartItemsList.innerHTML = `<p style="color: #dc3545; padding: 1rem; text-align: center;">${errorMessage}</p>`;
+                }
+                
+                cartTotalPriceElem.textContent = 'R$ --,--';
+                summarySubtotalElem.textContent = 'R$ --,--';
+                summaryShippingElem.textContent = 'A calcular';
+                summaryDiscountElem.textContent = '- R$ 0,00';
+                
+                if (emptyCartMessage) emptyCartMessage.style.display = 'none';
+                if (cartHeader) cartHeader.style.display = 'none';
+                if (cartSummaryContainer) cartSummaryContainer.style.display = 'none';
+                return;
+            }
+            
+            // Para outros status (404, 401, 403, etc), tratar como carrinho vazio
+            // Isso é normal quando o usuário não tem itens no carrinho ou não está logado
+            console.log('Status', status, '- tratando como carrinho vazio');
+            renderCart({ items: [], total_value: 0 });
 
         } catch (error) {
             console.error('Erro ao buscar carrinho:', error);
-            cartItemsList.innerHTML = '<p>Não foi possível carregar o carrinho. Tente novamente mais tarde.</p>';
-            cartTotalPriceElem.textContent = 'R$ --,--';
-            summarySubtotalElem.textContent = 'R$ --,--';
-            summaryShippingElem.textContent = 'A calcular';
-            summaryDiscountElem.textContent = '- R$ 0,00';
             
-            // Se houve um erro, presumimos que o carrinho está "vazio" ou inacessível
-            if (emptyCartMessage) emptyCartMessage.style.display = 'block';
-            if (cartHeader) cartHeader.style.display = 'none';
-            if (cartSummaryContainer) cartSummaryContainer.style.display = 'none';
-
-        } finally {
-
+            // Erros de rede ou outros erros não tratados são mostrados como carrinho vazio
+            // Apenas erros 500 explícitos do servidor mostram mensagem de erro
+            console.log('Erro de conexão ou exceção - tratando como carrinho vazio');
+            renderCart({ items: [], total_value: 0 });
         }
     }
 
@@ -76,12 +116,26 @@ document.addEventListener('DOMContentLoaded', async function() {
      * Renderiza os itens do carrinho no HTML.
      */
     function renderCart(cartData) {
+        // Limpar mensagens de erro anteriores
+        const messagesContainer = document.getElementById('cart-messages-container');
+        if (messagesContainer && window.MessageHelper) {
+            window.MessageHelper.clearMessages(messagesContainer);
+        }
+        
         cartItemsList.innerHTML = ''; // Limpa a lista atual
 
-        if (!cartData.items || cartData.items.length === 0) {
-            if (emptyCartMessage) emptyCartMessage.style.display = 'block';
-            if (cartHeader) cartHeader.style.display = 'none';
-            if (cartSummaryContainer) cartSummaryContainer.style.display = 'none';
+        // Verificar se o carrinho está vazio
+        if (!cartData || !cartData.items || cartData.items.length === 0) {
+            // Mostrar mensagem de carrinho vazio
+            if (emptyCartMessage) {
+                emptyCartMessage.style.display = 'block';
+            }
+            if (cartHeader) {
+                cartHeader.style.display = 'none';
+            }
+            if (cartSummaryContainer) {
+                cartSummaryContainer.style.display = 'none';
+            }
             cartTotalPriceElem.textContent = 'R$ 0,00';
             summarySubtotalElem.textContent = 'R$ 0,00';
             summaryShippingElem.textContent = 'A calcular';
@@ -185,7 +239,17 @@ document.addEventListener('DOMContentLoaded', async function() {
             newQuantity = 0; // Se a quantidade for 0, o backend vai remover o item
         }
 
+        const messagesContainer = document.getElementById('cart-messages-container');
+        const quantityInput = document.querySelector(`.quantity-input[data-id="${cartItemId}"]`);
+        const originalValue = quantityInput ? quantityInput.value : newQuantity;
+
         try {
+            // Mostrar loading no input
+            if (quantityInput) {
+                quantityInput.disabled = true;
+                quantityInput.style.opacity = '0.6';
+            }
+
             const response = await fetch(`/api/cart/update/${cartItemId}`, {
                 method: 'PUT',
                 headers: await getAuthHeaders(),
@@ -194,8 +258,17 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                alert(`Erro ao atualizar quantidade: ${errorData.erro || 'Ocorreu um erro.'}`);
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showError(`Erro ao atualizar quantidade: ${errorData.erro || 'Ocorreu um erro.'}`, messagesContainer);
+                }
+                // Restaurar valor original
+                if (quantityInput) quantityInput.value = originalValue;
                 throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            // Mensagem de sucesso (opcional, pode ser removida se preferir)
+            if (messagesContainer && window.MessageHelper && newQuantity > 0) {
+                window.MessageHelper.showSuccess('Quantidade atualizada!', messagesContainer, 2000);
             }
 
             fetchAndRenderCart(); // Recarrega o carrinho para refletir as mudanças
@@ -203,6 +276,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         } catch (error) {
             console.error('Erro ao atualizar quantidade:', error);
         } finally {
+            if (quantityInput) {
+                quantityInput.disabled = false;
+                quantityInput.style.opacity = '1';
+            }
         }
     }
 
@@ -210,10 +287,58 @@ document.addEventListener('DOMContentLoaded', async function() {
      * Remove um item do carrinho via API.
      */
     async function removeItem(cartItemId) {
+        const messagesContainer = document.getElementById('cart-messages-container');
+        const removeBtn = document.querySelector(`.remove-btn[data-id="${cartItemId}"]`);
+        
+        // Criar modal de confirmação inline
+        if (messagesContainer && window.MessageHelper) {
+            const confirmed = await new Promise((resolve) => {
+                const confirmMessage = document.createElement('div');
+                confirmMessage.className = 'inline-message inline-message-warning';
+                confirmMessage.style.cssText = 'padding: 1rem; margin-bottom: 1rem; border-radius: 8px; background: #fff3cd; border: 1px solid #ffc107;';
+                confirmMessage.innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <div style="flex: 1;">
+                            <i class="fas fa-exclamation-triangle" style="color: #856404; margin-right: 0.5rem;"></i>
+                            <strong style="color: #856404;">Tem certeza que deseja remover este item?</strong>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
+                            <button class="confirm-remove-yes" style="padding: 0.5rem 1rem; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                Sim
+                            </button>
+                            <button class="confirm-remove-no" style="padding: 0.5rem 1rem; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                Não
+                            </button>
+                        </div>
+                    </div>
+                `;
+                messagesContainer.appendChild(confirmMessage);
+                
+                confirmMessage.querySelector('.confirm-remove-yes').onclick = () => {
+                    messagesContainer.removeChild(confirmMessage);
+                    resolve(true);
+                };
+                confirmMessage.querySelector('.confirm-remove-no').onclick = () => {
+                    messagesContainer.removeChild(confirmMessage);
+                    resolve(false);
+                };
+            });
+            
+            if (!confirmed) return;
+        } else {
+            // Fallback para confirm nativo se MessageHelper não estiver disponível
         if (!confirm('Tem certeza que deseja remover este item do carrinho?')) {
             return;
+            }
         }
+
         try {
+            // Mostrar loading no botão
+            if (removeBtn) {
+                const originalHTML = removeBtn.innerHTML;
+                removeBtn.disabled = true;
+                removeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                
             const response = await fetch(`/api/cart/remove/${cartItemId}`, {
                 method: 'DELETE',
                 headers: await getAuthHeaders()
@@ -221,11 +346,40 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                alert(`Erro ao remover item: ${errorData.erro || 'Ocorreu um erro.'}`);
+                    if (messagesContainer && window.MessageHelper) {
+                        window.MessageHelper.showError(`Erro ao remover item: ${errorData.erro || 'Ocorreu um erro.'}`, messagesContainer);
+                    }
+                    removeBtn.disabled = false;
+                    removeBtn.innerHTML = originalHTML;
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showSuccess('Item removido do carrinho!', messagesContainer, 2000);
+            }
+
             fetchAndRenderCart(); // Recarrega o carrinho após remover
+
+            } else {
+                const response = await fetch(`/api/cart/remove/${cartItemId}`, {
+                    method: 'DELETE',
+                    headers: await getAuthHeaders()
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    if (messagesContainer && window.MessageHelper) {
+                        window.MessageHelper.showError(`Erro ao remover item: ${errorData.erro || 'Ocorreu um erro.'}`, messagesContainer);
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showSuccess('Item removido do carrinho!', messagesContainer, 2000);
+                }
+
+                fetchAndRenderCart();
+            }
 
         } catch (error) {
             console.error('Erro ao remover item:', error);
@@ -237,10 +391,62 @@ document.addEventListener('DOMContentLoaded', async function() {
      * Limpa todo o carrinho via API.
      */
     async function clearCart() {
+        const messagesContainer = document.getElementById('cart-messages-container');
+        
+        // Criar modal de confirmação inline
+        if (messagesContainer && window.MessageHelper) {
+            const confirmed = await new Promise((resolve) => {
+                const confirmMessage = document.createElement('div');
+                confirmMessage.className = 'inline-message inline-message-warning';
+                confirmMessage.style.cssText = 'padding: 1rem; margin-bottom: 1rem; border-radius: 8px; background: #fff3cd; border: 1px solid #ffc107;';
+                confirmMessage.innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <div style="flex: 1;">
+                            <i class="fas fa-exclamation-triangle" style="color: #856404; margin-right: 0.5rem;"></i>
+                            <strong style="color: #856404;">Tem certeza que deseja limpar todo o carrinho?</strong>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
+                            <button class="confirm-clear-yes" style="padding: 0.5rem 1rem; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                Sim
+                            </button>
+                            <button class="confirm-clear-no" style="padding: 0.5rem 1rem; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                Não
+                            </button>
+                        </div>
+                    </div>
+                `;
+                messagesContainer.appendChild(confirmMessage);
+                
+                confirmMessage.querySelector('.confirm-clear-yes').onclick = () => {
+                    messagesContainer.removeChild(confirmMessage);
+                    resolve(true);
+                };
+                confirmMessage.querySelector('.confirm-clear-no').onclick = () => {
+                    messagesContainer.removeChild(confirmMessage);
+                    resolve(false);
+                };
+            });
+            
+            if (!confirmed) return;
+        } else {
+            // Fallback para confirm nativo
         if (!confirm('Tem certeza que deseja limpar todo o carrinho?')) {
             return;
+            }
         }
+
         try {
+            // Mostrar loading no botão
+            if (clearCartBtn) {
+                const originalHTML = clearCartBtn.innerHTML;
+                clearCartBtn.disabled = true;
+                if (window.LoadingHelper) {
+                    window.LoadingHelper.setButtonLoading(clearCartBtn, 'Limpando...');
+                } else {
+                    clearCartBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Limpando...';
+                }
+            }
+
             const response = await fetch('/api/cart/clear', {
                 method: 'DELETE',
                 headers: await getAuthHeaders()
@@ -248,8 +454,20 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                alert(`Erro ao limpar carrinho: ${errorData.erro || 'Ocorreu um erro.'}`);
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showError(`Erro ao limpar carrinho: ${errorData.erro || 'Ocorreu um erro.'}`, messagesContainer);
+                }
+                if (clearCartBtn && window.LoadingHelper) {
+                    window.LoadingHelper.restoreButton(clearCartBtn, { innerHTML: originalHTML });
+                } else if (clearCartBtn) {
+                    clearCartBtn.disabled = false;
+                    clearCartBtn.innerHTML = originalHTML;
+                }
                 throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showSuccess('Carrinho limpo com sucesso!', messagesContainer, 2000);
             }
 
             fetchAndRenderCart(); // Recarrega o carrinho (agora vazio)
@@ -257,6 +475,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         } catch (error) {
             console.error('Erro ao limpar carrinho:', error);
         } finally {
+            if (clearCartBtn && window.LoadingHelper) {
+                window.LoadingHelper.restoreButton(clearCartBtn, { innerHTML: 'Limpar Carrinho' });
+            } else if (clearCartBtn) {
+                clearCartBtn.disabled = false;
+            }
         }
     }
 
@@ -266,10 +489,25 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     if (checkoutBtn) {
         checkoutBtn.addEventListener('click', () => {
+            const messagesContainer = document.getElementById('cart-messages-container');
+            
             // Verificar se o carrinho tem itens antes de redirecionar
             if (cartItemsList && cartItemsList.children.length === 0) {
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showError('Seu carrinho está vazio. Adicione produtos antes de finalizar a compra.', messagesContainer);
+                } else {
                 alert('Seu carrinho está vazio. Adicione produtos antes de finalizar a compra.');
+                }
                 return;
+            }
+            
+            // Mostrar loading no botão
+            if (window.LoadingHelper) {
+                window.LoadingHelper.setButtonLoading(checkoutBtn, 'Redirecionando...');
+            } else {
+                checkoutBtn.disabled = true;
+                const originalHTML = checkoutBtn.innerHTML;
+                checkoutBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Redirecionando...';
             }
             
             // Redirecionar para a página de checkout
@@ -282,13 +520,49 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (couponForm) {
         couponForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            const couponCode = this.querySelector('input[type="text"]').value;
-            if (couponCode.trim() !== '') {
-                alert(`Cupom "${couponCode}" aplicado com sucesso! (Função de cupom mocada)`);
+            const messagesContainer = document.getElementById('cart-messages-container');
+            const couponInput = this.querySelector('input[type="text"]');
+            const applyBtn = this.querySelector('button[type="submit"]');
+            const couponCode = couponInput.value.trim();
+            
+            if (couponCode !== '') {
+                // Mostrar loading no botão
+                if (applyBtn) {
+                    const originalHTML = applyBtn.innerHTML;
+                    applyBtn.disabled = true;
+                    if (window.LoadingHelper) {
+                        window.LoadingHelper.setButtonLoading(applyBtn, 'Aplicando...');
+                    } else {
+                        applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Aplicando...';
+                    }
+                    
+                    // Simular delay (remover quando implementar backend)
+                    setTimeout(() => {
+                        if (messagesContainer && window.MessageHelper) {
+                            window.MessageHelper.showSuccess(`Cupom "${couponCode}" aplicado com sucesso! (Função de cupom mocada)`, messagesContainer, 3000);
+                        }
+                        if (window.LoadingHelper) {
+                            window.LoadingHelper.restoreButton(applyBtn, { innerHTML: originalHTML });
+                        } else {
+                            applyBtn.disabled = false;
+                            applyBtn.innerHTML = originalHTML;
+                        }
+                        couponInput.value = '';
+                    }, 1000);
+                } else {
+                    if (messagesContainer && window.MessageHelper) {
+                        window.MessageHelper.showSuccess(`Cupom "${couponCode}" aplicado com sucesso! (Função de cupom mocada)`, messagesContainer, 3000);
+                    }
+                }
                 // Aqui você faria uma chamada AJAX para validar e aplicar o cupom no backend
                 // e então recarregaria o carrinho para atualizar os valores.
             } else {
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showError('Por favor, insira um código de cupom.', messagesContainer);
+            } else {
                 alert('Por favor, insira um código de cupom.');
+                }
+                couponInput.focus();
             }
         });
     }

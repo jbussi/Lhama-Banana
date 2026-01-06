@@ -83,8 +83,6 @@ class Config:
         'http://localhost:5000/api/webhook/pagbank' if ENV == 'development' else
         'https://seudominio.com/api/webhook/pagbank'
     )
-    # Modo de simulação: se True, não chama a API real do PagBank
-    PAGBANK_SIMULATION_MODE = os.environ.get('PAGBANK_SIMULATION_MODE', 'true').lower() == 'true'
     
     # ============================================
     # MELHOR ENVIO - CÁLCULO DE FRETE
@@ -142,7 +140,6 @@ class ProductionConfig(Config):
     """Configurações para produção"""
     DEBUG = False
     ENV = 'production'
-    PAGBANK_SIMULATION_MODE = False
 
 
 class TestingConfig(Config):

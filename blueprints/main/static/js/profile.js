@@ -1,7 +1,7 @@
 // Importações Firebase: essencial para usar os serviços de autenticação e inicializar o app
 // AJUSTE OS URLs ABAIXO CONFORME SUA CONFIGURAÇÃO DE CDN OU IMPORTMAP!
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, onAuthStateChanged, sendEmailVerification, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getAuth, onAuthStateChanged, sendEmailVerification, updatePassword, reauthenticateWithCredential, EmailAuthProvider, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
 // Sua configuração do Firebase: ESSA DEVE SER A MESMA EM TODOS OS SEUS ARQUIVOS JS DE FRONTEND!
 const firebaseConfig = {
@@ -20,6 +20,7 @@ const auth = getAuth(app); // Instância do Firebase Auth para gerenciar a auten
 // Variável global para armazenar os dados do usuário.
 // Inicializamos com 'addresses' vazio para garantir que a propriedade existe.
 let usuario = { addresses: [] }; 
+let editingAddressId = null; // ID do endereço sendo editado (null = novo endereço) 
 
 // --- Funções Auxiliares de Formatação ---
 
@@ -56,10 +57,22 @@ function formatPhone(phone) {
 // Carrega os dados recebidos do backend na variável global 'usuario' e atualiza a interface.
 function loadUserData(data) {
     console.log("Dados recebidos para loadUserData:", data); // Para depuração
-    usuario = data; // Popula a variável global 'usuario' com os dados recebidos
-
-    // Garante que 'addresses' seja um array, mesmo que vazio ou não vindo do backend ainda.
-    if (!usuario.addresses) {
+    
+    // Preservar endereços existentes antes de sobrescrever
+    const existingAddresses = usuario.addresses || [];
+    
+    // Popula a variável global 'usuario' com os dados recebidos, preservando endereços
+    usuario = { ...data };
+    
+    // Se os dados vierem com endereços, usar eles, senão preservar os existentes
+    if (data.addresses && Array.isArray(data.addresses) && data.addresses.length > 0) {
+        usuario.addresses = data.addresses;
+    } else {
+        usuario.addresses = existingAddresses;
+    }
+    
+    // Garantir que addresses seja sempre um array
+    if (!usuario.addresses || !Array.isArray(usuario.addresses)) {
         usuario.addresses = [];
     }
     
@@ -81,7 +94,7 @@ function loadUserData(data) {
     document.getElementById('edit-birthdate').value = usuario.data_nascimento || ''; // 'YYYY-MM-DD' para input type="date"
     document.getElementById('edit-phone').value = usuario.telefone || '';
     
-    // Por enquanto, renderAddresses usa os dados locais de 'usuario.addresses'.
+    // Renderizar endereços se já existirem
     renderAddresses(); 
 }
 
@@ -120,7 +133,12 @@ async function savePersonalInfo() {
     try {
         const currentUser = auth.currentUser;
         if (!currentUser) {
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError('Você precisa estar logado para atualizar o perfil.', messagesContainer);
+            } else {
             alert('Você precisa estar logado para atualizar o perfil.');
+            }
             window.location.href = '/login_page'; 
             return;
         }
@@ -142,7 +160,12 @@ async function savePersonalInfo() {
 
         const successData = await response.json(); 
         console.log("Dados do perfil salvos com sucesso:", successData.mensagem);
+        const messagesContainer = document.getElementById('profile-messages-container');
+        if (messagesContainer && window.MessageHelper) {
+            window.MessageHelper.showSuccess("Perfil atualizado com sucesso!", messagesContainer, 3000);
+        } else {
         alert("Perfil atualizado com sucesso!");
+        }
 
         // Atualiza a variável 'usuario' localmente com os dados que foram salvos.
         Object.assign(usuario, dataToSave); 
@@ -155,7 +178,12 @@ async function savePersonalInfo() {
 
     } catch (error) {
         console.error("Erro ao salvar informações pessoais:", error);
+        const messagesContainer = document.getElementById('profile-messages-container');
+        if (messagesContainer && window.MessageHelper) {
+            window.MessageHelper.showError("Erro ao salvar informações: " + error.message, messagesContainer);
+        } else {
         alert("Erro ao salvar informações: " + error.message);
+        }
     }
 }
 
@@ -168,56 +196,313 @@ function toggleNewAddressForm() {
     const addButton = document.getElementById('add-address-btn');
     const addressesList = document.getElementById('addresses-list');
     
-    if (form.style.display === 'block') {
+    if (form.style.display === 'grid' || form.style.display === 'block') {
+        // Fechar formulário
         form.style.display = 'none';
         addButton.innerHTML = '<i class="fas fa-plus"></i> Novo Endereço';
-        addressesList.style.display = 'grid'; // Ajuste conforme seu CSS
+        if (addressesList) addressesList.style.display = 'grid';
+        form.reset(); // Limpar formulário
+        editingAddressId = null; // Resetar ID de edição
     } else {
-        form.style.display = 'grid'; // Ajuste conforme seu CSS
+        // Abrir formulário
+        form.style.display = 'grid';
         addButton.innerHTML = '<i class="fas fa-times"></i> Cancelar';
-        addressesList.style.display = 'none';
-        form.scrollIntoView({ behavior: 'smooth' });
+        if (addressesList) addressesList.style.display = 'none';
+        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        editingAddressId = null; // Novo endereço
     }
 }
 
-function addNewAddress() {
+// Função para buscar endereço por CEP (similar ao checkout)
+async function fetchAddressByCEP(cep) {
+    try {
+        const cleanCEP = cep.replace(/\D/g, '');
+        if (cleanCEP.length !== 8) return null;
+        const response = await fetch(`https://viacep.com.br/ws/${cleanCEP}/json/`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const data = await response.json();
+        if (data.erro) {
+            if (window.MessageHelper) {
+                window.MessageHelper.showError('CEP não encontrado. Verifique o CEP digitado.', document.getElementById('new-address-form'));
+            } else {
+                const messagesContainer = document.getElementById('profile-messages-container');
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showError('CEP não encontrado. Verifique o CEP digitado.', messagesContainer);
+                } else {
+                    alert('CEP não encontrado. Verifique o CEP digitado.');
+                }
+            }
+            return null;
+        }
+        return { 
+            street: data.logradouro || '', 
+            district: data.bairro || '', 
+            city: data.localidade || '', 
+            state: data.uf || '', 
+            cep: data.cep || cleanCEP 
+        };
+    } catch (error) {
+        console.error('[Perfil] Erro ao buscar CEP na ViaCEP:', error);
+        if (window.MessageHelper) {
+            window.MessageHelper.showError('Erro ao buscar CEP. Verifique sua conexão e tente novamente.', document.getElementById('new-address-form'));
+        } else {
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError('Erro ao buscar CEP. Verifique sua conexão e tente novamente.', messagesContainer);
+            } else {
+                alert('Erro ao buscar CEP. Verifique sua conexão e tente novamente.');
+            }
+        }
+        return null;
+    }
+}
+
+// Função para preencher endereço automaticamente
+async function fillAddressByCEP(cep) {
+    if (!cep || cep.replace(/\D/g, '').length !== 8) return;
+    
+    const cepInput = document.getElementById('address-cep');
+    const buscarCepBtn = document.getElementById('buscar-cep-btn');
+    const streetInput = document.getElementById('address-street');
+    const neighborhoodInput = document.getElementById('address-neighborhood');
+    const cityInput = document.getElementById('address-city');
+    const stateSelect = document.getElementById('address-state');
+    const numberInput = document.getElementById('address-number');
+    
+    if (!cepInput) return;
+    
+    const originalPlaceholder = cepInput.placeholder;
+    cepInput.disabled = true;
+    cepInput.placeholder = 'Buscando endereço...';
+    
+    if (buscarCepBtn) {
+        buscarCepBtn.disabled = true;
+        buscarCepBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Buscando...';
+    }
+    
+    try {
+        const addressData = await fetchAddressByCEP(cep);
+        if (addressData) {
+            if (streetInput) streetInput.value = addressData.street;
+            if (neighborhoodInput) neighborhoodInput.value = addressData.district;
+            if (cityInput) cityInput.value = addressData.city;
+            if (stateSelect && addressData.state) stateSelect.value = addressData.state;
+            const formattedCEP = addressData.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2');
+            cepInput.value = formattedCEP;
+            if (numberInput) setTimeout(() => numberInput.focus(), 100);
+        }
+    } catch (error) {
+        console.error('[Perfil] Erro ao preencher endereço:', error);
+    } finally {
+        cepInput.disabled = false;
+        cepInput.placeholder = originalPlaceholder;
+        if (buscarCepBtn) {
+            buscarCepBtn.disabled = false;
+            buscarCepBtn.innerHTML = '<i class="fas fa-search"></i> Buscar';
+        }
+    }
+}
+
+async function addNewAddress() {
     const type = document.getElementById('address-type').value;
-    const name = document.getElementById('address-name').value;
-    const zipcode = document.getElementById('address-zipcode').value; // CORRIGIDO: 'address-zipcode'
+    const zipcode = document.getElementById('address-cep').value;
     const street = document.getElementById('address-street').value;
     const number = document.getElementById('address-number').value;
     const complement = document.getElementById('address-complement').value;
     const neighborhood = document.getElementById('address-neighborhood').value;
     const city = document.getElementById('address-city').value;
     const state = document.getElementById('address-state').value;
-    const reference = document.getElementById('address-reference').value;
+    const phone = document.getElementById('address-phone').value;
     
-    // Validação básica (pode ser expandida)
+    // Validação básica
     if (!street || !number || !neighborhood || !city || !state || !zipcode) {
+        if (window.MessageHelper) {
+            window.MessageHelper.showError('Por favor, preencha todos os campos obrigatórios do endereço (rua, número, bairro, cidade, estado, CEP).', document.getElementById('new-address-form'));
+        } else {
+        const messagesContainer = document.getElementById('profile-messages-container');
+        if (messagesContainer && window.MessageHelper) {
+            window.MessageHelper.showError('Por favor, preencha todos os campos obrigatórios do endereço (rua, número, bairro, cidade, estado, CEP).', messagesContainer);
+        } else {
         alert('Por favor, preencha todos os campos obrigatórios do endereço (rua, número, bairro, cidade, estado, CEP).');
+        }
+        }
         return;
     }
     
-    const newAddress = {
-        id: Date.now(), // ID temporário, para controle no frontend
-        type: type, name: name, zipcode: zipcode, street: street,
-        number: number, complement: complement, neighborhood: neighborhood,
-        city: city, state: state, reference: reference,
-        isDefault: usuario.addresses.length === 0 // Define como padrão se for o primeiro
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        if (window.MessageHelper) {
+            window.MessageHelper.showError('Você precisa estar logado para adicionar um endereço.', document.getElementById('new-address-form'));
+        } else {
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError('Você precisa estar logado para adicionar um endereço.', messagesContainer);
+            } else {
+                alert('Você precisa estar logado para adicionar um endereço.');
+            }
+        }
+        return;
+    }
+    
+    const addressData = {
+        type: type,
+        zipcode: zipcode,
+        street: street,
+        number: number,
+        complement: complement,
+        neighborhood: neighborhood,
+        city: city,
+        state: state,
+        phone: phone,
+        isDefault: usuario.addresses && usuario.addresses.length === 0 && !editingAddressId
     };
     
-    usuario.addresses.push(newAddress); // CORRIGIDO: usa 'usuario.addresses'
-    document.getElementById('new-address-form').reset(); // Limpa o formulário
-    renderAddresses(); // Re-renderiza a lista para atualizar a UI
-    toggleNewAddressForm(); // Esconde o formulário
-    console.log('Novo endereço adicionado (localmente):', newAddress);
-    // FUTURO: Aqui você fará uma chamada POST para o seu backend para salvar o endereço de forma persistente.
+    const saveBtn = document.getElementById('save-new-address');
+    const originalText = saveBtn ? saveBtn.innerHTML : '';
+    
+    try {
+        const idToken = await currentUser.getIdToken();
+        
+        if (saveBtn) {
+            if (window.LoadingHelper) {
+                window.LoadingHelper.setButtonLoading(saveBtn, editingAddressId ? 'Atualizando...' : 'Salvando...');
+            } else {
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${editingAddressId ? 'Atualizando...' : 'Salvando...'}`;
+            }
+        }
+        
+        let response;
+        if (editingAddressId) {
+            // Atualizar endereço existente
+            response = await fetch(`/api/addresses/${editingAddressId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: JSON.stringify(addressData)
+            });
+        } else {
+            // Verificar limite de 4 endereços apenas ao criar novo
+            if (usuario.addresses && usuario.addresses.length >= 4) {
+                throw new Error('Você já possui o máximo de 4 endereços cadastrados. Remova um endereço antes de adicionar outro.');
+            }
+            
+            // Criar novo endereço
+            response = await fetch('/api/addresses', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: JSON.stringify(addressData)
+            });
+        }
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.erro || 'Erro ao salvar endereço');
+        }
+        
+        // Recarregar endereços do backend
+        await loadAddressesFromBackend();
+        
+        document.getElementById('new-address-form').reset();
+        toggleNewAddressForm();
+        
+        if (window.MessageHelper) {
+            window.MessageHelper.showSuccess(editingAddressId ? 'Endereço atualizado com sucesso!' : 'Endereço adicionado com sucesso!', document.getElementById('addresses-list'), 3000);
+        } else {
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showSuccess(editingAddressId ? 'Endereço atualizado com sucesso!' : 'Endereço adicionado com sucesso!', messagesContainer, 3000);
+            } else {
+                alert(editingAddressId ? 'Endereço atualizado com sucesso!' : 'Endereço adicionado com sucesso!');
+            }
+        }
+        
+        editingAddressId = null;
+        
+    } catch (error) {
+        console.error('Erro ao salvar endereço:', error);
+        if (window.MessageHelper) {
+            window.MessageHelper.showError('Erro ao salvar endereço: ' + error.message, document.getElementById('new-address-form'));
+        } else {
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError('Erro ao salvar endereço: ' + error.message, messagesContainer);
+            } else {
+                alert('Erro ao salvar endereço: ' + error.message);
+            }
+        }
+    } finally {
+        if (saveBtn && originalText) {
+            if (window.LoadingHelper) {
+                window.LoadingHelper.restoreButton(saveBtn, { innerHTML: originalText });
+            } else {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalText;
+            }
+        }
+    }
+}
+
+// Função para carregar endereços do backend
+async function loadAddressesFromBackend() {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    
+    try {
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch('/api/addresses', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${idToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            console.log("Endereços carregados do backend (resultado completo):", result);
+            console.log("Tipo de result.addresses:", typeof result.addresses, Array.isArray(result.addresses));
+            
+            if (result.addresses && Array.isArray(result.addresses)) {
+                // Os endereços já vêm no formato correto do backend
+                usuario.addresses = result.addresses;
+                console.log("Endereços atribuídos ao usuario:", usuario.addresses);
+                console.log("Quantidade de endereços:", usuario.addresses.length);
+                if (usuario.addresses.length > 0) {
+                    console.log("Primeiro endereço:", usuario.addresses[0]);
+                }
+                renderAddresses();
+            } else {
+                console.log("Nenhum endereço encontrado ou formato inválido. result.addresses:", result.addresses);
+                usuario.addresses = [];
+                renderAddresses();
+            }
+        } else {
+            const errorText = await response.text();
+            console.error("Erro ao carregar endereços:", response.status, response.statusText, errorText);
+        }
+    } catch (error) {
+        console.error('Erro ao carregar endereços:', error);
+    }
 }
 
 function renderAddresses() {
     const container = document.getElementById('addresses-list');
     
-    if (usuario.addresses.length === 0) { // CORRIGIDO: usa 'usuario.addresses'
+    if (!container) {
+        console.error("Container 'addresses-list' não encontrado!");
+        return;
+    }
+    
+    console.log("Renderizando endereços. Total:", usuario.addresses ? usuario.addresses.length : 0);
+    console.log("Endereços:", usuario.addresses);
+    
+    if (!usuario.addresses || usuario.addresses.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-map-marked-alt"></i>
@@ -228,21 +513,24 @@ function renderAddresses() {
         return;
     }
     
-    let html = '<div class="addresses-grid">';
-    usuario.addresses.forEach(address => { // CORRIGIDO: usa 'usuario.addresses'
+    let html = '';
+    console.log("Iniciando renderização de", usuario.addresses.length, "endereços");
+    usuario.addresses.forEach((address, index) => {
+        console.log(`Renderizando endereço ${index + 1}:`, address);
         const typeText = { 'home': 'Casa', 'work': 'Trabalho', 'other': 'Outro' }[address.type] || 'Endereço';
+        const formattedCep = address.zipcode ? address.zipcode.replace(/^(\d{5})(\d{3})$/, '$1-$2') : 'Não informado';
         
         html += `
             <div class="address-card ${address.isDefault ? 'default' : ''}" data-id="${address.id}">
                 <div class="address-header">
-                    <h4>${address.name || typeText}</h4>
+                    <h4><i class="fas fa-${address.type === 'home' ? 'home' : (address.type === 'work' ? 'briefcase' : 'map-marker-alt')}"></i> ${typeText}</h4>
                     ${address.isDefault ? '<span class="default-badge">Padrão</span>' : ''}
                 </div>
                 <div class="address-details">
-                    <p>${address.street}, ${address.number}${address.complement ? ', ' + address.complement : ''}</p>
-                    <p>${address.neighborhood} - ${address.city}/${address.state}</p>
-                    <p>CEP: ${address.zipcode || 'Não informado'}</p>
-                    ${address.reference ? `<p class="reference"><strong>Referência:</strong> ${address.reference}</p>` : ''}
+                    <p>${address.street || ''}, ${address.number || ''}${address.complement ? ', ' + address.complement : ''}</p>
+                    <p>${address.neighborhood || ''} - ${address.city || ''}/${address.state || ''}</p>
+                    <p>CEP: ${formattedCep}</p>
+                    ${address.phone ? `<p>Telefone: ${address.phone}</p>` : ''}
                 </div>
                 <div class="address-actions">
                     <button class="btn btn-outline btn-sm set-default" ${address.isDefault ? 'disabled' : ''} data-id="${address.id}">
@@ -258,8 +546,11 @@ function renderAddresses() {
             </div>
         `;
     });
-    html += '</div>';
+    console.log("HTML gerado (primeiros 500 chars):", html.substring(0, 500));
+    console.log("Tamanho total do HTML:", html.length, "caracteres");
     container.innerHTML = html;
+    console.log("HTML inserido no container. Container agora tem:", container.innerHTML.length, "caracteres");
+    console.log("Container após inserção (primeiros 500 chars):", container.innerHTML.substring(0, 500));
     
     // Configura os event listeners para os botões dos endereços recém-renderizados.
     setupAddressButtons(); 
@@ -268,14 +559,61 @@ function renderAddresses() {
 function setupAddressButtons() {
     // Adiciona listener para o botão "Tornar padrão"
     document.querySelectorAll('.set-default').forEach(button => {
-        button.addEventListener('click', function() {
+        button.addEventListener('click', async function() {
             const addressId = parseInt(this.dataset.id); 
-            usuario.addresses.forEach(addr => { // CORRIGIDO: usa 'usuario.addresses'
-                addr.isDefault = (addr.id === addressId); 
-            });
-            renderAddresses(); // Re-renderiza para atualizar a UI
-            console.log('Endereço padrão alterado (localmente):', addressId);
-            // FUTURO: Chamar API PUT para atualizar o padrão no backend
+            const address = usuario.addresses.find(addr => addr.id === addressId);
+            if (!address) return;
+            
+            const currentUser = auth.currentUser;
+            if (!currentUser) {
+                if (window.MessageHelper) {
+                    window.MessageHelper.showError('Você precisa estar logado.', document.getElementById('addresses-list'));
+                } else {
+                    const messagesContainer = document.getElementById('profile-messages-container');
+                    if (messagesContainer && window.MessageHelper) {
+                        window.MessageHelper.showError('Você precisa estar logado.', messagesContainer);
+                    } else {
+                        alert('Você precisa estar logado.');
+                    }
+                }
+                return;
+            }
+            
+            try {
+                const idToken = await currentUser.getIdToken();
+                const response = await fetch(`/api/addresses/${addressId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${idToken}`
+                    },
+                    body: JSON.stringify({
+                        ...address,
+                        isDefault: true
+                    })
+                });
+                
+                if (response.ok) {
+                    await loadAddressesFromBackend();
+                    if (window.MessageHelper) {
+                        window.MessageHelper.showSuccess('Endereço definido como padrão!', document.getElementById('addresses-list'), 3000);
+                    }
+                } else {
+                    throw new Error('Erro ao atualizar endereço padrão');
+                }
+            } catch (error) {
+                console.error('Erro ao definir endereço padrão:', error);
+                if (window.MessageHelper) {
+                    window.MessageHelper.showError('Erro ao definir endereço padrão: ' + error.message, document.getElementById('addresses-list'));
+                } else {
+                    const messagesContainer = document.getElementById('profile-messages-container');
+                    if (messagesContainer && window.MessageHelper) {
+                        window.MessageHelper.showError('Erro ao definir endereço padrão: ' + error.message, messagesContainer);
+                    } else {
+                        alert('Erro ao definir endereço padrão: ' + error.message);
+                    }
+                }
+            }
         });
     });
     
@@ -283,47 +621,220 @@ function setupAddressButtons() {
     document.querySelectorAll('.edit-address').forEach(button => {
         button.addEventListener('click', function() {
             const addressId = parseInt(this.dataset.id);
-            const address = usuario.addresses.find(addr => addr.id === addressId); // CORRIGIDO: usa 'usuario.addresses'
+            const address = usuario.addresses.find(addr => addr.id === addressId);
             if (!address) return;
             
             // Preenche o formulário com os dados do endereço para edição
             document.getElementById('address-type').value = address.type;
-            document.getElementById('address-name').value = address.name || '';
-            document.getElementById('address-zipcode').value = address.zipcode || '';
+            document.getElementById('address-cep').value = address.zipcode ? address.zipcode.replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
             document.getElementById('address-street').value = address.street || '';
             document.getElementById('address-number').value = address.number || '';
             document.getElementById('address-complement').value = address.complement || '';
             document.getElementById('address-neighborhood').value = address.neighborhood || '';
             document.getElementById('address-city').value = address.city || '';
             document.getElementById('address-state').value = address.state || '';
-            document.getElementById('address-reference').value = address.reference || '';
+            document.getElementById('address-phone').value = address.phone || '';
             
-            // Remove o endereço da lista local (ele será recriado/atualizado ao salvar)
-            usuario.addresses = usuario.addresses.filter(addr => addr.id !== addressId); // CORRIGIDO: usa 'usuario.addresses'
-            renderAddresses(); // Re-renderiza sem o endereço editado
+            editingAddressId = addressId; // Marcar que está editando
             toggleNewAddressForm(); // Mostra o formulário para edição
-            console.log('Editando endereço (localmente):', addressId);
-            // FUTURO: Chamar API PUT para atualizar o endereço no backend
         });
     });
     
     // Adiciona listener para o botão "Excluir" endereço
     document.querySelectorAll('.delete-address').forEach(button => {
-        button.addEventListener('click', function() {
+        button.addEventListener('click', async function() {
             if (!confirm('Tem certeza que deseja excluir este endereço?')) return;
             
             const addressId = parseInt(this.dataset.id);
-            usuario.addresses = usuario.addresses.filter(addr => addr.id !== addressId); // CORRIGIDO: usa 'usuario.addresses'
-            
-            // Se o endereço excluído era o padrão e ainda há endereços, define o primeiro como padrão
-            if (usuario.addresses.length > 0 && !usuario.addresses.some(addr => addr.isDefault)) { // CORRIGIDO: usa 'usuario.addresses'
-                usuario.addresses[0].isDefault = true; // CORRIGIDO: usa 'usuario.addresses'
+            const currentUser = auth.currentUser;
+            if (!currentUser) {
+                if (window.MessageHelper) {
+                    window.MessageHelper.showError('Você precisa estar logado.', document.getElementById('addresses-list'));
+                } else {
+                    const messagesContainer = document.getElementById('profile-messages-container');
+                    if (messagesContainer && window.MessageHelper) {
+                        window.MessageHelper.showError('Você precisa estar logado.', messagesContainer);
+                    } else {
+                        alert('Você precisa estar logado.');
+                    }
+                }
+                return;
             }
-            renderAddresses(); // Re-renderiza
-            console.log('Endereço excluído (localmente):', addressId);
-            // FUTURO: Chamar API DELETE para excluir o endereço no backend
+            
+            try {
+                const idToken = await currentUser.getIdToken();
+                const response = await fetch(`/api/addresses/${addressId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`
+                    }
+                });
+                
+                if (response.ok) {
+                    await loadAddressesFromBackend();
+                    if (window.MessageHelper) {
+                        window.MessageHelper.showSuccess('Endereço removido com sucesso!', document.getElementById('addresses-list'), 3000);
+                    } else {
+                        const messagesContainer = document.getElementById('profile-messages-container');
+                        if (messagesContainer && window.MessageHelper) {
+                            window.MessageHelper.showSuccess('Endereço removido com sucesso!', messagesContainer, 3000);
+                        } else {
+                            alert('Endereço removido com sucesso!');
+                        }
+                    }
+                } else {
+                    const result = await response.json();
+                    throw new Error(result.erro || 'Erro ao remover endereço');
+                }
+            } catch (error) {
+                console.error('Erro ao remover endereço:', error);
+                if (window.MessageHelper) {
+                    window.MessageHelper.showError('Erro ao remover endereço: ' + error.message, document.getElementById('addresses-list'));
+                } else {
+                    const messagesContainer = document.getElementById('profile-messages-container');
+                    if (messagesContainer && window.MessageHelper) {
+                        window.MessageHelper.showError('Erro ao remover endereço: ' + error.message, messagesContainer);
+                    } else {
+                        alert('Erro ao remover endereço: ' + error.message);
+                    }
+                }
+            }
         });
     });
+}
+
+// Função para carregar pedidos do usuário
+async function loadUserOrders() {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    
+    try {
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch('/api/orders', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${idToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.orders && Array.isArray(result.orders)) {
+                renderOrders(result.orders);
+            } else {
+                renderOrders([]);
+            }
+        } else {
+            console.error("Erro ao carregar pedidos:", response.status, response.statusText);
+            renderOrders([]);
+        }
+    } catch (error) {
+        console.error('Erro ao carregar pedidos:', error);
+        renderOrders([]);
+    }
+}
+
+// Função para renderizar pedidos
+function renderOrders(orders) {
+    const container = document.getElementById('orders-section');
+    if (!container) return;
+    
+    const ordersContainer = document.getElementById('orders-container') || container;
+    
+    if (orders.length === 0) {
+        ordersContainer.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-shopping-basket"></i>
+                <h3>Nenhum pedido encontrado</h3>
+                <p>Você ainda não realizou nenhum pedido em nossa loja. Aproveite para conhecer nossos produtos!</p>
+                <a href="/produtos" class="btn-shop-now">
+                    <i class="fas fa-shopping-bag"></i> Ir para a Loja
+                </a>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '<div class="orders-list">';
+    orders.forEach(order => {
+        const formattedDate = new Date(order.data_venda).toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        const totalItems = order.itens.reduce((sum, item) => sum + item.quantidade, 0);
+        
+        html += `
+            <div class="order-card">
+                <div class="order-header">
+                    <div class="order-info">
+                        <h3>Pedido ${order.codigo_pedido}</h3>
+                        <span class="order-date">${formattedDate}</span>
+                    </div>
+                    <div class="order-status-badge status-${order.status}">
+                        ${order.status_display}
+                    </div>
+                </div>
+                <div class="order-details">
+                    <div class="order-items">
+                        <p class="order-items-count">${totalItems} ${totalItems === 1 ? 'item' : 'itens'}</p>
+                        <ul class="order-items-list">
+                            ${order.itens.map(item => `
+                                <li>
+                                    <span class="item-quantity">${item.quantidade}x</span>
+                                    <span class="item-name">${item.nome_produto}</span>
+                                    <span class="item-price">R$ ${item.subtotal.toFixed(2).replace('.', ',')}</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                    <div class="order-summary">
+                        <div class="summary-row">
+                            <span>Subtotal:</span>
+                            <span>R$ ${(order.valor_total - order.valor_frete + order.valor_desconto).toFixed(2).replace('.', ',')}</span>
+                        </div>
+                        ${order.valor_frete > 0 ? `
+                            <div class="summary-row">
+                                <span>Frete:</span>
+                                <span>R$ ${order.valor_frete.toFixed(2).replace('.', ',')}</span>
+                            </div>
+                        ` : ''}
+                        ${order.valor_desconto > 0 ? `
+                            <div class="summary-row discount">
+                                <span>Desconto:</span>
+                                <span>- R$ ${order.valor_desconto.toFixed(2).replace('.', ',')}</span>
+                            </div>
+                        ` : ''}
+                        <div class="summary-row total">
+                            <span><strong>Total:</strong></span>
+                            <span><strong>R$ ${order.valor_total.toFixed(2).replace('.', ',')}</strong></span>
+                        </div>
+                    </div>
+                    <div class="order-address">
+                        <p><strong>Endereço de entrega:</strong></p>
+                        <p>${order.endereco.rua}, ${order.endereco.numero}${order.endereco.complemento ? ', ' + order.endereco.complemento : ''}</p>
+                        <p>${order.endereco.bairro} - ${order.endereco.cidade}/${order.endereco.estado}</p>
+                        <p>CEP: ${order.endereco.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')}</p>
+                    </div>
+                    ${order.data_envio ? `
+                        <div class="order-tracking">
+                            <p><i class="fas fa-truck"></i> Enviado em: ${new Date(order.data_envio).toLocaleDateString('pt-BR')}</p>
+                        </div>
+                    ` : ''}
+                    ${order.data_entrega_real ? `
+                        <div class="order-delivered">
+                            <p><i class="fas fa-check-circle"></i> Entregue em: ${new Date(order.data_entrega_real).toLocaleDateString('pt-BR')}</p>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    ordersContainer.innerHTML = html;
 }
 
 // --- Inicialização do script quando o DOM estiver carregado ---
@@ -349,8 +860,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!response.ok) {
                     // Trata respostas HTTP que não são sucesso (ex: 401, 404, 500)
                     if (response.status === 401) {
+                        const messagesContainer = document.getElementById('profile-messages-container');
+                        if (messagesContainer && window.MessageHelper) {
+                            window.MessageHelper.showError("Sessão expirada ou não autorizada. Por favor, faça login novamente.", messagesContainer);
+                            setTimeout(() => {
+                                window.location.href = '/auth/login';
+                            }, 2000);
+                        } else {
                         alert("Sessão expirada ou não autorizada. Por favor, faça login novamente.");
-                        window.location.href = '/auth.login_page'; // Redireciona para a página de login do Flask
+                            window.location.href = '/auth/login';
+                        }
                     } else {
                         const errorData = await response.json(); // Tenta ler o JSON de erro do backend
                         throw new Error(errorData.erro || "Erro desconhecido ao carregar dados do perfil.");
@@ -360,16 +879,40 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await response.json(); // Parseia a resposta JSON
                 console.log("Dados do perfil carregados do backend:", data);
                 loadUserData(data); // Carrega os dados recebidos e atualiza a UI
+                // Carregar endereços separadamente para garantir que estão atualizados
+                await loadAddressesFromBackend();
+                
+                // Garantir que os endereços sejam renderizados mesmo se não vierem nos dados iniciais
+                if (!usuario.addresses || usuario.addresses.length === 0) {
+                    console.log("Nenhum endereço nos dados iniciais, tentando carregar do backend...");
+                    await loadAddressesFromBackend();
+                }
+                
+                // Carregar pedidos do usuário
+                await loadUserOrders();
 
             } catch (error) {
                 console.error("Erro ao carregar o perfil:", error);
+                const messagesContainer = document.getElementById('profile-messages-container');
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showError("Ocorreu um erro ao carregar seu perfil. Por favor, tente novamente mais tarde.", messagesContainer);
+                } else {
                 alert("Ocorreu um erro ao carregar seu perfil. Por favor, tente novamente mais tarde.");
+                }
                 // Opcional: Redirecionar ou deslogar o usuário em caso de erro grave.
             }
         } else {
             // Usuário não logado no Firebase, redireciona para a página de login.
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError('Você precisa estar logado para acessar esta página.', messagesContainer);
+                setTimeout(() => {
+                    window.location.href = '/auth/login';
+                }, 2000);
+            } else {
             alert('Você precisa estar logado para acessar esta página.');
-            window.location.href = '/auth.login_page'; 
+                window.location.href = '/auth/login';
+            } 
         }
     });
 
@@ -382,10 +925,107 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('cancel-btn').addEventListener('click', togglePersonalInfoEdit);
     document.getElementById('save-btn').addEventListener('click', savePersonalInfo);
 
+    // Botão de logout
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async function() {
+            const messagesContainer = document.getElementById('profile-messages-container');
+            
+            if (window.LoadingHelper) {
+                window.LoadingHelper.setButtonLoading(logoutBtn, 'Saindo...');
+            } else {
+                logoutBtn.disabled = true;
+                const originalHTML = logoutBtn.innerHTML;
+                logoutBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saindo...';
+            }
+            
+            try {
+                // Fazer logout do Firebase
+                await signOut(auth);
+                
+                // Fazer logout do backend (limpar sessão)
+                const response = await fetch('/auth/logout', {
+                    method: 'GET'
+                });
+                
+                // Limpar dados locais
+                localStorage.removeItem('cartSessionId');
+                usuario = { addresses: [] };
+                
+                // Redirecionar para login
+                window.location.href = '/auth/login';
+            } catch (error) {
+                console.error('Erro ao fazer logout:', error);
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showError('Erro ao fazer logout. Tente novamente.', messagesContainer);
+                }
+                if (window.LoadingHelper) {
+                    window.LoadingHelper.restoreButton(logoutBtn, { innerHTML: '<i class="fas fa-sign-out-alt"></i> Sair' });
+                } else {
+                    logoutBtn.disabled = false;
+                    logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> Sair';
+                }
+            }
+        });
+    }
+
     // Botões de endereços
     document.getElementById('add-address-btn').addEventListener('click', toggleNewAddressForm);
     document.getElementById('cancel-new-address').addEventListener('click', toggleNewAddressForm);
     document.getElementById('save-new-address').addEventListener('click', addNewAddress);
+    
+    // Event listeners para busca de CEP
+    const cepInput = document.getElementById('address-cep');
+    const buscarCepBtn = document.getElementById('buscar-cep-btn');
+    
+    if (buscarCepBtn && cepInput) {
+        buscarCepBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const cep = cepInput.value.replace(/\D/g, '');
+            if (cep.length === 8) {
+                fillAddressByCEP(cep);
+            } else {
+                if (window.MessageHelper) {
+                    window.MessageHelper.showError('Por favor, digite um CEP válido (8 dígitos)', document.getElementById('new-address-form'));
+                } else {
+                    alert('Por favor, digite um CEP válido (8 dígitos)');
+                }
+                cepInput.focus();
+            }
+        });
+    }
+    
+    // Formatação automática do CEP e busca automática
+    if (cepInput) {
+        // Formatação do CEP (00000-000)
+        cepInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 5) {
+                value = value.substring(0, 5) + '-' + value.substring(5, 8);
+            }
+            e.target.value = value;
+        });
+        
+        // Busca automática após digitar 8 dígitos (com delay)
+        let cepTimeout;
+        cepInput.addEventListener('input', function(e) {
+            const value = e.target.value.replace(/\D/g, '');
+            clearTimeout(cepTimeout);
+            if (value.length === 8) {
+                cepTimeout = setTimeout(() => {
+                    fillAddressByCEP(value);
+                }, 800);
+            }
+        });
+        
+        // Busca ao perder o foco se tiver 8 dígitos
+        cepInput.addEventListener('blur', function(e) {
+            const cep = e.target.value.replace(/\D/g, '');
+            if (cep.length === 8) {
+                fillAddressByCEP(cep);
+            }
+        });
+    }
     
     // Botão de trocar foto de perfil (ainda com lógica local)
     document.getElementById('change-avatar-btn').addEventListener('click', function() {
@@ -457,10 +1097,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({ id_token: idToken })
             });
 
-            alert("Email de verificação enviado! Verifique sua caixa de entrada e também a pasta de spam.");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showSuccess("Email de verificação enviado! Verifique sua caixa de entrada e também a pasta de spam.", messagesContainer, 5000);
+            } else {
+                alert("Email de verificação enviado! Verifique sua caixa de entrada e também a pasta de spam.");
+            }
         } catch (error) {
             console.error("Erro ao reenviar verificação:", error);
-            alert("Erro ao enviar email de verificação: " + error.message);
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("Erro ao enviar email de verificação: " + error.message, messagesContainer);
+            } else {
+                alert("Erro ao enviar email de verificação: " + error.message);
+            }
         }
     }
 
@@ -473,9 +1123,19 @@ document.addEventListener('DOMContentLoaded', function() {
         
         try {
             await loadEmailVerificationStatus(user);
-            alert("Status atualizado!");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showSuccess("Status atualizado!", messagesContainer, 2000);
+            } else {
+                alert("Status atualizado!");
+            }
         } catch (error) {
-            alert("Erro ao atualizar status: " + error.message);
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("Erro ao atualizar status: " + error.message, messagesContainer);
+            } else {
+                alert("Erro ao atualizar status: " + error.message);
+            }
         } finally {
             refreshBtn.disabled = false;
             refreshBtn.innerHTML = originalText;
@@ -505,22 +1165,42 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Validações
         if (!currentPassword || !newPassword || !confirmPassword) {
-            alert("Por favor, preencha todos os campos.");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("Por favor, preencha todos os campos.", messagesContainer);
+            } else {
+                alert("Por favor, preencha todos os campos.");
+            }
             return;
         }
 
         if (newPassword.length < 6) {
-            alert("A nova senha deve ter pelo menos 6 caracteres.");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("A nova senha deve ter pelo menos 6 caracteres.", messagesContainer);
+            } else {
+                alert("A nova senha deve ter pelo menos 6 caracteres.");
+            }
             return;
         }
 
         if (newPassword !== confirmPassword) {
-            alert("As senhas não coincidem.");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("As senhas não coincidem.", messagesContainer);
+            } else {
+                alert("As senhas não coincidem.");
+            }
             return;
         }
 
         if (currentPassword === newPassword) {
-            alert("A nova senha deve ser diferente da senha atual.");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("A nova senha deve ser diferente da senha atual.", messagesContainer);
+            } else {
+                alert("A nova senha deve ser diferente da senha atual.");
+            }
             return;
         }
 
@@ -551,7 +1231,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(errorData.erro || "Erro ao alterar senha");
             }
 
-            alert("Senha alterada com sucesso!");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showSuccess("Senha alterada com sucesso!", messagesContainer, 3000);
+            } else {
+                alert("Senha alterada com sucesso!");
+            }
             toggleChangePasswordForm(); // Fecha o formulário
         } catch (error) {
             console.error("Erro ao alterar senha:", error);
@@ -565,7 +1250,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 errorMessage += error.message;
             }
             
-            alert(errorMessage);
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError(errorMessage, messagesContainer);
+            } else {
+                alert(errorMessage);
+            }
         }
     }
 
@@ -686,7 +1376,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
         } catch (error) {
             console.error("Erro ao configurar 2FA:", error);
-            alert("Erro ao configurar 2FA: " + error.message);
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("Erro ao configurar 2FA: " + error.message, messagesContainer);
+            } else {
+                alert("Erro ao configurar 2FA: " + error.message);
+            }
         }
     }
 
@@ -695,12 +1390,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const code = document.getElementById('mfa-verify-code').value;
         
         if (!code || code.length !== 6) {
-            alert("Por favor, digite o código de 6 dígitos do seu app autenticador.");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("Por favor, digite o código de 6 dígitos do seu app autenticador.", messagesContainer);
+            } else {
+                alert("Por favor, digite o código de 6 dígitos do seu app autenticador.");
+            }
             return;
         }
 
         if (!mfaSecret) {
-            alert("Erro: Secret não encontrado. Por favor, inicie o setup novamente.");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("Erro: Secret não encontrado. Por favor, inicie o setup novamente.", messagesContainer);
+            } else {
+                alert("Erro: Secret não encontrado. Por favor, inicie o setup novamente.");
+            }
             return;
         }
 
@@ -724,7 +1429,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(errorData.erro || "Erro ao habilitar 2FA");
             }
 
-            alert("2FA habilitado com sucesso!");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showSuccess("2FA habilitado com sucesso!", messagesContainer, 3000);
+            } else {
+                alert("2FA habilitado com sucesso!");
+            }
             
             // Limpar formulário
             document.getElementById('mfa-setup-form').style.display = 'none';
@@ -736,7 +1446,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
         } catch (error) {
             console.error("Erro ao habilitar 2FA:", error);
-            alert("Erro ao habilitar 2FA: " + error.message);
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("Erro ao habilitar 2FA: " + error.message, messagesContainer);
+            } else {
+                alert("Erro ao habilitar 2FA: " + error.message);
+            }
         }
     }
 
@@ -745,7 +1460,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const code = document.getElementById('mfa-disable-code').value;
         
         if (!code || code.length !== 6) {
-            alert("Por favor, digite o código de 6 dígitos do seu app autenticador para confirmar.");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("Por favor, digite o código de 6 dígitos do seu app autenticador para confirmar.", messagesContainer);
+            } else {
+                alert("Por favor, digite o código de 6 dígitos do seu app autenticador para confirmar.");
+            }
             return;
         }
 
@@ -768,7 +1488,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(errorData.erro || "Erro ao desabilitar 2FA");
             }
 
-            alert("2FA desabilitado com sucesso!");
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showSuccess("2FA desabilitado com sucesso!", messagesContainer, 3000);
+            } else {
+                alert("2FA desabilitado com sucesso!");
+            }
             
             // Limpar formulário
             document.getElementById('mfa-disable-form').style.display = 'none';
@@ -779,7 +1504,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
         } catch (error) {
             console.error("Erro ao desabilitar 2FA:", error);
-            alert("Erro ao desabilitar 2FA: " + error.message);
+            const messagesContainer = document.getElementById('profile-messages-container');
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError("Erro ao desabilitar 2FA: " + error.message, messagesContainer);
+            } else {
+                alert("Erro ao desabilitar 2FA: " + error.message);
+            }
         }
     }
 

@@ -15,6 +15,9 @@
         <p class="page-subtitle">Revise seus itens antes de finalizar a compra</p>
     </div>
 
+    {# Container para mensagens inline #}
+    <div id="cart-messages-container" class="cart-messages-container"></div>
+    
     {# Mensagens flash (Flask) podem ser mantidas, pois são do backend #}
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -44,8 +47,7 @@
     
     {# Contêiner onde os itens do carrinho serão injetados pelo JavaScript #}
     <div class="cart-items" id="cart-items-list">
-        {# Conteúdo inicial para indicar carregamento ou vazio #}
-        <p>Carregando itens do carrinho...</p>
+        {# Conteúdo será preenchido pelo JavaScript #}
     </div>
 
     {# Este bloco inteiro é o resumo do carrinho #}

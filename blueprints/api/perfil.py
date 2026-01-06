@@ -1,7 +1,7 @@
 from . import api_bp
 from flask import jsonify, request, g
 from ..services import login_required_and_load_user, get_user_by_firebase_uid, update_user_profile_db
-from firebase_admin import auth
+from ..services.auth_service import verify_firebase_token
 
 # Rota API para obter os dados do perfil do usuário logado (GET JSON)
 @api_bp.route('/user_data', methods=["GET"])
@@ -19,7 +19,10 @@ def update_user_profile_api():
         return jsonify({"erro": "Token de autenticação é obrigatório"}), 401
 
     try:
-        decoded_token = auth.verify_id_token(id_token)
+        decoded_token = verify_firebase_token(id_token)
+        if not decoded_token:
+            return jsonify({"erro": "Token inválido ou expirado"}), 401
+        
         firebase_uid = decoded_token['uid']
         
         # Busque o usuário pelo firebase_uid para obter o id interno do seu DB
@@ -36,8 +39,6 @@ def update_user_profile_api():
             return jsonify({"mensagem": "Perfil atualizado com sucesso"}), 200
         else:
             return jsonify({"erro": "Falha ao atualizar perfil no banco de dados"}), 500
-    except auth.InvalidIdTokenError:
-        return jsonify({"erro": "Token inválido ou expirado"}), 401
     except Exception as e:
         print(f"Erro ao atualizar perfil: {e}")
         return jsonify({"erro": "Erro interno do servidor"}), 500

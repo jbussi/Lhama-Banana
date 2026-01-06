@@ -56,16 +56,14 @@ async function handleLogin(userCredential) {
         // Verificar se email está verificado
         if (!user.emailVerified) {
             // Mostrar aviso mas permitir login
-            const shouldVerify = confirm(
-                "Seu email ainda não foi verificado. " +
-                "Deseja receber um novo email de verificação? " +
-                "Você pode continuar, mas algumas funcionalidades podem estar limitadas."
-            );
-            
-            if (shouldVerify) {
-                await sendEmailVerification(user);
-                const container = document.getElementById('login-messages-container') || document.body;
-                MessageHelper.showSuccess("Email de verificação enviado! Verifique sua caixa de entrada.", container);
+            const container = document.getElementById('login-messages-container');
+            if (container) {
+                MessageHelper.showWarning(
+                    "Seu email ainda não foi verificado. Algumas funcionalidades podem estar limitadas. " +
+                    "Você pode solicitar um novo email de verificação no seu perfil.",
+                    container,
+                    8000
+                );
             }
         }
         
@@ -141,14 +139,13 @@ async function handleLogin(userCredential) {
             console.error("Erro do servidor:", data);
             // Verificar se é erro de email não verificado
             if (data.requer_verificacao) {
-                const resend = confirm(
-                    "Seu email não está verificado. " +
-                    "Deseja receber um novo email de verificação?"
-                );
-                if (resend) {
-                    await sendEmailVerification(user);
-                    const container = document.getElementById('login-messages-container') || document.body;
-                    MessageHelper.showSuccess("Email de verificação enviado! Verifique sua caixa de entrada.", container);
+                const container = document.getElementById('login-messages-container');
+                if (container) {
+                    MessageHelper.showWarning(
+                        "Seu email não está verificado. Você pode solicitar um novo email de verificação no seu perfil.",
+                        container,
+                        8000
+                    );
                 }
             }
             throw new Error(data.erro || "Erro desconhecido no backend");
@@ -172,6 +169,9 @@ async function handleLogin(userCredential) {
             console.log("2FA não necessário - redirecionando para perfil");
         }
         
+        // Esconder loader se estiver visível
+        LoadingHelper.hidePageLoader();
+        
         // Redirecionar
         window.location.href = "/perfil";
         
@@ -191,10 +191,15 @@ if (submit) {
   const password = document.getElementById("password").value;
 
         if (!email || !password) {
-            const container = document.getElementById('login-messages-container') || document.body;
-            MessageHelper.showError('Por favor, preencha todos os campos.', container);
+            const container = document.getElementById('login-messages-container');
+            if (container) {
+                MessageHelper.showError('Por favor, preencha todos os campos.', container);
+            }
             return;
         }
+
+        // Mostrar loading no botão
+        const buttonState = LoadingHelper.setButtonLoading(submit, "Entrando...");
 
         try {
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -205,25 +210,30 @@ if (submit) {
             
             switch (error.code) {
                 case 'auth/user-not-found':
-                    errorMessage += "Usuário não encontrado.";
+                    errorMessage = "Usuário não encontrado.";
                     break;
                 case 'auth/wrong-password':
-                    errorMessage += "Senha incorreta.";
+                    errorMessage = "Senha incorreta.";
                     break;
                 case 'auth/invalid-email':
-                    errorMessage += "Email inválido.";
+                    errorMessage = "Email inválido.";
                     break;
                 case 'auth/user-disabled':
-                    errorMessage += "Conta desabilitada.";
+                    errorMessage = "Conta desabilitada.";
                     break;
                 case 'auth/too-many-requests':
-                    errorMessage += "Muitas tentativas. Tente novamente mais tarde.";
+                    errorMessage = "Muitas tentativas. Tente novamente mais tarde.";
                     break;
                 default:
                     errorMessage += error.message;
             }
             
-            alert(errorMessage);
+            const container = document.getElementById('login-messages-container');
+            if (container) {
+                MessageHelper.showError(errorMessage, container);
+            }
+        } finally {
+            LoadingHelper.restoreButton(submit, buttonState);
         }
     });
 }
@@ -232,6 +242,10 @@ if (submit) {
 if (googleLoginBtn) {
     googleLoginBtn.addEventListener("click", async function(event) {
         event.preventDefault();
+        
+        // Mostrar page loader e desabilitar botão
+        LoadingHelper.showPageLoader();
+        const buttonState = LoadingHelper.setButtonLoading(googleLoginBtn, "Conectando...");
         
         try {
             const userCredential = await signInWithPopup(auth, googleProvider);
@@ -248,8 +262,13 @@ if (googleLoginBtn) {
                 errorMessage += error.message;
             }
             
-            const container = document.getElementById('login-messages-container') || document.body;
-            MessageHelper.showError(errorMessage, container);
+            const container = document.getElementById('login-messages-container');
+            if (container) {
+                MessageHelper.showError(errorMessage, container);
+            }
+            LoadingHelper.hidePageLoader();
+        } finally {
+            LoadingHelper.restoreButton(googleLoginBtn, buttonState);
         }
     });
 }
@@ -455,6 +474,9 @@ async function handleMFAVerification(user) {
             // 2FA verificado com sucesso
             messageDiv.innerHTML = '<div style="background: #d4edda; color: #155724; padding: 1rem; border-radius: 6px; border: 1px solid #c3e6cb;"><i class="fas fa-check-circle"></i> <strong>2FA verificado com sucesso!</strong></div>';
             messageDiv.style.display = 'block';
+            
+            // Esconder loader se estiver visível
+            LoadingHelper.hidePageLoader();
             
             // Redirecionar após 1 segundo
             setTimeout(() => {

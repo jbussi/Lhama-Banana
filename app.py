@@ -8,11 +8,10 @@ import sys
 import time
 from blueprints import auth_bp, produtos_bp, api_bp, main_bp, checkout_api_bp, shipping_api_bp
 from blueprints.api.labels import labels_api_bp
-from blueprints.api.orders import orders_api_bp
 from blueprints.api.webhook import webhook_api_bp
 from blueprints.admin import admin_bp
 from blueprints.admin.api import admin_api_bp
-from flask import Flask
+from flask import Flask, render_template
 from config import CurrentConfig
 from plataform_config import init_app
 from flask_cors import CORS
@@ -97,10 +96,19 @@ def create_app(config_class=None):
     app.register_blueprint(checkout_api_bp)
     app.register_blueprint(shipping_api_bp, url_prefix='/api/shipping')
     app.register_blueprint(labels_api_bp)
-    app.register_blueprint(orders_api_bp)
     app.register_blueprint(webhook_api_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(admin_api_bp)
+    
+    # Handler para erro 404
+    @app.errorhandler(404)
+    def not_found_error(error):
+        return render_template('404.html'), 404
+    
+    # Handler para erro 403 (Forbidden) - redireciona para 404
+    @app.errorhandler(403)
+    def forbidden_error(error):
+        return render_template('404.html'), 404
     
     return app
 
