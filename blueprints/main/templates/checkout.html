@@ -26,21 +26,8 @@
                         <div class="section-icon">🚚</div>
                     </div>
                     
-                    <!-- Endereços Salvos (se usuário logado) -->
-                    <div id="saved-addresses-section" style="display: none;">
-                        <h3 style="margin-bottom: 1rem; color: #2d3436; font-size: 1.1rem;">
-                            <i class="fas fa-map-marker-alt" style="color: #40e0d0; margin-right: 0.5rem;"></i>
-                            Usar Endereço Salvo
-                        </h3>
-                        <div id="saved-addresses-list" style="margin-bottom: 1.5rem;"></div>
-                        <div style="margin-bottom: 1.5rem; padding-top: 1rem; border-top: 1px solid #e9ecef;">
-                            <button type="button" id="use-new-address-btn" class="btn-outline" style="display: none;">
-                                <i class="fas fa-plus"></i> Usar Novo Endereço
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div id="address-form" class="form-row">
+                    <!-- Informações do Cliente (sempre visíveis) -->
+                    <div class="form-row">
                         <div class="form-group">
                             <label for="nome_recebedor">Nome Completo *</label>
                             <input type="text" id="nome_recebedor" name="nome_recebedor" required>
@@ -65,73 +52,85 @@
                         </div>
                     </div>
 
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="cep">CEP *</label>
-                            <input type="text" id="cep" name="cep" placeholder="00000-000" required>
-                            <button type="button" id="buscarCep" class="btn-outline btn-small">🔍 Buscar</button>
-                        </div>
+                    <!-- Endereços Salvos (se usuário logado) -->
+                    <div id="saved-addresses-section" style="display: none;">
+                        <h3 style="margin-bottom: 1rem; color: #2d3436; font-size: 1.1rem;">
+                            <i class="fas fa-map-marker-alt" style="color: #40e0d0; margin-right: 0.5rem;"></i>
+                            Usar Endereço Salvo
+                        </h3>
+                        <div id="saved-addresses-list" style="margin-bottom: 1.5rem;"></div>
                     </div>
+                    
+                    <!-- Formulário de Endereço (oculto quando endereço salvo é selecionado) -->
+                    <div id="address-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="cep">CEP *</label>
+                                <input type="text" id="cep" name="cep" placeholder="00000-000" required>
+                                <button type="button" id="buscarCep" class="btn-outline btn-small">🔍 Buscar</button>
+                            </div>
+                        </div>
 
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="rua">Rua *</label>
-                            <input type="text" id="rua" name="rua" required>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="rua">Rua *</label>
+                                <input type="text" id="rua" name="rua" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="numero">Número *</label>
+                                <input type="text" id="numero" name="numero" required>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="numero">Número *</label>
-                            <input type="text" id="numero" name="numero" required>
-                        </div>
-                    </div>
 
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="complemento">Complemento</label>
-                            <input type="text" id="complemento" name="complemento">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="complemento">Complemento</label>
+                                <input type="text" id="complemento" name="complemento">
+                            </div>
+                            <div class="form-group">
+                                <label for="bairro">Bairro *</label>
+                                <input type="text" id="bairro" name="bairro" required>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="bairro">Bairro *</label>
-                            <input type="text" id="bairro" name="bairro" required>
-                        </div>
-                    </div>
 
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="cidade">Cidade *</label>
-                            <input type="text" id="cidade" name="cidade" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="estado">Estado *</label>
-                            <select id="estado" name="estado" required>
-                                <option value="">Selecione</option>
-                                <option value="AC">Acre</option>
-                                <option value="AL">Alagoas</option>
-                                <option value="AP">Amapá</option>
-                                <option value="AM">Amazonas</option>
-                                <option value="BA">Bahia</option>
-                                <option value="CE">Ceará</option>
-                                <option value="DF">Distrito Federal</option>
-                                <option value="ES">Espírito Santo</option>
-                                <option value="GO">Goiás</option>
-                                <option value="MA">Maranhão</option>
-                                <option value="MT">Mato Grosso</option>
-                                <option value="MS">Mato Grosso do Sul</option>
-                                <option value="MG">Minas Gerais</option>
-                                <option value="PA">Pará</option>
-                                <option value="PB">Paraíba</option>
-                                <option value="PR">Paraná</option>
-                                <option value="PE">Pernambuco</option>
-                                <option value="PI">Piauí</option>
-                                <option value="RJ">Rio de Janeiro</option>
-                                <option value="RN">Rio Grande do Norte</option>
-                                <option value="RS">Rio Grande do Sul</option>
-                                <option value="RO">Rondônia</option>
-                                <option value="RR">Roraima</option>
-                                <option value="SC">Santa Catarina</option>
-                                <option value="SP">São Paulo</option>
-                                <option value="SE">Sergipe</option>
-                                <option value="TO">Tocantins</option>
-                            </select>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="cidade">Cidade *</label>
+                                <input type="text" id="cidade" name="cidade" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="estado">Estado *</label>
+                                <select id="estado" name="estado" required>
+                                    <option value="">Selecione</option>
+                                    <option value="AC">Acre</option>
+                                    <option value="AL">Alagoas</option>
+                                    <option value="AP">Amapá</option>
+                                    <option value="AM">Amazonas</option>
+                                    <option value="BA">Bahia</option>
+                                    <option value="CE">Ceará</option>
+                                    <option value="DF">Distrito Federal</option>
+                                    <option value="ES">Espírito Santo</option>
+                                    <option value="GO">Goiás</option>
+                                    <option value="MA">Maranhão</option>
+                                    <option value="MT">Mato Grosso</option>
+                                    <option value="MS">Mato Grosso do Sul</option>
+                                    <option value="MG">Minas Gerais</option>
+                                    <option value="PA">Pará</option>
+                                    <option value="PB">Paraíba</option>
+                                    <option value="PR">Paraná</option>
+                                    <option value="PE">Pernambuco</option>
+                                    <option value="PI">Piauí</option>
+                                    <option value="RJ">Rio de Janeiro</option>
+                                    <option value="RN">Rio Grande do Norte</option>
+                                    <option value="RS">Rio Grande do Sul</option>
+                                    <option value="RO">Rondônia</option>
+                                    <option value="RR">Roraima</option>
+                                    <option value="SC">Santa Catarina</option>
+                                    <option value="SP">São Paulo</option>
+                                    <option value="SE">Sergipe</option>
+                                    <option value="TO">Tocantins</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>

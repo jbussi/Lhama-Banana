@@ -31,10 +31,35 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
     cur = conn.cursor()
     
     try:
-        # 1. Gerar um código de pedido único
+        # 1. Verificar se a coluna usuario_id existe, se não, criar
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'vendas' 
+            AND column_name = 'usuario_id'
+        """)
+        usuario_id_exists = cur.fetchone() is not None
+        
+        if not usuario_id_exists:
+            current_app.logger.info("Coluna usuario_id não existe na tabela vendas. Criando...")
+            try:
+                cur.execute("""
+                    ALTER TABLE vendas 
+                    ADD COLUMN usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+                """)
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_vendas_usuario_id ON vendas (usuario_id)
+                """)
+                conn.commit()
+                current_app.logger.info("Coluna usuario_id criada com sucesso")
+            except Exception as alter_error:
+                conn.rollback()
+                current_app.logger.warning(f"Erro ao criar coluna usuario_id (pode já existir): {alter_error}")
+        
+        # 2. Gerar um código de pedido único
         codigo_pedido = f"LB-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}-{os.urandom(4).hex().upper()}"
 
-        # 2. Inserir na tabela 'vendas'
+        # 3. Inserir na tabela 'vendas'
         # Verificar se há endereco_id no shipping_info (quando usuário usa endereço salvo)
         endereco_id = shipping_info.get('endereco_id')
         
@@ -58,7 +83,46 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
         ))
         venda_id = cur.fetchone()[0]
 
-        # 3. Inserir na tabela 'itens_venda' e decrementar estoque
+        # 3. Verificar se as colunas venda_id e produto_id existem em itens_venda
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'itens_venda' 
+            AND column_name IN ('venda_id', 'produto_id')
+        """)
+        existing_columns = [row[0] for row in cur.fetchall()]
+        has_venda_id = 'venda_id' in existing_columns
+        has_produto_id = 'produto_id' in existing_columns
+        
+        if not has_venda_id:
+            current_app.logger.info("Coluna venda_id não existe em itens_venda. Criando...")
+            try:
+                cur.execute("""
+                    ALTER TABLE itens_venda 
+                    ADD COLUMN venda_id INTEGER REFERENCES vendas(id) ON DELETE CASCADE
+                """)
+                conn.commit()
+                has_venda_id = True
+                current_app.logger.info("Coluna venda_id criada com sucesso")
+            except Exception as alter_error:
+                conn.rollback()
+                current_app.logger.warning(f"Erro ao criar coluna venda_id: {alter_error}")
+        
+        if not has_produto_id:
+            current_app.logger.info("Coluna produto_id não existe em itens_venda. Criando...")
+            try:
+                cur.execute("""
+                    ALTER TABLE itens_venda 
+                    ADD COLUMN produto_id INTEGER REFERENCES produtos(id) ON DELETE SET NULL
+                """)
+                conn.commit()
+                has_produto_id = True
+                current_app.logger.info("Coluna produto_id criada com sucesso")
+            except Exception as alter_error:
+                conn.rollback()
+                current_app.logger.warning(f"Erro ao criar coluna produto_id: {alter_error}")
+        
+        # 4. Inserir na tabela 'itens_venda' e decrementar estoque
         for item in cart_items:
             # Verificar estoque disponível
             cur.execute("""
@@ -222,6 +286,106 @@ def get_order_status(venda_id=None, codigo_pedido=None):
         cur.close()
 
 # --- Funções de interação com o PagBank API ---
+def create_card_token(api_token: str, card_data: Dict) -> str:
+    """
+    Cria um token do cartão usando a API do PagBank.
+    
+    Args:
+        api_token: Token de autenticação da API
+        card_data: Dados do cartão (número, exp_month, exp_year, holder, etc.)
+        
+    Returns:
+        Token do cartão (ID)
+    """
+    # Determinar URL base da API (sandbox ou production)
+    pagbank_env = current_app.config.get('PAGBANK_ENVIRONMENT', 'sandbox')
+    if pagbank_env == 'production':
+        base_url = current_app.config.get('PAGBANK_PRODUCTION_API_URL', '').replace('/orders', '')
+    else:
+        base_url = current_app.config.get('PAGBANK_SANDBOX_API_URL', '').replace('/orders', '')
+    
+    if not base_url:
+        base_url = 'https://sandbox.api.pagseguro.com.br' if pagbank_env != 'production' else 'https://api.pagbank.com.br'
+    
+    # O endpoint correto para criar tokens de cartão no PagBank é /cards
+    token_url = f"{base_url}/cards"
+    
+    headers = {
+        'Authorization': f'Bearer {api_token}',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
+    
+    # Preparar payload para criar token do cartão
+    # Converter ano para 4 dígitos se necessário
+    exp_year = str(card_data.get('card_exp_year', ''))
+    if len(exp_year) == 2:
+        current_year_prefix = str(datetime.datetime.now().year)[:2]
+        exp_year = current_year_prefix + exp_year
+    
+    token_payload = {
+        "number": card_data.get('card_number', '').replace(' ', '').replace('-', ''),
+        "exp_month": str(card_data.get('card_exp_month', '')).zfill(2),
+        "exp_year": exp_year,
+        "security_code": card_data.get('card_cvv', ''),
+        "holder": {
+            "name": card_data.get('card_holder_name', ''),
+            "tax_id": card_data.get('card_holder_cpf_cnpj', '').replace('.', '').replace('-', '').replace('/', '')
+        }
+    }
+    
+    try:
+        current_app.logger.info(f"[PagBank] Criando token do cartão: {token_url}")
+        current_app.logger.debug(f"[PagBank] Payload token: {json.dumps(token_payload, indent=2)}")
+        
+        response = requests.post(
+            token_url,
+            headers=headers,
+            json=token_payload,
+            timeout=30
+        )
+        
+        current_app.logger.info(f"[PagBank] Resposta criação token - Status: {response.status_code}")
+        current_app.logger.debug(f"[PagBank] Resposta texto: {response.text[:500]}")
+        
+        if response.status_code in [200, 201]:
+            try:
+                response_data = response.json()
+                card_id = response_data.get('id')
+                if not card_id:
+                    raise Exception("Resposta do PagBank não contém ID do cartão")
+                current_app.logger.info(f"[PagBank] Token do cartão criado com sucesso: {card_id}")
+                return card_id
+            except json.JSONDecodeError as json_error:
+                current_app.logger.error(f"[PagBank] Erro ao decodificar JSON da resposta: {json_error}")
+                current_app.logger.error(f"[PagBank] Resposta recebida: {response.text[:500]}")
+                raise Exception("Resposta inválida do gateway de pagamento ao criar token do cartão")
+        else:
+            # Tentar extrair mensagem de erro
+            error_message = f"Erro ao criar token do cartão (HTTP {response.status_code})"
+            try:
+                if response.text:
+                    error_data = response.json()
+                    error_message = error_data.get('message', error_data.get('error', {}).get('message', error_message))
+                    if 'errors' in error_data and isinstance(error_data['errors'], list) and len(error_data['errors']) > 0:
+                        error_message = error_data['errors'][0].get('message', error_message)
+            except:
+                error_message = f"Erro ao criar token do cartão (HTTP {response.status_code}): {response.text[:200]}"
+            
+            current_app.logger.error(f"[PagBank] Erro ao criar token: {error_message}")
+            current_app.logger.error(f"[PagBank] Resposta completa: {response.text[:500]}")
+            raise Exception(error_message)
+            
+    except requests.exceptions.RequestException as e:
+        current_app.logger.error(f"[PagBank] Erro de conexão ao criar token: {e}")
+        raise Exception(f"Erro ao comunicar com o gateway de pagamento: {str(e)}")
+    except Exception as e:
+        # Re-lançar exceções que já têm mensagem formatada
+        if "Erro ao criar token" in str(e) or "Erro ao comunicar" in str(e):
+            raise
+        current_app.logger.error(f"[PagBank] Erro inesperado ao criar token: {e}")
+        raise Exception(f"Erro ao criar token do cartão: {str(e)}")
+
 def call_pagbank_api(endpoint_url: str, api_token: str, payload: Dict) -> Dict:
     """
     Chama a API do PagBank para processar pagamentos
@@ -417,23 +581,48 @@ def create_pagbank_payload(cart_items: List[Dict], shipping_info: Dict,
             if not card_holder_tax_id:
                 card_holder_tax_id = str(customer_data.get('tax_id', '')).replace('.', '').replace('-', '').replace('/', '').strip()
             
-            # Validar que temos token do cartão (obrigatório)
-            if not payment_data.get('card_token'):
-                raise Exception("Token do cartão é obrigatório para pagamento com cartão de crédito")
+            # Para cartão, usar token se disponível, senão usar dados do cartão diretamente
+            card_token = payment_data.get('card_token')
+            card_number = payment_data.get('card_number', '').replace(' ', '').replace('-', '')
             
-            # Para cartão, usar token (única forma suportada)
-            charge["payment_method"].update({
-                "capture": True,  # Campo obrigatório: captura imediata
-                "card": {
-                    "id": payment_data.get('card_token'),  # ID do token do cartão
-                    "security_code": payment_data.get('security_code', ''),  # CVV ainda necessário
-                    "holder": {
-                        "name": payment_data.get('card_holder_name', '') or customer_data.get('name', ''),
-                        "tax_id": card_holder_tax_id
-                    }
-                },
-                "installments": payment_data.get('installments', 1)
-            })
+            if card_token:
+                # Usar token do cartão (método preferido)
+                charge["payment_method"].update({
+                    "capture": True,  # Campo obrigatório: captura imediata
+                    "card": {
+                        "id": card_token,  # ID do token do cartão
+                        "security_code": payment_data.get('security_code', ''),  # CVV ainda necessário
+                        "holder": {
+                            "name": payment_data.get('card_holder_name', '') or customer_data.get('name', ''),
+                            "tax_id": card_holder_tax_id
+                        }
+                    },
+                    "installments": payment_data.get('installments', 1)
+                })
+            elif card_number:
+                # Usar dados do cartão diretamente (fallback se token não estiver disponível)
+                # Converter ano para formato correto
+                exp_year = str(payment_data.get('card_exp_year', ''))
+                if len(exp_year) == 2:
+                    current_year_prefix = str(datetime.datetime.now().year)[:2]
+                    exp_year = current_year_prefix + exp_year
+                
+                charge["payment_method"].update({
+                    "capture": True,
+                    "card": {
+                        "number": card_number,
+                        "exp_month": str(payment_data.get('card_exp_month', '')).zfill(2),
+                        "exp_year": exp_year,
+                        "security_code": payment_data.get('security_code', ''),
+                        "holder": {
+                            "name": payment_data.get('card_holder_name', '') or customer_data.get('name', ''),
+                            "tax_id": card_holder_tax_id
+                        }
+                    },
+                    "installments": payment_data.get('installments', 1)
+                })
+            else:
+                raise Exception("Dados do cartão são obrigatórios para pagamento com cartão de crédito")
         elif payment_method_type == 'PIX':
             charge["payment_method"].update({
                 "pix": {

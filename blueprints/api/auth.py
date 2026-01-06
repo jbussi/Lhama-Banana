@@ -20,7 +20,8 @@ from ..services.auth_service import (
     enable_mfa_for_user,
     disable_mfa_for_user,
     is_mfa_enabled,
-    get_mfa_status
+    get_mfa_status,
+    ClockSkewError
 )
 from flask import session
 from ..services.user_service import get_user_by_firebase_uid
@@ -36,85 +37,108 @@ def login():
     Login via email/senha ou Google.
     O frontend já autenticou no Firebase, apenas validamos o token.
     """
-    data = request.get_json()
-    if not data:
-        current_app.logger.warning("Requisição sem dados JSON")
-        return jsonify({"erro": "Dados não recebidos"}), 400
-    
-    id_token = data.get('id_token')
-    
-    if not id_token:
-        current_app.logger.warning("Token não fornecido na requisição")
-        return jsonify({"erro": "Token de autenticação é obrigatório"}), 401
-    
-    # Verificar token Firebase
     try:
-        # Verificar se Firebase Admin está inicializado
-        try:
-            import firebase_admin
-            if not firebase_admin._apps:
-                current_app.logger.error("Firebase Admin SDK não está inicializado")
-                return jsonify({"erro": "Serviço de autenticação não disponível. Contate o administrador."}), 503
-            # Verificar se podemos acessar o app
-            firebase_admin.get_app()
-        except Exception as fb_init_error:
-            current_app.logger.error(f"Firebase Admin SDK não está inicializado: {fb_init_error}")
-            return jsonify({"erro": "Serviço de autenticação não disponível. Contate o administrador."}), 503
+        data = request.get_json()
+        if not data:
+            current_app.logger.warning("Requisição sem dados JSON")
+            return jsonify({"erro": "Dados não recebidos"}), 400
         
-        # Verificar token com retry
-        decoded_token = verify_firebase_token(id_token)
-        if not decoded_token:
-            # Log mais detalhado para debug
-            current_app.logger.warning(f"Token inválido ou não pôde ser verificado. Token length: {len(id_token) if id_token else 0}")
-            if id_token:
-                current_app.logger.warning(f"Primeiros 50 chars do token: {id_token[:50]}...")
-                current_app.logger.warning(f"Últimos 50 chars do token: ...{id_token[-50:]}")
-            log_auth_event('login', 'unknown', False, "Token inválido ou não verificado")
-            return jsonify({"erro": "Token inválido ou expirado. Tente fazer login novamente."}), 401
-    except Exception as e:
-        current_app.logger.error(f"Erro ao verificar token: {e}")
-        current_app.logger.error(f"Traceback: {traceback.format_exc()}")
-        log_auth_event('login', 'unknown', False, f"Erro na verificação: {str(e)}")
-        return jsonify({"erro": "Erro ao processar autenticação. Tente novamente."}), 500
-    
-    uid = decoded_token['uid']
-    email_verified = decoded_token.get('email_verified', False)
-    
-    # Sincronizar usuário com banco local
-    user_data, is_new_user = sync_user_from_firebase(decoded_token)
-    
-    if not user_data:
-        log_auth_event('login', uid, False, "Erro ao sincronizar usuário")
-        return jsonify({"erro": "Erro ao processar login"}), 500
-    
-    # Verificar se email está verificado (obrigatório para admin)
-    is_admin = check_admin_access(user_data)
-    if is_admin and not email_verified:
-        log_auth_event('login', uid, False, "Admin sem email verificado")
-        return jsonify({
-            "erro": "Email não verificado",
-            "email_verificado": False,
-            "requer_verificacao": True
-        }), 403
-    
-    # Verificar se 2FA está habilitado (apenas para admins)
-    mfa_required = False
-    mfa_enabled = is_mfa_enabled(user_data)
-    logger.info(f"[LOGIN] Admin: {is_admin}, MFA Enabled: {mfa_enabled}, User Data MFA: {user_data.get('mfa_enabled')}, Has Secret: {bool(user_data.get('mfa_secret'))}")
-    
-    if is_admin and mfa_enabled:
-        mfa_required = True
-        # Não marcar como verificado ainda - precisa verificar código 2FA
+        id_token = data.get('id_token')
+        
+        if not id_token:
+            current_app.logger.warning("Token não fornecido na requisição")
+            return jsonify({"erro": "Token de autenticação é obrigatório"}), 401
+        
+        # Verificar token Firebase (otimizado - sem verificação redundante)
+        try:
+            decoded_token = verify_firebase_token(id_token)
+            if not decoded_token:
+                current_app.logger.warning("Token inválido ou não pôde ser verificado")
+                log_auth_event('login', 'unknown', False, "Token inválido ou não verificado")
+                return jsonify({"erro": "Token inválido ou expirado. Tente fazer login novamente."}), 401
+        except ClockSkewError as e:
+            # Erro específico de clock skew - frontend deve fazer refresh de token
+            current_app.logger.warning(f"Clock skew detectado: {e.time_diff}s. Requer refresh de token no frontend.")
+            return jsonify({
+                "erro": "Erro de sincronização de tempo detectado",
+                "clock_skew_error": True,
+                "time_diff": e.time_diff,
+                "mensagem": "Por favor, tente novamente. O sistema está sincronizando o tempo."
+            }), 401
+        except Exception as e:
+            current_app.logger.error(f"Erro ao verificar token: {e}")
+            current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+            log_auth_event('login', 'unknown', False, f"Erro na verificação: {str(e)}")
+            return jsonify({"erro": "Erro ao processar autenticação. Tente novamente."}), 500
+        
+        uid = decoded_token['uid']
+        email_verified = decoded_token.get('email_verified', False)
+        
+        # Sincronizar usuário com banco local
+        try:
+            user_data, is_new_user = sync_user_from_firebase(decoded_token)
+        except Exception as e:
+            current_app.logger.error(f"Erro ao sincronizar usuário: {e}")
+            current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+            log_auth_event('login', uid, False, f"Erro ao sincronizar usuário: {str(e)}")
+            return jsonify({"erro": "Erro ao processar login. Tente novamente."}), 500
+        
+        if not user_data:
+            log_auth_event('login', uid, False, "Erro ao sincronizar usuário")
+            return jsonify({"erro": "Erro ao processar login"}), 500
+        
+        # Verificar se email está verificado (obrigatório para admin)
+        is_admin = check_admin_access(user_data)
+        if is_admin and not email_verified:
+            log_auth_event('login', uid, False, "Admin sem email verificado")
+            return jsonify({
+                "erro": "Email não verificado",
+                "email_verificado": False,
+                "requer_verificacao": True
+            }), 403
+        
+        # Verificar se 2FA está habilitado (apenas para admins)
+        mfa_required = False
+        mfa_enabled = is_mfa_enabled(user_data)
+        logger.info(f"[LOGIN] Admin: {is_admin}, MFA Enabled: {mfa_enabled}, User Data MFA: {user_data.get('mfa_enabled')}, Has Secret: {bool(user_data.get('mfa_secret'))}")
+        
+        if is_admin and mfa_enabled:
+            mfa_required = True
+            # Não marcar como verificado ainda - precisa verificar código 2FA
+            session['uid'] = uid
+            session['mfa_verified'] = False
+            session['mfa_verified_uid'] = None
+            
+            ip_address = request.remote_addr
+            log_auth_event('login', uid, True, f"Login iniciado - 2FA necessário para {user_data.get('email')}", ip_address)
+            
+            return jsonify({
+                "mensagem": "Login iniciado. Verificação 2FA necessária.",
+                "requer_mfa": True,
+                "usuario": {
+                    "uid": uid,
+                    "email": user_data.get('email'),
+                    "nome": user_data.get('nome'),
+                    "email_verificado": email_verified,
+                    "role": user_data.get('role', 'user')
+                }
+            }), 200
+        
+        # Login bem-sucedido (sem 2FA ou não é admin)
         session['uid'] = uid
-        session['mfa_verified'] = False
-        session['mfa_verified_uid'] = None
+        if is_admin:
+            session['mfa_verified'] = True  # Admin sem 2FA habilitado
+            session['mfa_verified_uid'] = uid
+        else:
+            session['mfa_verified'] = False  # Usuário comum não precisa
+            session['mfa_verified_uid'] = None
         
         ip_address = request.remote_addr
-        log_auth_event('login', uid, True, f"Login iniciado - 2FA necessário para {user_data.get('email')}", ip_address)
+        log_auth_event('login', uid, True, f"Email: {user_data.get('email')}", ip_address)
         
         return jsonify({
-            "mensagem": "Login iniciado. Verificação 2FA necessária.",
-            "requer_mfa": True,
+            "mensagem": "Login efetuado com sucesso",
+            "requer_mfa": False,
             "usuario": {
                 "uid": uid,
                 "email": user_data.get('email'),
@@ -124,29 +148,12 @@ def login():
             }
         }), 200
     
-    # Login bem-sucedido (sem 2FA ou não é admin)
-    session['uid'] = uid
-    if is_admin:
-        session['mfa_verified'] = True  # Admin sem 2FA habilitado
-        session['mfa_verified_uid'] = uid
-    else:
-        session['mfa_verified'] = False  # Usuário comum não precisa
-        session['mfa_verified_uid'] = None
-    
-    ip_address = request.remote_addr
-    log_auth_event('login', uid, True, f"Email: {user_data.get('email')}", ip_address)
-    
-    return jsonify({
-        "mensagem": "Login efetuado com sucesso",
-        "requer_mfa": False,
-        "usuario": {
-            "uid": uid,
-            "email": user_data.get('email'),
-            "nome": user_data.get('nome'),
-            "email_verificado": email_verified,
-            "role": user_data.get('role', 'user')
-        }
-    }), 200
+    except Exception as e:
+        # Captura qualquer erro não tratado
+        current_app.logger.error(f"Erro inesperado no login: {e}")
+        current_app.logger.error(f"Traceback completo: {traceback.format_exc()}")
+        log_auth_event('login', 'unknown', False, f"Erro inesperado: {str(e)}")
+        return jsonify({"erro": "Erro interno do servidor. Tente novamente mais tarde."}), 500
 
 
 @api_bp.route('/auth/register', methods=['POST'])
@@ -166,9 +173,19 @@ def register():
         return jsonify({"erro": "Nome de usuário é obrigatório"}), 400
     
     # Verificar token Firebase
-    decoded_token = verify_firebase_token(id_token)
-    if not decoded_token:
-        return jsonify({"erro": "Token inválido ou expirado"}), 401
+    try:
+        decoded_token = verify_firebase_token(id_token)
+        if not decoded_token:
+            return jsonify({"erro": "Token inválido ou expirado"}), 401
+    except ClockSkewError as e:
+        # Erro específico de clock skew - frontend deve fazer refresh de token
+        logger.warning(f"Clock skew detectado no registro: {e.time_diff}s. Requer refresh de token no frontend.")
+        return jsonify({
+            "erro": "Erro de sincronização de tempo detectado",
+            "clock_skew_error": True,
+            "time_diff": e.time_diff,
+            "mensagem": "Por favor, tente novamente. O sistema está sincronizando o tempo."
+        }), 401
     
     uid = decoded_token['uid']
     email_verified = decoded_token.get('email_verified', False)
@@ -670,4 +687,17 @@ def mfa_status():
         "has_secret": mfa_status['has_secret'],
         "is_admin": check_admin_access(user_data)
     }), 200
+
+
+@api_bp.route('/auth/logout', methods=['POST'])
+def logout():
+    """
+    Faz logout do usuário, limpando a sessão.
+    """
+    uid = session.get('uid')
+    if uid:
+        log_auth_event('logout', uid, True, f"Logout realizado", request.remote_addr)
+    
+    session.clear()
+    return jsonify({"mensagem": "Logout realizado com sucesso"}), 200
 

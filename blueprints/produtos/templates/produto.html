@@ -10,6 +10,9 @@
 
 {% block content %}
 
+{# Container para mensagens inline #}
+<div id="product-messages-container" class="messages-container"></div>
+
 {# Contêiner principal para o conteúdo do produto, útil para exibir mensagens de erro #}
 <div class="product-container" id="main-product-container">
     <div class="breadcrumb">
@@ -71,7 +74,7 @@
                 </div>
                 <div class="meta-item">
                     <span class="meta-label">Código do produto:</span>
-                    <span class="meta-value" id="product-sku">SKU: -</span>
+                    <span class="meta-value" id="product-sku">-</span>
                 </div>
                 <div class="meta-item">
                     <span class="meta-label">Categoria:</span>

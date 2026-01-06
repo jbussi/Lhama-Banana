@@ -26,6 +26,57 @@ const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('email');
 googleProvider.addScope('profile');
 
+/**
+ * Função auxiliar para fazer requisição com retry automático em caso de clock skew
+ * Implementa retry silencioso: se receber erro de clock skew, faz refresh de token e tenta novamente
+ * 
+ * @param {Function} requestFn - Função que retorna uma Promise com a requisição fetch
+ * @param {Object} user - Objeto do usuário Firebase para obter novo token
+ * @param {number} maxRetries - Número máximo de tentativas (padrão: 1)
+ * @returns {Promise<Response>} Resposta da requisição
+ */
+async function fetchWithClockSkewRetry(requestFn, user, maxRetries = 1) {
+    let retryCount = 0;
+    
+    while (retryCount <= maxRetries) {
+        try {
+            const response = await requestFn();
+            
+            // Se sucesso, retornar resposta
+            if (response.ok) {
+                return response;
+            }
+            
+            // Verificar se é erro de clock skew
+            const data = await response.json().catch(() => ({}));
+            if (data.clock_skew_error && retryCount < maxRetries) {
+                console.log(`[CLOCK_SKEW_RETRY] Erro de clock skew detectado (diferença: ${data.time_diff}s). Fazendo refresh de token e tentando novamente...`);
+                
+                // Forçar refresh do token
+                const newToken = await user.getIdToken(true);
+                
+                // Aguardar um pouco para o token ficar válido
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Retry com novo token (a função requestFn deve usar o novo token)
+                retryCount++;
+                continue;
+            }
+            
+            // Se não for clock skew ou já tentou todas as vezes, retornar resposta original
+            return response;
+        } catch (error) {
+            // Se for erro de rede ou outro erro, retornar
+            if (retryCount >= maxRetries) {
+                throw error;
+            }
+            retryCount++;
+        }
+    }
+    
+    throw new Error("Falha após múltiplas tentativas");
+}
+
 const submit = document.getElementById("submit");
 const googleLoginBtn = document.getElementById("google-login-btn");
 
@@ -67,61 +118,33 @@ async function handleLogin(userCredential) {
             }
         }
         
-        // Obter token (forçar refresh para garantir token válido)
+        // Obter token (sempre forçar refresh para evitar clock skew)
         let id_token;
         try {
-            id_token = await user.getIdToken(true); // true = force refresh
-            console.log("ID Token obtido:", id_token.substring(0, 50) + "...");
+            // Sempre forçar refresh para garantir token novo e válido
+            id_token = await user.getIdToken(true);
+            console.log("ID Token obtido (refresh):", id_token.substring(0, 50) + "...");
         } catch (tokenError) {
             console.error("Erro ao obter token:", tokenError);
             throw new Error("Erro ao obter token de autenticação. Tente novamente.");
         }
 
-        // Decodificar token para verificar expiração (sem verificar assinatura)
-        let tokenExp;
-        try {
-            const tokenParts = id_token.split('.');
-            if (tokenParts.length === 3) {
-                const payload = JSON.parse(atob(tokenParts[1]));
-                tokenExp = payload.exp;
-                const now = Math.floor(Date.now() / 1000);
-                const timeUntilValid = tokenExp - now;
-                
-                console.log(`Token expira em: ${new Date(tokenExp * 1000).toLocaleString()}`);
-                console.log(`Tempo até válido: ${timeUntilValid}s`);
-                
-                // Se o token ainda não é válido (iat > now), aguardar
-                const tokenIat = payload.iat;
-                if (tokenIat && tokenIat > now) {
-                    const waitTime = (tokenIat - now + 1) * 1000; // +1 segundo de margem (reduzido de 2s)
-                    console.log(`Token ainda não é válido. Aguardando ${waitTime/1000}s...`);
-                    await new Promise((resolve) => setTimeout(resolve, waitTime));
-                } else {
-                    // Delay padrão para clock skew (reduzido de 3s para 1.5s)
-                    await new Promise((resolve) => setTimeout(resolve, 1500));
-                }
-            } else {
-                // Se não conseguir decodificar, usar delay padrão (reduzido)
-                await new Promise((resolve) => setTimeout(resolve, 1500));
-            }
-        } catch (decodeError) {
-            console.warn("Erro ao decodificar token para verificar timing:", decodeError);
-            // Se houver erro ao decodificar, usar delay padrão
-            await new Promise((resolve) => setTimeout(resolve, 3000));
-        }
-
-        // Enviar para backend
+        // Enviar para backend com retry automático em caso de clock skew
         let response;
         try {
-            response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-                    id_token: id_token
-        })
-      });
+            response = await fetchWithClockSkewRetry(async () => {
+                // Obter token atualizado a cada tentativa
+                const currentToken = await user.getIdToken(true);
+                return fetch("/api/auth/login", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        id_token: currentToken
+                    })
+                });
+            }, user, 1); // 1 retry adicional
         } catch (fetchError) {
             console.error("Erro na requisição:", fetchError);
             throw new Error("Erro ao comunicar com o servidor. Verifique sua conexão.");
@@ -163,17 +186,17 @@ async function handleLogin(userCredential) {
         // Verificar se 2FA é necessário
         if (data.requer_mfa === true) {
             console.log("2FA necessário - chamando handleMFAVerification");
+            // Esconder loader antes de mostrar modal 2FA
+            LoadingHelper.hidePageLoader();
             await handleMFAVerification(user);
             return; // Não redirecionar ainda - aguardar verificação 2FA
         } else {
             console.log("2FA não necessário - redirecionando para perfil");
+            // Esconder loader se estiver visível
+            LoadingHelper.hidePageLoader();
+            // Redirecionar
+            window.location.href = "/perfil";
         }
-        
-        // Esconder loader se estiver visível
-        LoadingHelper.hidePageLoader();
-        
-        // Redirecionar
-        window.location.href = "/perfil";
         
     } catch (error) {
     console.error("Erro no fluxo de login:", error.message);
@@ -249,6 +272,7 @@ if (googleLoginBtn) {
         
         try {
             const userCredential = await signInWithPopup(auth, googleProvider);
+            // REMOVIDO: Delay de 500ms - não é necessário
             await handleLogin(userCredential);
         } catch (error) {
             console.error("Erro no login Google:", error);
@@ -397,6 +421,53 @@ if (forgotPasswordForm) {
 
 // Função para verificar 2FA durante login
 async function handleMFAVerification(user) {
+    // Flag para rastrear se a verificação foi completada (usar objeto para referência compartilhada)
+    const mfaState = { completed: false };
+    
+    // Função para fazer logout de segurança
+    const performSecurityLogout = async () => {
+        if (!mfaState.completed) {
+            try {
+                const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+                await signOut(auth);
+                // Limpar sessão no backend também
+                try {
+                    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+                } catch (e) {}
+                console.log('[2FA] Logout automático: verificação não completada');
+            } catch (error) {
+                console.error('[2FA] Erro ao fazer logout automático:', error);
+            }
+        }
+    };
+    
+    // Adicionar listener para detectar quando o usuário sai da página sem completar 2FA
+    const beforeUnloadHandler = async (event) => {
+        await performSecurityLogout();
+    };
+    
+    // Adicionar listener para quando a página está sendo descarregada
+    window.addEventListener('beforeunload', beforeUnloadHandler);
+    
+    // Também adicionar listener para quando a aba perde o foco
+    let visibilityTimeout = null;
+    const visibilityChangeHandler = async () => {
+        if (document.hidden && !mfaState.completed) {
+            // Usuário mudou de aba ou minimizou - fazer logout após um tempo
+            visibilityTimeout = setTimeout(async () => {
+                if (!mfaState.completed && document.hidden) {
+                    await performSecurityLogout();
+                }
+            }, 30000); // 30 segundos após perder foco
+        } else if (!document.hidden && visibilityTimeout) {
+            // Usuário voltou - cancelar timeout
+            clearTimeout(visibilityTimeout);
+            visibilityTimeout = null;
+        }
+    };
+    
+    document.addEventListener('visibilitychange', visibilityChangeHandler);
+    
     // Criar modal para 2FA
     const modal = document.createElement('div');
     modal.id = 'mfa-verification-modal';
@@ -409,6 +480,10 @@ async function handleMFAVerification(user) {
             </div>
             <div class="modal-body">
                 <p>Digite o código de 6 dígitos do seu app autenticador:</p>
+                <p style="font-size: 0.9rem; color: #856404; margin-top: 0.5rem;">
+                    <i class="fas fa-exclamation-triangle"></i> 
+                    <strong>Importante:</strong> Complete a verificação ou sua sessão será encerrada por segurança.
+                </p>
                 <form id="mfa-login-form">
                     <div class="form-group">
                         <label for="mfa-login-code">Código 2FA</label>
@@ -418,12 +493,32 @@ async function handleMFAVerification(user) {
                     <button type="submit" class="auth-button" id="mfa-verify-submit">
                         <i class="fas fa-check"></i> Verificar
                     </button>
+                    <button type="button" class="auth-button" id="mfa-cancel-btn" style="background: #6c757d; margin-top: 0.5rem;">
+                        <i class="fas fa-times"></i> Cancelar e Fazer Logout
+                    </button>
                 </form>
                 <div id="mfa-login-message" style="margin-top: 1rem; display: none;"></div>
             </div>
         </div>
     `;
     document.body.appendChild(modal);
+    
+    // Botão de cancelar - fazer logout
+    const cancelBtn = document.getElementById('mfa-cancel-btn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', async () => {
+            try {
+                const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+                await signOut(auth);
+                // Limpar sessão no backend também
+                await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+                window.location.href = '/auth/login';
+            } catch (error) {
+                console.error('Erro ao fazer logout:', error);
+                window.location.href = '/auth/login';
+            }
+        });
+    }
     
     // Focar no campo de código
     const codeInput = document.getElementById('mfa-login-code');
@@ -472,14 +567,24 @@ async function handleMFAVerification(user) {
             }
             
             // 2FA verificado com sucesso
+            mfaState.completed = true;
+            
+            // Remover listeners de segurança
+            window.removeEventListener('beforeunload', beforeUnloadHandler);
+            document.removeEventListener('visibilitychange', visibilityChangeHandler);
+            if (visibilityTimeout) {
+                clearTimeout(visibilityTimeout);
+            }
+            
             messageDiv.innerHTML = '<div style="background: #d4edda; color: #155724; padding: 1rem; border-radius: 6px; border: 1px solid #c3e6cb;"><i class="fas fa-check-circle"></i> <strong>2FA verificado com sucesso!</strong></div>';
             messageDiv.style.display = 'block';
             
             // Esconder loader se estiver visível
             LoadingHelper.hidePageLoader();
             
-            // Redirecionar após 1 segundo
+            // Remover modal após 1 segundo e redirecionar
             setTimeout(() => {
+                modal.remove();
                 window.location.href = "/perfil";
             }, 1000);
             

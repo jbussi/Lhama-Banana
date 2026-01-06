@@ -188,8 +188,41 @@ def process_checkout():
                     customer_data.get('tax_id', '')
                 )
                 
+                # Validar que temos os dados necessários do cartão
+                if not payment_details.get('card_number') or not payment_details.get('card_cvv'):
+                    conn.rollback()
+                    return jsonify({
+                        "erro": "Dados do cartão incompletos. Por favor, preencha todos os campos do cartão."
+                    }), 400
+                
+                # Tentar criar token do cartão (opcional - se falhar, usaremos dados diretos)
+                card_token = payment_details.get('card_token', '')
+                if not card_token:
+                    try:
+                        api_token = current_app.config.get('PAGBANK_API_TOKEN')
+                        if api_token:
+                            from ..services.checkout_service import create_card_token
+                            
+                            card_data_for_token = {
+                                'card_number': payment_details.get('card_number', ''),
+                                'card_exp_month': payment_details.get('card_exp_month', ''),
+                                'card_exp_year': payment_details.get('card_exp_year', ''),
+                                'card_cvv': payment_details.get('card_cvv', ''),
+                                'card_holder_name': payment_details.get('card_holder_name', '') or customer_data.get('name', ''),
+                                'card_holder_cpf_cnpj': card_holder_cpf_cnpj
+                            }
+                            
+                            card_token = create_card_token(api_token, card_data_for_token)
+                            current_app.logger.info(f"[Checkout] Token do cartão criado: {card_token}")
+                        else:
+                            current_app.logger.warning("[Checkout] Token de API não configurado, usando dados do cartão diretamente")
+                    except Exception as token_error:
+                        # Se falhar ao criar token, continuar com dados diretos (fallback)
+                        current_app.logger.warning(f"[Checkout] Não foi possível criar token do cartão, usando dados diretos: {token_error}")
+                        card_token = None
+                
                 payment_data.update({
-                    'card_token': payment_details.get('card_token', ''),  # Token do cartão (prioridade)
+                    'card_token': card_token,
                     'card_number': payment_details.get('card_number', ''),
                     'card_exp_month': payment_details.get('card_exp_month', ''),
                     'card_exp_year': payment_details.get('card_exp_year', ''),

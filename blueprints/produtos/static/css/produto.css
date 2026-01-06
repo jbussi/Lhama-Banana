@@ -219,6 +219,11 @@
     color: var(--cor-texto-cinza);
 }
 
+#product-sku {
+    letter-spacing: 0.5px;
+    word-spacing: 2px;
+}
+
 .product-actions {
     display: flex;
     gap: 1rem;
@@ -383,6 +388,279 @@
     }
 }
 
+/* ============================================
+   ESTILOS DE AVALIAÇÕES
+   ============================================ */
+
+.reviews-stats {
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    border: 1px solid #e9ecef;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.reviews-stats .stats-main {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+}
+
+.reviews-stats .stats-rating {
+    font-size: 3.5rem;
+    font-weight: 700;
+    color: var(--cor-principal-turquesa);
+    line-height: 1;
+}
+
+.reviews-stats .stats-info {
+    flex: 1;
+}
+
+.reviews-stats .stats-stars {
+    display: flex;
+    gap: 0.3rem;
+    margin-bottom: 0.5rem;
+    font-size: 1.3rem;
+}
+
+.reviews-stats .stats-stars i {
+    color: #f9d71c;
+}
+
+.reviews-stats .stats-count {
+    color: var(--cor-texto-cinza);
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.review {
+    background: white;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.review:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transform: translateY(-2px);
+    border-color: #d1e7e5;
+}
+
+.review-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.review-author {
+    font-weight: 600;
+    color: var(--cor-texto-preto);
+    font-size: 1rem;
+}
+
+.review-rating {
+    display: flex;
+    gap: 0.2rem;
+    font-size: 1rem;
+}
+
+.review-rating i.fas.fa-star,
+.review-rating i.fas.fa-star-half-alt {
+    color: #f9d71c;
+}
+
+.review-rating i.far.fa-star {
+    color: #dee2e6;
+}
+
+.review-date {
+    color: var(--cor-texto-cinza);
+    font-size: 0.9rem;
+}
+
+.review-text {
+    color: var(--cor-texto-cinza);
+    line-height: 1.7;
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+#write-review-btn {
+    background: var(--cor-principal-turquesa);
+    color: white;
+    border: none;
+    padding: 0.875rem 1.75rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(42, 183, 169, 0.2);
+    margin-top: 1.5rem;
+}
+
+#write-review-btn:hover {
+    background: #239a8f;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(42, 183, 169, 0.3);
+}
+
+/* Modal de Avaliação */
+.review-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(4px);
+}
+
+.review-modal-content {
+    background: white;
+    padding: 2.5rem;
+    border-radius: 16px;
+    max-width: 550px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.review-modal-content h2 {
+    margin: 0 0 1.5rem 0;
+    color: var(--cor-texto-preto);
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+.rating-input {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 2.5rem;
+    cursor: pointer;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    justify-content: center;
+}
+
+.rating-input .star-rating {
+    transition: all 0.2s ease;
+    color: #dee2e6;
+}
+
+.rating-input .star-rating:hover {
+    transform: scale(1.1);
+}
+
+.rating-input .star-rating.fas {
+    color: #f9d71c;
+}
+
+.review-modal-content label {
+    display: block;
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+    color: var(--cor-texto-preto);
+    font-size: 1rem;
+}
+
+#review-comment {
+    width: 100%;
+    padding: 1rem;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    resize: vertical;
+    transition: border-color 0.2s;
+}
+
+#review-comment:focus {
+    outline: none;
+    border-color: var(--cor-principal-turquesa);
+    box-shadow: 0 0 0 3px rgba(42, 183, 169, 0.1);
+}
+
+.review-modal-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 2rem;
+}
+
+.btn-cancel-review,
+.btn-submit-review {
+    padding: 0.875rem 1.75rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 1rem;
+    border: none;
+}
+
+.btn-cancel-review {
+    background: #f8f9fa;
+    color: var(--cor-texto-preto);
+    border: 1px solid #dee2e6;
+}
+
+.btn-cancel-review:hover {
+    background: #e9ecef;
+}
+
+.btn-submit-review {
+    background: var(--cor-principal-turquesa);
+    color: white;
+    box-shadow: 0 2px 8px rgba(42, 183, 169, 0.2);
+}
+
+.btn-submit-review:hover {
+    background: #239a8f;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(42, 183, 169, 0.3);
+}
+
+/* Mensagem quando não há avaliações */
+#reviews-list > p {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: var(--cor-texto-cinza);
+    font-size: 1.1rem;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 2px dashed #dee2e6;
+}
+
 @media (max-width: 576px) {
     .product-container {
         padding: 0 1rem;
@@ -406,5 +684,46 @@
         overflow-x: auto;
         white-space: nowrap;
         padding-bottom: 1px;
+    }
+    
+    .reviews-stats {
+        padding: 1.5rem;
+    }
+    
+    .reviews-stats .stats-rating {
+        font-size: 2.5rem;
+    }
+    
+    .reviews-stats .stats-main {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .review {
+        padding: 1.25rem;
+    }
+    
+    .review-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+    
+    .review-modal-content {
+        padding: 1.5rem;
+    }
+    
+    .rating-input {
+        font-size: 2rem;
+    }
+    
+    .review-modal-actions {
+        flex-direction: column;
+    }
+    
+    .btn-cancel-review,
+    .btn-submit-review {
+        width: 100%;
     }
 }

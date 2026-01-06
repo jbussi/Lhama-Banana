@@ -31,6 +31,20 @@ Uma plataforma de e-commerce moderna construída com Flask, PostgreSQL e Firebas
 - **Frontend**: HTML5, CSS3, JavaScript
 - **Frete**: Melhor Envio API
 
+## ⚠️ Requisitos de Infraestrutura
+
+### Sincronização de Relógio (NTP)
+
+**IMPORTANTE**: O servidor de produção **DEVE** ter o relógio sincronizado via NTP/Chrony para evitar erros de "clock skew" com tokens do Firebase.
+
+O sistema implementa retry automático para diferenças pequenas (< 2s), mas para garantir a melhor experiência:
+
+1. **Em produção**: Configure NTP no host ou use um serviço de sincronização de tempo
+2. **No Docker**: O Dockerfile já inclui o pacote `ntp`, mas você deve garantir que o host esteja sincronizado
+3. **Verificação**: Use `ntpdate -q pool.ntp.org` ou `chrony sources` para verificar a sincronização
+
+**Nota**: O sistema detecta automaticamente clock skew e faz retry silencioso. Se a diferença for >= 2s, o frontend faz refresh automático do token.
+
 ## 📦 Instalação
 
 ### 1. Clonar o Repositório

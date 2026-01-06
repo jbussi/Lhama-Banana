@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', function() {
 		try {
 			// Verificar se Firebase está disponível via import dinâmico
 			let firebaseAuth = null;
+			let onAuthStateChangedFn = null;
 			try {
 				const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
 				const { getAuth, onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
@@ -66,16 +67,17 @@ document.addEventListener('DOMContentLoaded', function() {
 				
 				const app = initializeApp(firebaseConfig);
 				firebaseAuth = getAuth(app);
+				onAuthStateChangedFn = onAuthStateChanged;
 			} catch (error) {
 				console.log('[Checkout] Firebase não disponível:', error);
 				return;
 			}
 			
-			if (!firebaseAuth) return;
+			if (!firebaseAuth || !onAuthStateChangedFn) return;
 			
 			// Aguardar o estado de autenticação
 			return new Promise((resolve) => {
-				onAuthStateChanged(firebaseAuth, async (user) => {
+				onAuthStateChangedFn(firebaseAuth, async (user) => {
 					if (!user) {
 						console.log('[Checkout] Usuário não logado');
 						resolve();
@@ -116,7 +118,6 @@ document.addEventListener('DOMContentLoaded', function() {
 		const section = document.getElementById('saved-addresses-section');
 		const list = document.getElementById('saved-addresses-list');
 		const addressForm = document.getElementById('address-form');
-		const useNewAddressBtn = document.getElementById('use-new-address-btn');
 		
 		if (!section || !list) return;
 		
@@ -154,15 +155,6 @@ document.addEventListener('DOMContentLoaded', function() {
 		});
 		html += '</div>';
 		list.innerHTML = html;
-		
-		if (useNewAddressBtn) {
-			useNewAddressBtn.style.display = 'inline-flex';
-			useNewAddressBtn.onclick = () => {
-				selectedSavedAddressId = null;
-				document.querySelectorAll('input[name="saved_address"]').forEach(radio => radio.checked = false);
-				if (addressForm) addressForm.style.display = 'flex';
-			};
-		}
 	}
 	
 	/**
@@ -172,6 +164,11 @@ document.addEventListener('DOMContentLoaded', function() {
 		selectedSavedAddressId = addressId;
 		const address = savedAddresses.find(addr => addr.id === addressId);
 		if (!address) return;
+		
+		// IMPORTANTE: Salvar o nome ANTES de fazer qualquer alteração
+		// Isso garante que o nome do perfil não seja perdido
+		const currentName = nomeRecebedorInput ? nomeRecebedorInput.value : '';
+		console.log('[Checkout] Nome atual antes de selecionar endereço:', currentName);
 		
 		// Preencher formulário com dados do endereço salvo
 		if (ruaInput) ruaInput.value = address.street || '';
@@ -185,19 +182,55 @@ document.addEventListener('DOMContentLoaded', function() {
 			cepInput.value = formattedCep;
 		}
 		
-		// Preencher telefone se disponível
+		// Preencher telefone se disponível no endereço (mas não sobrescrever se já foi preenchido do perfil)
 		if (address.phone) {
-			const phoneMatch = address.phone.match(/^(\d{2})(\d{4,5}\d{4})$/);
-			if (phoneMatch) {
-				const phoneAreaInput = document.getElementById('phone_area');
-				const phoneNumberInput = document.getElementById('phone_number');
-				if (phoneAreaInput) phoneAreaInput.value = phoneMatch[1];
-				if (phoneNumberInput) {
-					const number = phoneMatch[2];
-					phoneNumberInput.value = number.length === 8 ? 
-						number.replace(/^(\d{4})(\d{4})$/, '$1-$2') : 
-						number.replace(/^(\d{5})(\d{4})$/, '$1-$2');
+			const phoneAreaInput = document.getElementById('phone_area');
+			const phoneNumberInput = document.getElementById('phone_number');
+			// Só preencher se os campos estiverem vazios
+			if (phoneAreaInput && !phoneAreaInput.value) {
+				const phoneMatch = address.phone.match(/^(\d{2})(\d{4,5}\d{4})$/);
+				if (phoneMatch) {
+					phoneAreaInput.value = phoneMatch[1];
+					if (phoneNumberInput && !phoneNumberInput.value) {
+						const number = phoneMatch[2];
+						phoneNumberInput.value = number.length === 8 ? 
+							number.replace(/^(\d{4})(\d{4})$/, '$1-$2') : 
+							number.replace(/^(\d{5})(\d{4})$/, '$1-$2');
+					}
 				}
+			}
+		}
+		
+		// Preencher nome do recebedor: usar nome do endereço se disponível, senão preservar o nome atual
+		if (nomeRecebedorInput) {
+			if (address.receiver_name && address.receiver_name.trim()) {
+				// Endereço tem nome específico, usar ele
+				nomeRecebedorInput.value = address.receiver_name;
+				console.log('[Checkout] Usando nome do endereço:', address.receiver_name);
+			} else {
+				// Endereço não tem nome, preservar o nome atual (do perfil)
+				if (currentName && currentName.trim()) {
+					nomeRecebedorInput.value = currentName;
+					console.log('[Checkout] Preservando nome do perfil:', currentName);
+				} else {
+					console.log('[Checkout] Nenhum nome disponível (nem endereço nem perfil)');
+				}
+			}
+		}
+		
+		// Ocultar formulário de endereço quando um endereço salvo é selecionado
+		// (usuário não pode adicionar novo endereço no checkout, apenas no perfil)
+		// IMPORTANTE: Fazer isso DEPOIS de preencher todos os campos
+		const addressForm = document.getElementById('address-form');
+		if (addressForm) {
+			addressForm.style.display = 'none';
+		}
+		
+		// Recalcular frete se CEP foi preenchido
+		if (address.zipcode) {
+			const cleanCEP = address.zipcode.replace(/\D/g, '');
+			if (cleanCEP.length === 8 && window.calculateShipping) {
+				window.calculateShipping(cleanCEP);
 			}
 		}
 	};
@@ -231,8 +264,119 @@ document.addEventListener('DOMContentLoaded', function() {
 		}
 	}
 	
-	// Carregar endereços salvos quando a página carregar
+	/**
+	 * Carrega dados do perfil do usuário e preenche automaticamente os campos
+	 */
+	async function loadUserProfile() {
+		try {
+			// Verificar se Firebase está disponível
+			let firebaseAuth = null;
+			let onAuthStateChangedFn = null;
+			try {
+				const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+				const { getAuth, onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+				
+				const firebaseConfig = {
+					apiKey: "AIzaSyDd13Tl9dJaUqIvNhGWakoEbpYqw7ZrB7Y",
+					authDomain: "lhamabanana-981d5.firebaseapp.com",
+					projectId: "lhamabanana-981d5",
+					storageBucket: "lhamabanana-981d5.firebasestorage.app",
+					messagingSenderId: "209130422039",
+					appId: "1:209130422039:web:70fcf2089fa90715364152",
+					measurementId: "G-4XQSZZB0JK"
+				};
+				
+				const app = initializeApp(firebaseConfig);
+				firebaseAuth = getAuth(app);
+				onAuthStateChangedFn = onAuthStateChanged;
+			} catch (error) {
+				console.log('[Checkout] Firebase não disponível:', error);
+				return;
+			}
+			
+			if (!firebaseAuth || !onAuthStateChangedFn) return;
+			
+			// Aguardar o estado de autenticação
+			return new Promise((resolve) => {
+				onAuthStateChangedFn(firebaseAuth, async (user) => {
+					if (!user) {
+						console.log('[Checkout] Usuário não logado, não carregando perfil');
+						resolve();
+						return;
+					}
+					
+					try {
+						const idToken = await user.getIdToken();
+						const response = await fetch('/api/user_data', {
+							method: 'GET',
+							headers: {
+								'Authorization': `Bearer ${idToken}`,
+								'Content-Type': 'application/json'
+							}
+						});
+						
+						if (response.ok) {
+							const userData = await response.json();
+							console.log('[Checkout] Dados do perfil carregados:', userData);
+							
+							// Preencher campos automaticamente
+							if (nomeRecebedorInput && userData.nome) {
+								nomeRecebedorInput.value = userData.nome;
+							}
+							
+							const emailInput = document.getElementById('email');
+							if (emailInput && userData.email) {
+								emailInput.value = userData.email;
+							}
+							
+							const cpfInput = document.getElementById('cpf_cnpj');
+							if (cpfInput && userData.cpf) {
+								// Formatar CPF
+								const cpf = userData.cpf.replace(/\D/g, '');
+								if (cpf.length === 11) {
+									cpfInput.value = cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+								} else {
+									cpfInput.value = userData.cpf;
+								}
+							}
+							
+							// Preencher telefone
+							if (userData.telefone) {
+								const phone = userData.telefone.replace(/\D/g, '');
+								const phoneAreaInput = document.getElementById('phone_area');
+								const phoneNumberInput = document.getElementById('phone_number');
+								
+								if (phone.length >= 10) {
+									const area = phone.substring(0, 2);
+									const number = phone.substring(2);
+									
+									if (phoneAreaInput) phoneAreaInput.value = area;
+									if (phoneNumberInput) {
+										if (number.length === 8) {
+											phoneNumberInput.value = number.replace(/^(\d{4})(\d{4})$/, '$1-$2');
+										} else if (number.length === 9) {
+											phoneNumberInput.value = number.replace(/^(\d{5})(\d{4})$/, '$1-$2');
+										} else {
+											phoneNumberInput.value = number;
+										}
+									}
+								}
+							}
+						}
+					} catch (error) {
+						console.error('[Checkout] Erro ao carregar dados do perfil:', error);
+					}
+					resolve();
+				});
+			});
+		} catch (error) {
+			console.error('[Checkout] Erro ao carregar perfil:', error);
+		}
+	}
+	
+	// Carregar endereços salvos e dados do perfil quando a página carregar
 	loadSavedAddresses();
+	loadUserProfile();
     
 	function renderCartItems() {
 		if (!cartItemsContainer) return;

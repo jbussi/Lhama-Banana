@@ -91,12 +91,17 @@ def add_to_cart():
         cart_item = cur.fetchone()
 
         if cart_item:
+            # Item já existe no carrinho, somar quantidades
             new_quantity = cart_item[1] + quantity
             if new_quantity > current_stock:
-                return jsonify({"erro": f"Adicionar mais itens excederia o estoque. Máximo disponível: {current_stock}."}), 400
+                available = current_stock - cart_item[1]
+                if available <= 0:
+                    return jsonify({"erro": f"Você já possui {cart_item[1]} unidades no carrinho. Estoque total: {current_stock}."}), 400
+                return jsonify({"erro": f"Adicionar mais itens excederia o estoque. Você já tem {cart_item[1]} no carrinho. Pode adicionar mais {available}."}), 400
             cur.execute("UPDATE carrinho_itens SET quantidade = %s, adicionado_em = NOW() WHERE id = %s", (new_quantity, cart_item[0]))
         else:
-            if quantity > current_stock: # Verifica estoque para o primeiro item também
+            # Novo item no carrinho
+            if quantity > current_stock:
                  return jsonify({"erro": f"Quantidade solicitada ({quantity}) excede o estoque disponível ({current_stock})."}), 400
             cur.execute("INSERT INTO carrinho_itens (carrinho_id, produto_id, quantidade, preco_unitario_no_momento) VALUES (%s, %s, %s, %s)",
                         (cart_id, product_variation_id, quantity, current_price))

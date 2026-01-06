@@ -25,6 +25,57 @@ const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('email');
 googleProvider.addScope('profile');
 
+/**
+ * Função auxiliar para fazer requisição com retry automático em caso de clock skew
+ * Implementa retry silencioso: se receber erro de clock skew, faz refresh de token e tenta novamente
+ * 
+ * @param {Function} requestFn - Função que retorna uma Promise com a requisição fetch
+ * @param {Object} user - Objeto do usuário Firebase para obter novo token
+ * @param {number} maxRetries - Número máximo de tentativas (padrão: 1)
+ * @returns {Promise<Response>} Resposta da requisição
+ */
+async function fetchWithClockSkewRetry(requestFn, user, maxRetries = 1) {
+    let retryCount = 0;
+    
+    while (retryCount <= maxRetries) {
+        try {
+            const response = await requestFn();
+            
+            // Se sucesso, retornar resposta
+            if (response.ok) {
+                return response;
+            }
+            
+            // Verificar se é erro de clock skew
+            const data = await response.json().catch(() => ({}));
+            if (data.clock_skew_error && retryCount < maxRetries) {
+                console.log(`[CLOCK_SKEW_RETRY] Erro de clock skew detectado (diferença: ${data.time_diff}s). Fazendo refresh de token e tentando novamente...`);
+                
+                // Forçar refresh do token
+                const newToken = await user.getIdToken(true);
+                
+                // Aguardar um pouco para o token ficar válido
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Retry com novo token (a função requestFn deve usar o novo token)
+                retryCount++;
+                continue;
+            }
+            
+            // Se não for clock skew ou já tentou todas as vezes, retornar resposta original
+            return response;
+        } catch (error) {
+            // Se for erro de rede ou outro erro, retornar
+            if (retryCount >= maxRetries) {
+                throw error;
+            }
+            retryCount++;
+        }
+    }
+    
+    throw new Error("Falha após múltiplas tentativas");
+}
+
 // Aguarda o DOM estar pronto
 document.addEventListener('DOMContentLoaded', function() {
   const submit = document.getElementById("submit");
@@ -46,21 +97,37 @@ document.addEventListener('DOMContentLoaded', function() {
         username = user.displayName || user.email.split('@')[0];
       }
 
-      // Obter token
-      const id_token = await user.getIdToken();
-      console.log("ID Token obtido:", id_token);
+      // Obter token (sempre forçar refresh para evitar clock skew)
+      let id_token;
+      try {
+        id_token = await user.getIdToken(true);
+        console.log("ID Token obtido (refresh):", id_token);
+      } catch (tokenError) {
+        console.error("Erro ao obter token:", tokenError);
+        throw new Error("Erro ao obter token de autenticação. Tente novamente.");
+      }
 
-      // Enviar para backend
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          username: username,
-          id_token: id_token
-        })
-      });
+      // Enviar para backend com retry automático em caso de clock skew
+      let response;
+      try {
+        response = await fetchWithClockSkewRetry(async () => {
+          // Obter token atualizado a cada tentativa
+          const currentToken = await user.getIdToken(true);
+          return fetch("/api/auth/register", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              username: username,
+              id_token: currentToken
+            })
+          });
+        }, user, 1); // 1 retry adicional
+      } catch (fetchError) {
+        console.error("Erro na requisição:", fetchError);
+        throw new Error("Erro ao comunicar com o servidor. Verifique sua conexão.");
+      }
 
       const data = await response.json();
 
@@ -79,9 +146,7 @@ document.addEventListener('DOMContentLoaded', function() {
       
       if (!isGoogleAuth && (!user.emailVerified || data.requer_verificacao)) {
         try {
-          // Aguardar um pouco para garantir que o usuário foi criado no Firebase
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
+          // REMOVIDO: Delay de 500ms - não é necessário, o Firebase já criou o usuário
           await sendEmailVerification(user);
           
           const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');

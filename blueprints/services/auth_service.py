@@ -12,6 +12,7 @@ from typing import Dict, Optional, Tuple
 from .user_service import get_user_by_firebase_uid, insert_new_user, update_user_profile_db
 from .db import get_db
 import logging
+import traceback
 import pyotp
 import qrcode
 import io
@@ -20,10 +21,22 @@ import base64
 logger = logging.getLogger(__name__)
 
 
+class ClockSkewError(Exception):
+    """Exceção específica para erros de clock skew que requerem refresh de token no frontend"""
+    def __init__(self, time_diff: int, message: str = None):
+        self.time_diff = time_diff
+        self.message = message or f"Clock skew detectado: diferença de {time_diff} segundos"
+        super().__init__(self.message)
+
+
 def verify_firebase_token(id_token: str, check_revoked: bool = False) -> Optional[Dict]:
     """
     Verifica e decodifica um token Firebase.
-    Inclui retry logic para lidar com clock skew.
+    Implementa retry inteligente para lidar com clock skew.
+    
+    Estratégia:
+    - Se clock skew < 2s: retry interno rápido (silencioso)
+    - Se clock skew >= 2s: levanta ClockSkewError para o frontend fazer refresh
     
     Args:
         id_token: Token JWT do Firebase
@@ -31,53 +44,75 @@ def verify_firebase_token(id_token: str, check_revoked: bool = False) -> Optiona
         
     Returns:
         Dict com dados do token decodificado ou None se inválido
+        
+    Raises:
+        ClockSkewError: Se o clock skew for >= 2s (requer refresh de token no frontend)
     """
     import time
+    import re
     
-    max_retries = 3  # Reduzido para 3 tentativas (suficiente com delays otimizados)
+    max_retries = 2
     retry_count = 0
     
     while retry_count < max_retries:
         try:
             decoded_token = auth.verify_id_token(id_token, check_revoked=check_revoked)
             if retry_count > 0:
-                logger.info(f"Token verificado com sucesso após {retry_count} tentativa(s). UID: {decoded_token.get('uid')}, Email: {decoded_token.get('email')}")
-            else:
-                logger.info(f"Token verificado com sucesso. UID: {decoded_token.get('uid')}, Email: {decoded_token.get('email')}")
+                logger.debug(f"Token verificado com sucesso após {retry_count} tentativa(s) de retry. UID: {decoded_token.get('uid')}")
             return decoded_token
         except auth.InvalidIdTokenError as e:
             error_str = str(e).lower()
             error_message = str(e)
-            # Verificar se é erro de "too early" (clock skew) - mesmo sendo InvalidIdTokenError
-            if ("too early" in error_str or "clock" in error_str or "not yet valid" in error_str) and retry_count < max_retries - 1:
-                # Tentar extrair a diferença de tempo do erro para calcular delay apropriado
-                import re
-                delay_match = re.search(r'(\d+)\s*<\s*(\d+)', error_message)
-                if delay_match:
-                    token_time = int(delay_match.group(1))
-                    server_time = int(delay_match.group(2))
+            
+            # Verificar se é erro de "too early" ou "not yet valid" (clock skew)
+            is_clock_skew = (
+                "too early" in error_str or 
+                "clock" in error_str or 
+                "not yet valid" in error_str or
+                "issued in the future" in error_str
+            )
+            
+            if is_clock_skew:
+                # Tentar extrair timestamps do erro: "1767717575 < 1767717588"
+                time_diff = None
+                time_match = re.search(r'(\d+)\s*<\s*(\d+)', error_message)
+                if time_match:
+                    token_time = int(time_match.group(1))
+                    server_time = int(time_match.group(2))
                     time_diff = server_time - token_time
-                    # Aguardar a diferença + margem de segurança menor
-                    wait_time = max(time_diff + 1, 1.5)  # Pelo menos 1.5 segundos, ou diferença + 1
-                    logger.warning(f"[RETRY {retry_count + 1}/{max_retries}] Token usado muito cedo (clock skew): diferença de {time_diff}s. Aguardando {wait_time}s...")
-                else:
-                    # Se não conseguir extrair, usar delay progressivo menor
-                    wait_time = 1.5 + (retry_count * 0.5)  # Delay: 1.5s, 2s, 2.5s, 3s, 3.5s
-                    logger.warning(f"[RETRY {retry_count + 1}/{max_retries}] Token usado muito cedo (clock skew): {error_message}")
+                    logger.info(f"[CLOCK_SKEW] Diferença detectada: {time_diff}s (token: {token_time}, server: {server_time})")
                 
-                logger.info(f"Aguardando {wait_time}s antes de tentar novamente...")
-                time.sleep(wait_time)
-                retry_count += 1
-                logger.info(f"Tentando novamente (tentativa {retry_count}/{max_retries})...")
-                continue
-            else:
-                # Token inválido por outro motivo ou já tentou todas as vezes - não tentar novamente
-                if retry_count >= max_retries - 1:
-                    logger.error(f"Token Firebase inválido após {max_retries} tentativas: {e}")
+                # Se diferença < 2s: retry interno rápido (silencioso)
+                if time_diff is not None and time_diff < 2:
+                    wait_time = time_diff + 0.5  # Diferença + 0.5s de margem
+                    if retry_count < max_retries - 1:
+                        logger.debug(f"[RETRY {retry_count + 1}/{max_retries}] Clock skew pequeno ({time_diff}s). Aguardando {wait_time}s...")
+                        time.sleep(wait_time)
+                        retry_count += 1
+                        continue
+                # Se diferença >= 2s: requer refresh de token no frontend
+                elif time_diff is not None and time_diff >= 2:
+                    logger.warning(f"[CLOCK_SKEW] Diferença grande ({time_diff}s). Requer refresh de token no frontend.")
+                    raise ClockSkewError(time_diff, f"Clock skew de {time_diff} segundos detectado. Token precisa ser atualizado.")
+                # Se não conseguiu extrair diferença mas é clock skew: retry curto
+                elif retry_count < max_retries - 1:
+                    wait_time = 0.5
+                    logger.debug(f"[RETRY {retry_count + 1}/{max_retries}] Clock skew detectado (sem timestamp). Aguardando {wait_time}s...")
+                    time.sleep(wait_time)
+                    retry_count += 1
+                    continue
                 else:
-                    logger.warning(f"Token Firebase inválido (não é clock skew): {e}")
-                logger.debug(f"Detalhes do erro: {type(e).__name__}: {str(e)}")
+                    # Última tentativa falhou - requer refresh
+                    logger.warning("[CLOCK_SKEW] Retry interno falhou. Requer refresh de token.")
+                    raise ClockSkewError(2, "Clock skew detectado. Token precisa ser atualizado.")
+            else:
+                # Token inválido por outro motivo
+                logger.warning(f"Token Firebase inválido (não é clock skew): {e}")
                 return None
+                
+        except ClockSkewError:
+            # Re-raise para ser tratado no endpoint
+            raise
         except auth.ExpiredIdTokenError as e:
             # Token expirado - não tentar novamente
             logger.warning(f"Token Firebase expirado: {e}")
@@ -85,18 +120,40 @@ def verify_firebase_token(id_token: str, check_revoked: bool = False) -> Optiona
         except Exception as e:
             error_str = str(e).lower()
             error_type = type(e).__name__
-            logger.debug(f"Erro ao verificar token (tentativa {retry_count + 1}/{max_retries}): {error_type}: {str(e)}")
             
-            # Verifica se é o erro de "too early" ou clock skew
-            if ("too early" in error_str or "clock" in error_str or "not yet valid" in error_str) and retry_count < max_retries - 1:
-                wait_time = 0.5 * (retry_count + 1)  # Aumenta o delay a cada tentativa
-                time.sleep(wait_time)
-                retry_count += 1
-                logger.debug(f"Tentativa {retry_count} de verificação do token após delay de {wait_time}s (clock skew)...")
-                continue
+            # Verifica se é o erro de clock skew em outras exceções
+            is_clock_skew = (
+                "too early" in error_str or 
+                "clock" in error_str or 
+                "not yet valid" in error_str or
+                "issued in the future" in error_str
+            )
+            
+            if is_clock_skew and retry_count < max_retries - 1:
+                # Tentar extrair diferença
+                time_diff = None
+                time_match = re.search(r'(\d+)\s*<\s*(\d+)', str(e))
+                if time_match:
+                    token_time = int(time_match.group(1))
+                    server_time = int(time_match.group(2))
+                    time_diff = server_time - token_time
+                
+                if time_diff is not None and time_diff < 2:
+                    wait_time = time_diff + 0.5
+                    logger.debug(f"[RETRY {retry_count + 1}/{max_retries}] Clock skew pequeno ({time_diff}s). Aguardando {wait_time}s...")
+                    time.sleep(wait_time)
+                    retry_count += 1
+                    continue
+                elif time_diff is not None and time_diff >= 2:
+                    raise ClockSkewError(time_diff, f"Clock skew de {time_diff} segundos detectado.")
+                else:
+                    wait_time = 0.5
+                    logger.debug(f"[RETRY {retry_count + 1}/{max_retries}] Clock skew detectado. Aguardando {wait_time}s...")
+                    time.sleep(wait_time)
+                    retry_count += 1
+                    continue
             else:
-                # Se não for erro de clock skew ou se já tentou muitas vezes, logar e retornar None
-                logger.error(f"Erro ao verificar token Firebase após {retry_count + 1} tentativas: {error_type}: {str(e)}")
+                logger.error(f"Erro ao verificar token Firebase: {error_type}: {str(e)}")
                 return None
     
     logger.warning("Falha ao verificar token após várias tentativas")
@@ -127,16 +184,54 @@ def sync_user_from_firebase(decoded_token: Dict) -> Tuple[Optional[Dict], bool]:
     cur = conn.cursor()
     
     try:
+        # Verificar se colunas MFA existem
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'usuarios' 
+            AND column_name IN ('mfa_enabled', 'mfa_secret')
+        """)
+        mfa_columns = [row[0] for row in cur.fetchall()]
+        has_mfa_enabled = 'mfa_enabled' in mfa_columns
+        has_mfa_secret = 'mfa_secret' in mfa_columns
+        
         if is_new_user:
             # Criar novo usuário
             cur.execute("""
                 INSERT INTO usuarios (firebase_uid, nome, email, email_verificado)
                 VALUES (%s, %s, %s, %s)
-                RETURNING id, firebase_uid, nome, email, email_verificado, role, criado_em, mfa_enabled, mfa_secret
+                RETURNING id, firebase_uid, nome, email, email_verificado, role, criado_em
             """, (uid, display_name, email, email_verified))
             
             result = cur.fetchone()
             conn.commit()
+            
+            # Buscar dados MFA separadamente se as colunas existirem
+            mfa_enabled = False
+            mfa_secret = None
+            if has_mfa_enabled or has_mfa_secret:
+                if has_mfa_enabled and has_mfa_secret:
+                    cur.execute("""
+                        SELECT mfa_enabled, mfa_secret
+                        FROM usuarios 
+                        WHERE id = %s
+                    """, (result[0],))
+                elif has_mfa_enabled:
+                    cur.execute("""
+                        SELECT mfa_enabled, NULL as mfa_secret
+                        FROM usuarios 
+                        WHERE id = %s
+                    """, (result[0],))
+                elif has_mfa_secret:
+                    cur.execute("""
+                        SELECT FALSE as mfa_enabled, mfa_secret
+                        FROM usuarios 
+                        WHERE id = %s
+                    """, (result[0],))
+                mfa_result = cur.fetchone()
+                if mfa_result:
+                    mfa_enabled = mfa_result[0] if has_mfa_enabled else False
+                    mfa_secret = mfa_result[1] if has_mfa_secret else None
             
             user_data = {
                 'id': result[0],
@@ -146,8 +241,8 @@ def sync_user_from_firebase(decoded_token: Dict) -> Tuple[Optional[Dict], bool]:
                 'email_verificado': result[4],
                 'role': result[5] if len(result) > 5 else 'user',
                 'criado_em': str(result[6]) if len(result) > 6 else None,
-                'mfa_enabled': result[7] if len(result) > 7 else False,
-                'mfa_secret': result[8] if len(result) > 8 else None
+                'mfa_enabled': mfa_enabled,
+                'mfa_secret': mfa_secret
             }
             
             logger.info(f"Novo usuário criado: {email} (UID: {uid})")
@@ -160,13 +255,40 @@ def sync_user_from_firebase(decoded_token: Dict) -> Tuple[Optional[Dict], bool]:
                     email = %s,
                     nome = COALESCE(NULLIF(%s, ''), nome)
                 WHERE firebase_uid = %s
-                RETURNING id, firebase_uid, nome, email, email_verificado, role, criado_em, mfa_enabled, mfa_secret
+                RETURNING id, firebase_uid, nome, email, email_verificado, role, criado_em
             """, (email_verified, email, display_name, uid))
             
             result = cur.fetchone()
             conn.commit()
             
             if result:
+                # Buscar dados MFA separadamente se as colunas existirem
+                mfa_enabled = False
+                mfa_secret = None
+                if has_mfa_enabled or has_mfa_secret:
+                    if has_mfa_enabled and has_mfa_secret:
+                        cur.execute("""
+                            SELECT mfa_enabled, mfa_secret
+                            FROM usuarios 
+                            WHERE id = %s
+                        """, (result[0],))
+                    elif has_mfa_enabled:
+                        cur.execute("""
+                            SELECT mfa_enabled, NULL as mfa_secret
+                            FROM usuarios 
+                            WHERE id = %s
+                        """, (result[0],))
+                    elif has_mfa_secret:
+                        cur.execute("""
+                            SELECT FALSE as mfa_enabled, mfa_secret
+                            FROM usuarios 
+                            WHERE id = %s
+                        """, (result[0],))
+                    mfa_result = cur.fetchone()
+                    if mfa_result:
+                        mfa_enabled = mfa_result[0] if has_mfa_enabled else False
+                        mfa_secret = mfa_result[1] if has_mfa_secret else None
+                
                 user_data = {
                     'id': result[0],
                     'firebase_uid': result[1],
@@ -175,11 +297,11 @@ def sync_user_from_firebase(decoded_token: Dict) -> Tuple[Optional[Dict], bool]:
                     'email_verificado': result[4],
                     'role': result[5] if len(result) > 5 else 'user',
                     'criado_em': str(result[6]) if len(result) > 6 else None,
-                    'mfa_enabled': result[7] if len(result) > 7 else False,
-                    'mfa_secret': result[8] if len(result) > 8 else None
+                    'mfa_enabled': mfa_enabled,
+                    'mfa_secret': mfa_secret
                 }
                 
-                logger.info(f"Usuário sincronizado: {email} (email_verificado: {email_verified}, mfa_enabled: {user_data.get('mfa_enabled', False)})")
+                logger.info(f"Usuário sincronizado: {email} (email_verificado: {email_verified}, mfa_enabled: {mfa_enabled})")
         
         cur.close()
         return user_data, is_new_user
@@ -188,6 +310,7 @@ def sync_user_from_firebase(decoded_token: Dict) -> Tuple[Optional[Dict], bool]:
         conn.rollback()
         cur.close()
         logger.error(f"Erro ao sincronizar usuário: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return None, False
 
 

@@ -82,11 +82,8 @@ def ensure_carrinhos_table_exists(conn):
             """)
             
             cur.execute("""
-                DROP TRIGGER IF EXISTS trg_carrinho_itens_update_timestamp ON carrinho_itens;
-                CREATE TRIGGER trg_carrinho_itens_update_timestamp 
-                    BEFORE UPDATE ON carrinho_itens 
-                    FOR EACH ROW 
-                    EXECUTE FUNCTION update_timestamp();
+                # Não criar trigger para carrinho_itens pois não tem campo atualizado_em
+                # DROP TRIGGER IF EXISTS trg_carrinho_itens_update_timestamp ON carrinho_itens;
             """)
             
             conn.commit()

@@ -1,18 +1,29 @@
 from . import api_bp
-from flask import jsonify, request
+from flask import jsonify, request, current_app
 from ..services import get_db
 
 @api_bp.route('/store/filters', methods=['GET'])
 def get_store_filters():
     """Endpoint para obter filtros disponíveis na loja (tamanhos, estampas, categorias)."""
-    conn = get_db()
-    cur = conn.cursor()
+    conn = None
+    cur = None
     
     try:
+        conn = get_db()
+        if not conn:
+            return jsonify({"erro": "Erro de conexão com o banco de dados."}), 500
+        
+        cur = conn.cursor()
         filters = {
             'categorias': [],
             'tamanhos': [],
             'estampas': [],
+            'tecidos': [],
+            'sexos': [
+                {'value': 'm', 'label': 'Masculino'},
+                {'value': 'f', 'label': 'Feminino'},
+                {'value': 'u', 'label': 'Unissex'}
+            ],
             'precos': [
                 {'label': 'Até R$ 50', 'min': 0, 'max': 50},
                 {'label': 'R$ 50 - R$ 100', 'min': 50, 'max': 100},
@@ -21,12 +32,13 @@ def get_store_filters():
             ]
         }
         
-        # Buscar categorias ativas
+        # Buscar categorias ativas (que têm produtos)
         cur.execute("""
             SELECT DISTINCT c.id, c.nome
             FROM categorias c
             JOIN nome_produto np ON c.id = np.categoria_id
-            WHERE c.ativo = TRUE
+            JOIN produtos p ON np.id = p.nome_produto_id
+            WHERE c.ativo = TRUE AND np.ativo = TRUE AND p.estoque > 0
             ORDER BY c.nome
         """)
         categorias = cur.fetchall()
@@ -34,34 +46,57 @@ def get_store_filters():
         
         # Buscar tamanhos disponíveis (apenas os que têm produtos em estoque)
         cur.execute("""
-            SELECT DISTINCT t.id, t.nome
+            SELECT DISTINCT t.id, t.nome, COALESCE(t.ordem_exibicao, 999) as ordem
             FROM tamanho t
             JOIN produtos p ON t.id = p.tamanho_id
             WHERE t.ativo = TRUE AND p.estoque > 0
-            ORDER BY t.ordem_exibicao, t.nome
+            ORDER BY ordem, t.nome
         """)
         tamanhos = cur.fetchall()
         filters['tamanhos'] = [{'id': tam[0], 'nome': tam[1]} for tam in tamanhos]
         
         # Buscar estampas disponíveis (apenas as que têm produtos em estoque)
         cur.execute("""
-            SELECT DISTINCT e.id, e.nome, e.imagem_url
+            SELECT DISTINCT e.id, e.nome, e.imagem_url, e.tecido, e.sexo, COALESCE(e.ordem_exibicao, 999) as ordem
             FROM estampa e
             JOIN produtos p ON e.id = p.estampa_id
             WHERE e.ativo = TRUE AND p.estoque > 0
-            ORDER BY e.ordem_exibicao, e.nome
+            ORDER BY ordem, e.nome
         """)
         estampas = cur.fetchall()
-        filters['estampas'] = [{'id': est[0], 'nome': est[1], 'imagem_url': est[2]} for est in estampas]
+        filters['estampas'] = [{
+            'id': est[0], 
+            'nome': est[1], 
+            'imagem_url': est[2] if est[2] else '/static/img/placeholder.jpg', 
+            'tecido': est[3] if est[3] else None, 
+            'sexo': est[4] if est[4] else 'u'
+        } for est in estampas]
+        
+        # Buscar tecidos únicos disponíveis (apenas os que têm produtos em estoque)
+        cur.execute("""
+            SELECT DISTINCT e.tecido
+            FROM estampa e
+            JOIN produtos p ON e.id = p.estampa_id
+            WHERE e.ativo = TRUE AND p.estoque > 0 AND e.tecido IS NOT NULL AND e.tecido != ''
+            ORDER BY e.tecido
+        """)
+        tecidos = cur.fetchall()
+        filters['tecidos'] = [{'value': tec[0], 'label': tec[0]} for tec in tecidos if tec[0]]
         
         return jsonify(filters), 200
         
     except Exception as e:
         import traceback
+        error_msg = str(e)
         traceback.print_exc()
-        return jsonify({"erro": "Erro ao carregar filtros."}), 500
+        try:
+            current_app.logger.error(f"Erro ao carregar filtros: {error_msg}")
+        except:
+            print(f"Erro ao carregar filtros: {error_msg}")
+        return jsonify({"erro": f"Erro ao carregar filtros: {error_msg}"}), 500
     finally:
-        cur.close()
+        if cur:
+            cur.close()
 
 @api_bp.route('/base_products', methods=['GET'])
 def get_base_products():
@@ -75,6 +110,8 @@ def get_base_products():
         categoria_ids = request.args.getlist('categoria_id', type=int)
         tamanho_ids = request.args.getlist('tamanho_id', type=int)
         estampa_ids = request.args.getlist('estampa_id', type=int)
+        tecidos = request.args.getlist('tecido', type=str)
+        sexos = request.args.getlist('sexo', type=str)
         preco_min = request.args.get('preco_min', type=float)
         preco_max = request.args.get('preco_max', type=float)
         
@@ -117,6 +154,15 @@ def get_base_products():
         if estampa_ids:
             variation_conditions.append("p.estampa_id = ANY(%s)")
             variation_params.append(estampa_ids)
+        
+        # Filtros de tecido e sexo (via estampa)
+        if tecidos:
+            variation_conditions.append("EXISTS (SELECT 1 FROM estampa e WHERE e.id = p.estampa_id AND e.tecido = ANY(%s))")
+            variation_params.append(tecidos)
+        
+        if sexos:
+            variation_conditions.append("EXISTS (SELECT 1 FROM estampa e WHERE e.id = p.estampa_id AND e.sexo = ANY(%s))")
+            variation_params.append(sexos)
         
         if preco_min is not None:
             variation_conditions.append("p.preco_venda >= %s")

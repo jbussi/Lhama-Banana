@@ -30,8 +30,28 @@ document.addEventListener('DOMContentLoaded', async function() {
     const cartHeader = document.querySelector('.cart-header');
     const cartSummaryContainer = document.querySelector('.cart-summary-container');
     const summarySubtotalElem = document.getElementById('summary-subtotal');
-    const summaryShippingElem = document.getElementById('summary-shipping');
     const summaryDiscountElem = document.getElementById('summary-discount');
+
+    // Configurar delegação de eventos para o botão de remover (uma vez, no container pai)
+    if (cartItemsList) {
+        cartItemsList.addEventListener('click', function(e) {
+            console.log('Clique detectado no carrinho:', e.target);
+            // Verificar se o clique foi no botão de remover ou em seus filhos (ícone, texto)
+            const removeBtn = e.target.closest('.remove-btn');
+            if (removeBtn) {
+                console.log('Botão de remover encontrado:', removeBtn);
+                e.preventDefault();
+                e.stopPropagation();
+                const cartItemId = removeBtn.getAttribute('data-id');
+                console.log('ID do item do carrinho:', cartItemId);
+                if (cartItemId) {
+                    removeItem(parseInt(cartItemId));
+                } else {
+                    console.error('ID do item do carrinho não encontrado!');
+                }
+            }
+        });
+    }
 
 
     /**
@@ -47,9 +67,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             // Verificar se a resposta foi bem-sucedida
             if (response.ok) {
                 try {
-                    const cartData = await response.json();
-                    console.log("Dados do carrinho recebidos:", cartData);
-                    renderCart(cartData);
+            const cartData = await response.json();
+            console.log("Dados do carrinho recebidos:", cartData);
+            renderCart(cartData);
                     return;
                 } catch (jsonError) {
                     console.error('Erro ao parsear JSON da resposta:', jsonError);
@@ -86,14 +106,13 @@ document.addEventListener('DOMContentLoaded', async function() {
                     cartItemsList.innerHTML = `<p style="color: #dc3545; padding: 1rem; text-align: center;">${errorMessage}</p>`;
                 }
                 
-                cartTotalPriceElem.textContent = 'R$ --,--';
-                summarySubtotalElem.textContent = 'R$ --,--';
-                summaryShippingElem.textContent = 'A calcular';
-                summaryDiscountElem.textContent = '- R$ 0,00';
-                
+            cartTotalPriceElem.textContent = 'R$ --,--';
+            summarySubtotalElem.textContent = 'R$ --,--';
+            summaryDiscountElem.textContent = '- R$ 0,00';
+            
                 if (emptyCartMessage) emptyCartMessage.style.display = 'none';
-                if (cartHeader) cartHeader.style.display = 'none';
-                if (cartSummaryContainer) cartSummaryContainer.style.display = 'none';
+            if (cartHeader) cartHeader.style.display = 'none';
+            if (cartSummaryContainer) cartSummaryContainer.style.display = 'none';
                 return;
             }
             
@@ -138,7 +157,6 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
             cartTotalPriceElem.textContent = 'R$ 0,00';
             summarySubtotalElem.textContent = 'R$ 0,00';
-            summaryShippingElem.textContent = 'A calcular';
             summaryDiscountElem.textContent = '- R$ 0,00';
             if (clearCartBtn) clearCartBtn.disabled = true;
             if (checkoutBtn) checkoutBtn.disabled = true;
@@ -185,7 +203,6 @@ document.addEventListener('DOMContentLoaded', async function() {
                 </div>
                 
                 <div class="cart-item-subtotal text-md-center">
-                    <span class="d-md-none text-muted">Subtotal: </span>
                     <strong>R$ ${item.item_total.toFixed(2).replace('.', ',')}</strong>
                 </div>
                 
@@ -197,12 +214,28 @@ document.addEventListener('DOMContentLoaded', async function() {
                 </div>
             `;
             cartItemsList.appendChild(itemElement);
+            
+            // Adicionar event listener diretamente ao botão de remover após criar o elemento
+            const removeBtn = itemElement.querySelector('.remove-btn');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Botão de remover clicado, cartItemId:', item.cart_item_id);
+                    // Prevenir múltiplos cliques
+                    if (removeBtn.disabled) {
+                        console.log('Botão já está desabilitado, ignorando clique');
+                        return;
+                    }
+                    removeItem(item.cart_item_id);
+                });
+            }
         });
 
-        // Atualiza o resumo
-        cartTotalPriceElem.textContent = `R$ ${cartData.total_value.toFixed(2).replace('.', ',')}`;
-        summarySubtotalElem.textContent = `R$ ${cartData.total_value.toFixed(2).replace('.', ',')}`;
-        summaryShippingElem.textContent = 'A calcular'; // Placeholder
+        // Atualiza o resumo (sem frete, pois é calculado apenas no checkout)
+        const subtotal = cartData.total_value;
+        cartTotalPriceElem.textContent = `R$ ${subtotal.toFixed(2).replace('.', ',')}`;
+        summarySubtotalElem.textContent = `R$ ${subtotal.toFixed(2).replace('.', ',')}`;
         summaryDiscountElem.textContent = '- R$ 0,00'; // Placeholder
         
         if (clearCartBtn) clearCartBtn.disabled = false;
@@ -213,7 +246,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             button.addEventListener('click', (e) => {
                 const cartItemId = e.target.dataset.id;
                 const inputElement = document.querySelector(`.quantity-input[data-id="${cartItemId}"]`);
-                const currentQuantity = parseInt(inputElement.value);
+                const currentQuantity = parseInt(inputElement.value) || 1;
                 updateQuantity(cartItemId, currentQuantity + 1);
             });
         });
@@ -221,13 +254,35 @@ document.addEventListener('DOMContentLoaded', async function() {
             button.addEventListener('click', (e) => {
                 const cartItemId = e.target.dataset.id;
                 const inputElement = document.querySelector(`.quantity-input[data-id="${cartItemId}"]`);
-                const currentQuantity = parseInt(inputElement.value);
+                const currentQuantity = parseInt(inputElement.value) || 1;
                 updateQuantity(cartItemId, currentQuantity - 1);
             });
         });
-        document.querySelectorAll('.remove-btn').forEach(button => {
-            button.addEventListener('click', (e) => removeItem(e.target.closest('button').dataset.id));
+        // Adicionar event listener para quando o usuário digitar no campo de quantidade
+        document.querySelectorAll('.quantity-input').forEach(input => {
+            // Atualizar quando o campo perder o foco (blur)
+            input.addEventListener('blur', (e) => {
+                const cartItemId = e.target.dataset.id;
+                const newQuantity = parseInt(e.target.value) || 1;
+                // Validar quantidade mínima
+                if (newQuantity < 1) {
+                    e.target.value = 1;
+                    updateQuantity(cartItemId, 1);
+                } else {
+                    updateQuantity(cartItemId, newQuantity);
+                }
+            });
+            // Validar enquanto digita (opcional, para melhor UX)
+            input.addEventListener('input', (e) => {
+                const value = e.target.value;
+                // Permitir apenas números
+                if (value && !/^\d+$/.test(value)) {
+                    e.target.value = value.replace(/\D/g, '');
+                }
+            });
         });
+        // Event listeners para botões de quantidade já foram adicionados acima
+        // O botão de remover usa delegação de eventos configurada no início do DOMContentLoaded
     }
 
     /**
@@ -289,101 +344,63 @@ document.addEventListener('DOMContentLoaded', async function() {
     async function removeItem(cartItemId) {
         const messagesContainer = document.getElementById('cart-messages-container');
         const removeBtn = document.querySelector(`.remove-btn[data-id="${cartItemId}"]`);
-        
-        // Criar modal de confirmação inline
-        if (messagesContainer && window.MessageHelper) {
-            const confirmed = await new Promise((resolve) => {
-                const confirmMessage = document.createElement('div');
-                confirmMessage.className = 'inline-message inline-message-warning';
-                confirmMessage.style.cssText = 'padding: 1rem; margin-bottom: 1rem; border-radius: 8px; background: #fff3cd; border: 1px solid #ffc107;';
-                confirmMessage.innerHTML = `
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <div style="flex: 1;">
-                            <i class="fas fa-exclamation-triangle" style="color: #856404; margin-right: 0.5rem;"></i>
-                            <strong style="color: #856404;">Tem certeza que deseja remover este item?</strong>
-                        </div>
-                        <div style="display: flex; gap: 0.5rem; margin-left: 1rem;">
-                            <button class="confirm-remove-yes" style="padding: 0.5rem 1rem; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                                Sim
-                            </button>
-                            <button class="confirm-remove-no" style="padding: 0.5rem 1rem; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                                Não
-                            </button>
-                        </div>
-                    </div>
-                `;
-                messagesContainer.appendChild(confirmMessage);
-                
-                confirmMessage.querySelector('.confirm-remove-yes').onclick = () => {
-                    messagesContainer.removeChild(confirmMessage);
-                    resolve(true);
-                };
-                confirmMessage.querySelector('.confirm-remove-no').onclick = () => {
-                    messagesContainer.removeChild(confirmMessage);
-                    resolve(false);
-                };
-            });
-            
-            if (!confirmed) return;
-        } else {
-            // Fallback para confirm nativo se MessageHelper não estiver disponível
-        if (!confirm('Tem certeza que deseja remover este item do carrinho?')) {
-            return;
-            }
-        }
 
         try {
             // Mostrar loading no botão
+            const originalHTML = removeBtn ? removeBtn.innerHTML : '';
             if (removeBtn) {
-                const originalHTML = removeBtn.innerHTML;
                 removeBtn.disabled = true;
                 removeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                
+            }
+            
+            console.log('Fazendo requisição DELETE para /api/cart/remove/' + cartItemId);
             const response = await fetch(`/api/cart/remove/${cartItemId}`, {
                 method: 'DELETE',
                 headers: await getAuthHeaders()
             });
 
+            console.log('Resposta recebida:', response.status, response.statusText);
+
             if (!response.ok) {
-                const errorData = await response.json();
-                    if (messagesContainer && window.MessageHelper) {
-                        window.MessageHelper.showError(`Erro ao remover item: ${errorData.erro || 'Ocorreu um erro.'}`, messagesContainer);
-                    }
+                let errorData = {};
+                try {
+                    errorData = await response.json();
+                } catch (e) {
+                    console.error('Erro ao parsear resposta de erro:', e);
+                }
+                console.error('Erro na resposta:', errorData);
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showError(`Erro ao remover item: ${errorData.erro || 'Ocorreu um erro.'}`, messagesContainer);
+                }
+                if (removeBtn) {
                     removeBtn.disabled = false;
                     removeBtn.innerHTML = originalHTML;
+                }
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-                if (messagesContainer && window.MessageHelper) {
-                    window.MessageHelper.showSuccess('Item removido do carrinho!', messagesContainer, 2000);
+            const responseData = await response.json();
+            console.log('Item removido com sucesso:', responseData);
+
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showSuccess('Item removido do carrinho!', messagesContainer, 2000);
             }
 
             fetchAndRenderCart(); // Recarrega o carrinho após remover
 
-            } else {
-                const response = await fetch(`/api/cart/remove/${cartItemId}`, {
-                    method: 'DELETE',
-                    headers: await getAuthHeaders()
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    if (messagesContainer && window.MessageHelper) {
-                        window.MessageHelper.showError(`Erro ao remover item: ${errorData.erro || 'Ocorreu um erro.'}`, messagesContainer);
-                    }
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                if (messagesContainer && window.MessageHelper) {
-                    window.MessageHelper.showSuccess('Item removido do carrinho!', messagesContainer, 2000);
-                }
-
-                fetchAndRenderCart();
-            }
-
         } catch (error) {
             console.error('Erro ao remover item:', error);
+            if (messagesContainer && window.MessageHelper) {
+                window.MessageHelper.showError('Erro ao remover item. Tente novamente.', messagesContainer);
+            }
         } finally {
+            const currentRemoveBtn = document.querySelector(`.remove-btn[data-id="${cartItemId}"]`);
+            if (currentRemoveBtn && originalHTML) {
+                currentRemoveBtn.disabled = false;
+                if (currentRemoveBtn.innerHTML.includes('fa-spinner')) {
+                    currentRemoveBtn.innerHTML = originalHTML;
+                }
+            }
         }
     }
 
@@ -432,7 +449,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             // Fallback para confirm nativo
         if (!confirm('Tem certeza que deseja limpar todo o carrinho?')) {
             return;
-            }
+        }
         }
 
         try {

@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', function() {
         categoria_id: [],
         tamanho_id: [],
         estampa_id: [],
+        tecido: [],
+        sexo: [],
         preco_min: null,
         preco_max: null
     };
@@ -21,15 +23,42 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     async function loadFilters() {
         try {
+            console.log('Carregando filtros...');
             const response = await fetch('/api/store/filters');
+            
             if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Erro HTTP ${response.status}:`, errorText);
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            
+
             filtersData = await response.json();
+            console.log('Filtros recebidos:', filtersData);
+            
+            if (!filtersData) {
+                throw new Error('Resposta vazia do servidor');
+            }
+            
             renderFilters(filtersData);
         } catch (error) {
             console.error('Erro ao carregar filtros:', error);
+            
+            // Mostrar mensagem de erro nos containers
+            const containers = [
+                'category-filters',
+                'size-filters',
+                'estampa-filters',
+                'tecido-filters',
+                'sexo-filters',
+                'price-filters'
+            ];
+            
+            containers.forEach(containerId => {
+                const container = document.getElementById(containerId);
+                if (container) {
+                    container.innerHTML = `<div class="filter-loading" style="color: #dc3545;">Erro ao carregar filtros. Recarregue a página.</div>`;
+                }
+            });
         }
     }
     
@@ -37,67 +66,180 @@ document.addEventListener('DOMContentLoaded', function() {
      * Renderiza os filtros na barra lateral
      */
     function renderFilters(filters) {
+        if (!filters) {
+            console.error('Filtros não fornecidos');
+            return;
+        }
+        
+        console.log('Renderizando filtros:', filters);
+        
         // Renderizar categorias
         const categoryContainer = document.getElementById('category-filters');
+        if (!categoryContainer) {
+            console.error('Container category-filters não encontrado');
+            return;
+        }
         categoryContainer.innerHTML = '';
-        filters.categorias.forEach(cat => {
-            const btn = document.createElement('button');
-            btn.className = 'filter-btn';
-            btn.dataset.filterType = 'categoria';
-            btn.dataset.filterId = cat.id;
-            btn.textContent = cat.nome;
-            btn.addEventListener('click', () => toggleFilter('categoria_id', cat.id, btn));
-            categoryContainer.appendChild(btn);
-        });
+        
+        if (!filters.categorias || !Array.isArray(filters.categorias) || filters.categorias.length === 0) {
+            categoryContainer.innerHTML = '<div class="filter-loading">Nenhuma categoria disponível</div>';
+        } else {
+            filters.categorias.forEach(cat => {
+                if (!cat || !cat.id || !cat.nome) {
+                    console.warn('Categoria inválida:', cat);
+                    return;
+                }
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn';
+                btn.dataset.filterType = 'categoria';
+                btn.dataset.filterId = cat.id;
+                btn.textContent = cat.nome;
+                btn.addEventListener('click', () => toggleFilter('categoria_id', cat.id, btn));
+                categoryContainer.appendChild(btn);
+            });
+        }
         
         // Renderizar tamanhos
         const sizeContainer = document.getElementById('size-filters');
+        if (!sizeContainer) {
+            console.error('Container size-filters não encontrado');
+            return;
+        }
         sizeContainer.innerHTML = '';
-        filters.tamanhos.forEach(tam => {
-            const btn = document.createElement('button');
-            btn.className = 'filter-btn';
-            btn.dataset.filterType = 'tamanho';
-            btn.dataset.filterId = tam.id;
-            btn.textContent = tam.nome;
-            btn.addEventListener('click', () => toggleFilter('tamanho_id', tam.id, btn));
-            sizeContainer.appendChild(btn);
-        });
+        
+        if (!filters.tamanhos || !Array.isArray(filters.tamanhos) || filters.tamanhos.length === 0) {
+            sizeContainer.innerHTML = '<div class="filter-loading">Nenhum tamanho disponível</div>';
+        } else {
+            filters.tamanhos.forEach(tam => {
+                if (!tam || !tam.id || !tam.nome) {
+                    console.warn('Tamanho inválido:', tam);
+                    return;
+                }
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn';
+                btn.dataset.filterType = 'tamanho';
+                btn.dataset.filterId = tam.id;
+                btn.textContent = tam.nome;
+                btn.addEventListener('click', () => toggleFilter('tamanho_id', tam.id, btn));
+                sizeContainer.appendChild(btn);
+            });
+        }
         
         // Renderizar estampas
         const estampaContainer = document.getElementById('estampa-filters');
+        if (!estampaContainer) {
+            console.error('Container estampa-filters não encontrado');
+            return;
+        }
         estampaContainer.innerHTML = '';
-        filters.estampas.forEach(est => {
-            const btn = document.createElement('button');
-            btn.className = 'filter-btn estampa-btn';
-            btn.dataset.filterType = 'estampa';
-            btn.dataset.filterId = est.id;
-            
-            const img = document.createElement('img');
-            img.src = est.imagem_url || '/static/img/placeholder.jpg';
-            img.alt = est.nome;
-            
-            const span = document.createElement('span');
-            span.textContent = est.nome;
-            
-            btn.appendChild(img);
-            btn.appendChild(span);
-            btn.addEventListener('click', () => toggleFilter('estampa_id', est.id, btn));
-            estampaContainer.appendChild(btn);
-        });
+        
+        if (!filters.estampas || !Array.isArray(filters.estampas) || filters.estampas.length === 0) {
+            estampaContainer.innerHTML = '<div class="filter-loading">Nenhuma estampa disponível</div>';
+        } else {
+            filters.estampas.forEach(est => {
+                if (!est || !est.id || !est.nome) {
+                    console.warn('Estampa inválida:', est);
+                    return;
+                }
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn estampa-btn';
+                btn.dataset.filterType = 'estampa';
+                btn.dataset.filterId = est.id;
+                
+                const img = document.createElement('img');
+                img.src = est.imagem_url || '/static/img/placeholder.jpg';
+                img.alt = est.nome || 'Estampa';
+                
+                const span = document.createElement('span');
+                span.textContent = est.nome || 'Sem nome';
+                
+                btn.appendChild(img);
+                btn.appendChild(span);
+                btn.addEventListener('click', () => toggleFilter('estampa_id', est.id, btn));
+                estampaContainer.appendChild(btn);
+            });
+        }
+        
+        // Renderizar tecidos
+        const tecidoContainer = document.getElementById('tecido-filters');
+        if (!tecidoContainer) {
+            console.error('Container tecido-filters não encontrado');
+            return;
+        }
+        tecidoContainer.innerHTML = '';
+        
+        if (!filters.tecidos || !Array.isArray(filters.tecidos) || filters.tecidos.length === 0) {
+            tecidoContainer.innerHTML = '<div class="filter-loading">Nenhum tecido disponível</div>';
+        } else {
+            filters.tecidos.forEach(tec => {
+                if (!tec || !tec.value || !tec.label) {
+                    console.warn('Tecido inválido:', tec);
+                    return;
+                }
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn';
+                btn.dataset.filterType = 'tecido';
+                btn.dataset.filterValue = tec.value;
+                btn.textContent = tec.label;
+                btn.addEventListener('click', () => toggleFilter('tecido', tec.value, btn));
+                tecidoContainer.appendChild(btn);
+            });
+        }
+        
+        // Renderizar sexos
+        const sexoContainer = document.getElementById('sexo-filters');
+        if (!sexoContainer) {
+            console.error('Container sexo-filters não encontrado');
+            return;
+        }
+        sexoContainer.innerHTML = '';
+        
+        if (!filters.sexos || !Array.isArray(filters.sexos) || filters.sexos.length === 0) {
+            sexoContainer.innerHTML = '<div class="filter-loading">Nenhuma opção disponível</div>';
+        } else {
+            filters.sexos.forEach(sex => {
+                if (!sex || !sex.value || !sex.label) {
+                    console.warn('Sexo inválido:', sex);
+                    return;
+                }
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn';
+                btn.dataset.filterType = 'sexo';
+                btn.dataset.filterValue = sex.value;
+                btn.textContent = sex.label;
+                btn.addEventListener('click', () => toggleFilter('sexo', sex.value, btn));
+                sexoContainer.appendChild(btn);
+            });
+        }
         
         // Renderizar faixas de preço
         const priceContainer = document.getElementById('price-filters');
+        if (!priceContainer) {
+            console.error('Container price-filters não encontrado');
+            return;
+        }
         priceContainer.innerHTML = '';
-        filters.precos.forEach(preco => {
-            const btn = document.createElement('button');
-            btn.className = 'filter-btn';
-            btn.dataset.filterType = 'preco';
-            btn.dataset.precoMin = preco.min;
-            btn.dataset.precoMax = preco.max || '';
-            btn.textContent = preco.label;
-            btn.addEventListener('click', () => togglePriceFilter(preco.min, preco.max, btn));
-            priceContainer.appendChild(btn);
-        });
+        
+        if (!filters.precos || !Array.isArray(filters.precos) || filters.precos.length === 0) {
+            priceContainer.innerHTML = '<div class="filter-loading">Nenhuma faixa de preço disponível</div>';
+        } else {
+            filters.precos.forEach(preco => {
+                if (!preco || preco.min === undefined || !preco.label) {
+                    console.warn('Preço inválido:', preco);
+                    return;
+                }
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn';
+                btn.dataset.filterType = 'preco';
+                btn.dataset.precoMin = preco.min;
+                btn.dataset.precoMax = preco.max || '';
+                btn.textContent = preco.label;
+                btn.addEventListener('click', () => togglePriceFilter(preco.min, preco.max, btn));
+                priceContainer.appendChild(btn);
+            });
+        }
+        
+        console.log('Filtros renderizados com sucesso');
     }
     
     /**
@@ -151,6 +293,8 @@ document.addEventListener('DOMContentLoaded', function() {
             categoria_id: [],
             tamanho_id: [],
             estampa_id: [],
+            tecido: [],
+            sexo: [],
             preco_min: null,
             preco_max: null
         };
@@ -182,6 +326,14 @@ document.addEventListener('DOMContentLoaded', function() {
             params.append('estampa_id', id);
         });
         
+        activeFilters.tecido.forEach(tec => {
+            params.append('tecido', tec);
+        });
+        
+        activeFilters.sexo.forEach(sex => {
+            params.append('sexo', sex);
+        });
+        
         if (activeFilters.preco_min !== null) {
             params.append('preco_min', activeFilters.preco_min);
         }
@@ -207,35 +359,35 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            
+
             const products = await response.json();
             console.log("Produtos recebidos:", products);
             
             renderProducts(products);
             updateProductsCount(products.length);
-            
+
         } catch (error) {
             console.error('Erro ao buscar produtos:', error);
             productGrid.innerHTML = '<div class="loading-message">Não foi possível carregar os produtos. Tente novamente mais tarde.</div>';
         }
     }
-    
+
     /**
      * Renderiza os produtos no grid
      */
     function renderProducts(products) {
         productGrid.innerHTML = '';
-        
+
         if (products.length === 0) {
             productGrid.innerHTML = '<div class="loading-message">Nenhum produto encontrado com os filtros selecionados.</div>';
             return;
         }
-        
+
         products.forEach(product => {
             const priceDisplay = product.preco_minimo !== null ?
-                `R$ ${product.preco_minimo.toFixed(2).replace('.', ',')}` :
-                'Preço indisponível';
-            
+                               `R$ ${product.preco_minimo.toFixed(2).replace('.', ',')}` :
+                               'Preço indisponível';
+
             let statusBadgeText = '';
             let statusBadgeClass = '';
             if (product.estoque > 0) {
@@ -245,7 +397,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 statusBadgeText = 'Sob Demanda';
                 statusBadgeClass = 'status-out-of-stock';
             }
-            
+
             const productCard = `
                 <div class="product-card">
                     <a href="/produtos/${product.id}" style="text-decoration: none; color: inherit;">
@@ -271,7 +423,7 @@ document.addEventListener('DOMContentLoaded', function() {
             productGrid.innerHTML += productCard;
         });
     }
-    
+
     /**
      * Atualiza o contador de produtos
      */

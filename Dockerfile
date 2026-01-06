@@ -30,6 +30,6 @@ RUN mkdir -p /app/logs
 # Expor porta
 EXPOSE 5000
 
-# Comando padrão
-CMD ["python", "app.py"]
+# Usar script de entrada que sincroniza o relógio antes de iniciar
+CMD ["/app/entrypoint.sh"]
 
