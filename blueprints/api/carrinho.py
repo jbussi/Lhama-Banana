@@ -80,12 +80,13 @@ def add_to_cart():
             return jsonify({"erro": "Não foi possível obter ou criar carrinho."}), 500
 
         # ... (restante da lógica de verificação de estoque, inserção/atualização do item no carrinho) ...
-        cur.execute("SELECT preco_venda, estoque FROM produtos WHERE id = %s", (product_variation_id,))
+        cur.execute("SELECT preco_venda, preco_promocional, estoque FROM produtos WHERE id = %s", (product_variation_id,))
         product_info = cur.fetchone()
         if not product_info:
             return jsonify({"erro": "Variação do produto não encontrada."}), 404
-        current_price = product_info[0]
-        current_stock = product_info[1]
+        # Usar preço promocional se existir, senão usar preço de venda
+        current_price = product_info[1] if product_info[1] is not None else product_info[0]
+        current_stock = product_info[2]
 
         cur.execute("SELECT id, quantidade FROM carrinho_itens WHERE carrinho_id = %s AND produto_id = %s", (cart_id, product_variation_id))
         cart_item = cur.fetchone()

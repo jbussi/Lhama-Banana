@@ -304,10 +304,25 @@ document.addEventListener('DOMContentLoaded', async function() {
     function updateSelectedVariation(variation) {
         selectedVariation = variation;
 
-        productPriceElem.textContent = `R$ ${variation.preco.toFixed(2).replace('.', ',')}`;
-        oldPriceElem.style.display = 'none';
-        discountBadgeElem.style.display = 'none';
-        // Você pode implementar a lógica de preço antigo/desconto aqui se tiver esses dados no backend
+        // Exibir preço com promoção se existir
+        if (variation.tem_promocao && variation.preco_promocional !== null && variation.preco_promocional !== undefined) {
+            // Exibir preço promocional como preço atual
+            productPriceElem.textContent = `R$ ${variation.preco.toFixed(2).replace('.', ',')}`;
+            
+            // Exibir preço original riscado
+            oldPriceElem.textContent = `R$ ${variation.preco_original.toFixed(2).replace('.', ',')}`;
+            oldPriceElem.style.display = 'inline-block';
+            
+            // Calcular e exibir percentual de desconto
+            const descontoPercentual = Math.round(((variation.preco_original - variation.preco) / variation.preco_original) * 100);
+            discountBadgeElem.textContent = `${descontoPercentual}% OFF`;
+            discountBadgeElem.style.display = 'inline-block';
+        } else {
+            // Sem promoção - apenas preço normal
+            productPriceElem.textContent = `R$ ${variation.preco.toFixed(2).replace('.', ',')}`;
+            oldPriceElem.style.display = 'none';
+            discountBadgeElem.style.display = 'none';
+        }
 
         skuElem.textContent = variation.sku || '-';
         

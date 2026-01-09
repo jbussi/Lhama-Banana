@@ -379,6 +379,94 @@ def list_pedidos():
     finally:
         cur.close()
 
+@admin_api_bp.route('/pedidos/update-status', methods=['POST'])
+@admin_required_email
+def update_pedido_status():
+    """Atualiza status de um pedido (usado pelo admin)"""
+    try:
+        data = request.get_json()
+        venda_id = data.get('venda_id')
+        novo_status = data.get('status')
+        
+        if not venda_id or not novo_status:
+            return jsonify({"erro": "venda_id e status são obrigatórios"}), 400
+        
+        # Validar status permitidos
+        status_permitidos = [
+            'pendente', 'pendente_pagamento', 'processando_envio', 
+            'enviado', 'entregue', 'cancelado_pelo_cliente', 
+            'cancelado_pelo_vendedor', 'devolvido', 'reembolsado'
+        ]
+        
+        if novo_status not in status_permitidos:
+            return jsonify({"erro": f"Status inválido. Permited: {', '.join(status_permitidos)}"}), 400
+        
+        conn = g.db
+        cur = conn.cursor()
+        
+        # Buscar status atual
+        cur.execute("""
+            SELECT status_pedido FROM vendas WHERE id = %s
+        """, (venda_id,))
+        
+        resultado = cur.fetchone()
+        if not resultado:
+            return jsonify({"erro": "Pedido não encontrado"}), 404
+        
+        status_atual = resultado[0]
+        
+        # Atualizar status
+        cur.execute("""
+            UPDATE vendas
+            SET status_pedido = %s,
+                atualizado_em = NOW()
+            WHERE id = %s
+            RETURNING id, codigo_pedido, status_pedido
+        """, (novo_status, venda_id))
+        
+        resultado_atualizado = cur.fetchone()
+        conn.commit()
+        
+        # Gerenciar estoque conforme mudança de status
+        try:
+            from ...services.bling_stock_service import handle_order_status_change
+            stock_result = handle_order_status_change(venda_id, status_atual, novo_status)
+            if stock_result.get('success'):
+                current_app.logger.info(f"✅ Estoque gerenciado após mudança de status (venda {venda_id})")
+            else:
+                current_app.logger.warning(f"⚠️ Falha ao gerenciar estoque (venda {venda_id}): {stock_result.get('error')}")
+        except Exception as stock_error:
+            current_app.logger.error(f"❌ Erro ao gerenciar estoque (venda {venda_id}): {stock_error}")
+            # Não falhar a atualização de status por erro no estoque
+        
+        # Se status mudou para 'processando_envio' e não era esse status antes, criar etiqueta automaticamente
+        if novo_status == 'processando_envio' and status_atual != 'processando_envio':
+            try:
+                from ..api.labels import create_label_automatically
+                etiqueta_id = create_label_automatically(venda_id)
+                if etiqueta_id:
+                    current_app.logger.info(f"✅ Etiqueta {etiqueta_id} criada automaticamente para venda {venda_id} (via admin)")
+                else:
+                    current_app.logger.warning(f"⚠️ Etiqueta não criada para venda {venda_id} (pode já existir ou erro na criação)")
+            except Exception as label_error:
+                current_app.logger.error(f"❌ Erro ao criar etiqueta automaticamente para venda {venda_id}: {label_error}")
+                # Não falhar a atualização de status por erro na criação da etiqueta
+        
+        return jsonify({
+            "success": True,
+            "venda_id": resultado_atualizado[0],
+            "codigo_pedido": resultado_atualizado[1],
+            "status_anterior": status_atual,
+            "status_novo": resultado_atualizado[2]
+        }), 200
+        
+    except Exception as e:
+        conn.rollback()
+        current_app.logger.error(f"Erro ao atualizar status do pedido: {e}")
+        return jsonify({"erro": "Erro ao atualizar status do pedido"}), 500
+    finally:
+        cur.close()
+
 @admin_api_bp.route('/validate-strapi-access', methods=['POST'])
 def validate_strapi_access():
     """

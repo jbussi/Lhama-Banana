@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', function() {
 	let selectedShippingOption = null;
 	let savedAddresses = [];
 	let selectedSavedAddressId = null;
+	let savedFiscalData = null;
     
 	/**
 	 * Formata valor monetário em R$
@@ -43,6 +44,215 @@ document.addEventListener('DOMContentLoaded', function() {
 		return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 	}
 	
+	/**
+	 * Carrega dados fiscais salvos do usuário (se logado)
+	 */
+	async function loadSavedFiscalData() {
+		try {
+			let firebaseAuth = null;
+			let onAuthStateChangedFn = null;
+			try {
+				const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+				const { getAuth, onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+				
+				const firebaseConfig = {
+					apiKey: "AIzaSyDd13Tl9dJaUqIvNhGWakoEbpYqw7ZrB7Y",
+					authDomain: "lhamabanana-981d5.firebaseapp.com",
+					projectId: "lhamabanana-981d5",
+					storageBucket: "lhamabanana-981d5.firebasestorage.app",
+					messagingSenderId: "209130422039",
+					appId: "1:209130422039:web:70fcf2089fa90715364152",
+					measurementId: "G-4XQSZZB0JK"
+				};
+				
+				const app = initializeApp(firebaseConfig);
+				firebaseAuth = getAuth(app);
+				onAuthStateChangedFn = onAuthStateChanged;
+			} catch (error) {
+				console.log('[Checkout] Firebase não disponível:', error);
+				return;
+			}
+			
+			if (!firebaseAuth || !onAuthStateChangedFn) return;
+			
+			return new Promise((resolve) => {
+				onAuthStateChangedFn(firebaseAuth, async (user) => {
+					if (!user) {
+						resolve();
+						return;
+					}
+					
+					try {
+						const idToken = await user.getIdToken();
+						const response = await fetch('/api/fiscal-data', {
+							method: 'GET',
+							headers: {
+								'Authorization': `Bearer ${idToken}`
+							}
+						});
+						
+						if (response.ok) {
+							const result = await response.json();
+							if (result.fiscal_data) {
+								savedFiscalData = result.fiscal_data;
+								renderSavedFiscalOption();
+							}
+						}
+					} catch (error) {
+						console.error('[Checkout] Erro ao carregar dados fiscais:', error);
+					}
+					resolve();
+				});
+			});
+		} catch (error) {
+			console.error('[Checkout] Erro ao carregar dados fiscais:', error);
+		}
+	}
+	
+	/**
+	 * Renderiza opção de usar dados fiscais salvos
+	 */
+	function renderSavedFiscalOption() {
+		const savedFiscalSection = document.getElementById('saved-fiscal-section');
+		const useSavedFiscalSelect = document.getElementById('use-saved-fiscal');
+		
+		if (savedFiscalData && savedFiscalSection && useSavedFiscalSelect) {
+			savedFiscalSection.style.display = 'block';
+			useSavedFiscalSelect.innerHTML = `
+				<option value="">Preencher manualmente</option>
+				<option value="saved">${savedFiscalData.tipo}: ${savedFiscalData.cpf_cnpj} - ${savedFiscalData.nome_razao_social}</option>
+			`;
+			
+			useSavedFiscalSelect.addEventListener('change', function() {
+				if (this.value === 'saved') {
+					populateFiscalForm(savedFiscalData);
+				} else {
+					clearFiscalForm();
+				}
+			});
+		}
+	}
+	
+	/**
+	 * Preenche formulário fiscal com dados salvos
+	 */
+	function populateFiscalForm(data) {
+		document.getElementById('fiscal-tipo-' + data.tipo.toLowerCase() + '-checkout').checked = true;
+		updateFiscalFormLabelsCheckout(data.tipo);
+		
+		document.getElementById('fiscal-cpf-cnpj-checkout').value = data.cpf_cnpj;
+		document.getElementById('fiscal-nome-checkout').value = data.nome_razao_social;
+		
+		if (data.tipo === 'CNPJ') {
+			document.getElementById('fiscal-inscricao-estadual-checkout').value = data.inscricao_estadual || '';
+			document.getElementById('fiscal-inscricao-municipal-checkout').value = data.inscricao_municipal || '';
+			document.getElementById('fiscal-inscricao-estadual-group-checkout').style.display = 'block';
+			document.getElementById('fiscal-inscricao-municipal-group-checkout').style.display = 'block';
+		}
+		
+		const endereco = data.endereco;
+		document.getElementById('fiscal-rua-checkout').value = endereco.rua;
+		document.getElementById('fiscal-numero-checkout').value = endereco.numero;
+		document.getElementById('fiscal-complemento-checkout').value = endereco.complemento || '';
+		document.getElementById('fiscal-bairro-checkout').value = endereco.bairro;
+		document.getElementById('fiscal-cidade-checkout').value = endereco.cidade;
+		document.getElementById('fiscal-estado-checkout').value = endereco.estado;
+		document.getElementById('fiscal-cep-checkout').value = endereco.cep.replace(/(\d{5})(\d{3})/, '$1-$2');
+	}
+	
+	/**
+	 * Limpa formulário fiscal
+	 */
+	function clearFiscalForm() {
+		document.getElementById('fiscal-form-checkout').reset();
+		document.getElementById('fiscal-tipo-cpf-checkout').checked = true;
+		updateFiscalFormLabelsCheckout('CPF');
+		document.getElementById('fiscal-inscricao-estadual-group-checkout').style.display = 'none';
+		document.getElementById('fiscal-inscricao-municipal-group-checkout').style.display = 'none';
+	}
+	
+	/**
+	 * Atualiza labels do formulário fiscal baseado no tipo
+	 */
+	function updateFiscalFormLabelsCheckout(tipo) {
+		const cpfCnpjLabel = document.getElementById('fiscal-cpf-cnpj-label-checkout');
+		const nomeLabel = document.getElementById('fiscal-nome-label-checkout');
+		const cpfCnpjInput = document.getElementById('fiscal-cpf-cnpj-checkout');
+		const nomeInput = document.getElementById('fiscal-nome-checkout');
+		
+		if (tipo === 'CNPJ') {
+			cpfCnpjLabel.textContent = 'CNPJ *';
+			cpfCnpjInput.placeholder = '00.000.000/0000-00';
+			cpfCnpjInput.maxLength = 18;
+			nomeLabel.textContent = 'Razão Social *';
+			nomeInput.placeholder = 'Razão social da empresa';
+		} else {
+			cpfCnpjLabel.textContent = 'CPF *';
+			cpfCnpjInput.placeholder = '000.000.000-00';
+			cpfCnpjInput.maxLength = 14;
+			nomeLabel.textContent = 'Nome Completo *';
+			nomeInput.placeholder = 'Seu nome completo';
+		}
+	}
+	
+	/**
+	 * Formata CPF
+	 */
+	function formatCPFCheckout(value) {
+		const numbers = value.replace(/\D/g, '');
+		if (numbers.length <= 11) {
+			return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+		}
+		return value;
+	}
+	
+	/**
+	 * Formata CNPJ
+	 */
+	function formatCNPJCheckout(value) {
+		const numbers = value.replace(/\D/g, '');
+		if (numbers.length <= 14) {
+			return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+		}
+		return value;
+	}
+	
+	/**
+	 * Formata CEP
+	 */
+	function formatCEPCheckout(value) {
+		const numbers = value.replace(/\D/g, '');
+		if (numbers.length <= 8) {
+			return numbers.replace(/(\d{5})(\d{3})/, '$1-$2');
+		}
+		return value;
+	}
+	
+	/**
+	 * Coleta dados fiscais do formulário
+	 */
+	function getFiscalDataFromForm() {
+		const tipo = document.querySelector('input[name="fiscal-tipo-checkout"]:checked').value;
+		const cpfCnpj = document.getElementById('fiscal-cpf-cnpj-checkout').value.replace(/\D/g, '');
+		
+		return {
+			tipo: tipo,
+			cpf_cnpj: cpfCnpj,
+			nome_razao_social: document.getElementById('fiscal-nome-checkout').value.trim(),
+			inscricao_estadual: tipo === 'CNPJ' ? (document.getElementById('fiscal-inscricao-estadual-checkout').value.trim() || null) : null,
+			inscricao_municipal: tipo === 'CNPJ' ? (document.getElementById('fiscal-inscricao-municipal-checkout').value.trim() || null) : null,
+			endereco: {
+				rua: document.getElementById('fiscal-rua-checkout').value.trim(),
+				numero: document.getElementById('fiscal-numero-checkout').value.trim(),
+				complemento: document.getElementById('fiscal-complemento-checkout').value.trim() || null,
+				bairro: document.getElementById('fiscal-bairro-checkout').value.trim(),
+				cidade: document.getElementById('fiscal-cidade-checkout').value.trim(),
+				estado: document.getElementById('fiscal-estado-checkout').value,
+				cep: document.getElementById('fiscal-cep-checkout').value.replace(/\D/g, '')
+			}
+		};
+	}
+
 	/**
 	 * Carrega endereços salvos do usuário (se logado)
 	 */
@@ -376,6 +586,44 @@ document.addEventListener('DOMContentLoaded', function() {
 	
 	// Carregar endereços salvos e dados do perfil quando a página carregar
 	loadSavedAddresses();
+	loadSavedFiscalData();
+	
+	// Event listeners para dados fiscais
+	const fiscalTipoInputs = document.querySelectorAll('input[name="fiscal-tipo-checkout"]');
+	fiscalTipoInputs.forEach(input => {
+		input.addEventListener('change', function() {
+			updateFiscalFormLabelsCheckout(this.value);
+			document.getElementById('fiscal-cpf-cnpj-checkout').value = '';
+			
+			if (this.value === 'CNPJ') {
+				document.getElementById('fiscal-inscricao-estadual-group-checkout').style.display = 'block';
+				document.getElementById('fiscal-inscricao-municipal-group-checkout').style.display = 'block';
+			} else {
+				document.getElementById('fiscal-inscricao-estadual-group-checkout').style.display = 'none';
+				document.getElementById('fiscal-inscricao-municipal-group-checkout').style.display = 'none';
+			}
+		});
+	});
+	
+	// Máscaras de input fiscal
+	const fiscalCpfCnpjInput = document.getElementById('fiscal-cpf-cnpj-checkout');
+	if (fiscalCpfCnpjInput) {
+		fiscalCpfCnpjInput.addEventListener('input', function() {
+			const tipo = document.querySelector('input[name="fiscal-tipo-checkout"]:checked').value;
+			if (tipo === 'CPF') {
+				this.value = formatCPFCheckout(this.value);
+			} else {
+				this.value = formatCNPJCheckout(this.value);
+			}
+		});
+	}
+	
+	const fiscalCepInput = document.getElementById('fiscal-cep-checkout');
+	if (fiscalCepInput) {
+		fiscalCepInput.addEventListener('input', function() {
+			this.value = formatCEPCheckout(this.value);
+		});
+	}
 	loadUserProfile();
     
 	function renderCartItems() {
@@ -446,11 +694,18 @@ document.addEventListener('DOMContentLoaded', function() {
 			const response = await fetch(`https://viacep.com.br/ws/${cleanCEP}/json/`);
 			if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 			const data = await response.json();
-			if (data.erro) { alert('CEP não encontrado. Verifique o CEP digitado.'); return null; }
+			if (data.erro) { 
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('CEP não encontrado. Verifique o CEP digitado.', cepInput?.parentElement);
+				}
+				return null; 
+			}
 			return { street: data.logradouro || '', district: data.bairro || '', city: data.localidade || '', state: data.uf || '', cep: data.cep || cleanCEP };
 		} catch (error) {
 			console.error('[Checkout] Erro ao buscar CEP na ViaCEP:', error);
-			alert('Erro ao buscar CEP. Verifique sua conexão e tente novamente.');
+			if (window.MessageHelper) {
+				window.MessageHelper.showError('Erro ao buscar CEP. Verifique sua conexão e tente novamente.', cepInput?.parentElement);
+			}
 			return null;
 		}
 	}
@@ -581,57 +836,82 @@ document.addEventListener('DOMContentLoaded', function() {
 		checkoutForm.addEventListener('submit', async function(e) {
 			e.preventDefault();
 			
+			// Limpar mensagens anteriores
+			if (window.MessageHelper) {
+				window.MessageHelper.clearMessages(checkoutForm);
+			}
+			
 			// Validar campos obrigatórios
 			if (!nomeRecebedorInput || !nomeRecebedorInput.value.trim()) {
-				alert('Por favor, preencha o nome do recebedor');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, preencha o nome do recebedor', nomeRecebedorInput?.parentElement);
+				}
 				nomeRecebedorInput?.focus();
 				return;
 			}
 			
 			if (!cepInput || !cepInput.value.replace(/\D/g, '').match(/^\d{8}$/)) {
-				alert('Por favor, preencha um CEP válido');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, preencha um CEP válido', cepInput?.parentElement);
+				}
 				cepInput?.focus();
 				return;
 			}
 			
 			if (!ruaInput || !ruaInput.value.trim()) {
-				alert('Por favor, preencha a rua');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, preencha a rua', ruaInput?.parentElement);
+				}
 				ruaInput?.focus();
 				return;
 			}
 			
 			if (!numeroInput || !numeroInput.value.trim()) {
-				alert('Por favor, preencha o número');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, preencha o número', numeroInput?.parentElement);
+				}
 				numeroInput?.focus();
 				return;
 			}
 			
 			if (!bairroInput || !bairroInput.value.trim()) {
-				alert('Por favor, preencha o bairro');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, preencha o bairro', bairroInput?.parentElement);
+				}
 				bairroInput?.focus();
 				return;
 			}
 			
 			if (!cidadeInput || !cidadeInput.value.trim()) {
-				alert('Por favor, preencha a cidade');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, preencha a cidade', cidadeInput?.parentElement);
+				}
 				cidadeInput?.focus();
 				return;
 			}
 			
 			if (!estadoSelect || !estadoSelect.value) {
-				alert('Por favor, selecione o estado');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, selecione o estado', estadoSelect?.parentElement);
+				}
 				estadoSelect?.focus();
 				return;
 			}
 			
 			if (!selectedShippingOption) {
-				alert('Por favor, selecione uma opção de frete');
+				const shippingContainer = document.getElementById('shippingOptions');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, selecione uma opção de frete', shippingContainer || checkoutForm);
+				}
 				return;
 			}
 			
 			const selectedPaymentMethod = document.querySelector('input[name="payment_method"]:checked');
 			if (!selectedPaymentMethod) {
-				alert('Por favor, selecione um método de pagamento');
+				const paymentContainer = document.querySelector('.payment-methods') || checkoutForm;
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, selecione um método de pagamento', paymentContainer);
+				}
 				return;
 			}
 			
@@ -644,33 +924,48 @@ document.addEventListener('DOMContentLoaded', function() {
 				const cardCvv = document.getElementById('card_cvv')?.value.trim();
 				
 				if (!cardNumber || cardNumber.length < 13) {
-					alert('Por favor, preencha um número de cartão válido');
-					document.getElementById('card_number')?.focus();
+					const cardNumberInput = document.getElementById('card_number');
+					if (window.MessageHelper) {
+						window.MessageHelper.showError('Por favor, preencha um número de cartão válido', cardNumberInput?.parentElement || creditCardForm);
+					}
+					cardNumberInput?.focus();
 					return;
 				}
 				
 				if (!cardHolderName || cardHolderName.length < 3) {
-					alert('Por favor, preencha o nome no cartão');
-					document.getElementById('card_holder_name')?.focus();
+					const cardHolderInput = document.getElementById('card_holder_name');
+					if (window.MessageHelper) {
+						window.MessageHelper.showError('Por favor, preencha o nome no cartão', cardHolderInput?.parentElement || creditCardForm);
+					}
+					cardHolderInput?.focus();
 					return;
 				}
 				
 				if (!cardExpMonth || !cardExpYear) {
-					alert('Por favor, preencha a validade do cartão');
+					if (window.MessageHelper) {
+						window.MessageHelper.showError('Por favor, preencha a validade do cartão', creditCardForm);
+					}
 					return;
 				}
 				
 				if (!cardCvv || cardCvv.length < 3) {
-					alert('Por favor, preencha o CVV do cartão');
-					document.getElementById('card_cvv')?.focus();
+					const cardCvvInput = document.getElementById('card_cvv');
+					if (window.MessageHelper) {
+						window.MessageHelper.showError('Por favor, preencha o CVV do cartão', cardCvvInput?.parentElement || creditCardForm);
+					}
+					cardCvvInput?.focus();
 					return;
 				}
 			}
 			
 			// Verificar se há itens no carrinho
 			if (!cartData.items || cartData.items.length === 0) {
-				alert('Seu carrinho está vazio. Adicione produtos antes de finalizar a compra.');
-				window.location.href = '/produtos';
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Seu carrinho está vazio. Adicione produtos antes de finalizar a compra.', checkoutForm);
+				}
+				setTimeout(() => {
+					window.location.href = '/produtos';
+				}, 2000);
 				return;
 			}
 			
@@ -690,7 +985,9 @@ document.addEventListener('DOMContentLoaded', function() {
 			
 			// Validar email
 			if (!emailInput || !emailInput.value.trim() || !emailInput.value.includes('@')) {
-				alert('Por favor, preencha um email válido');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, preencha um email válido', emailInput?.parentElement);
+				}
 				emailInput?.focus();
 				return;
 			}
@@ -698,7 +995,9 @@ document.addEventListener('DOMContentLoaded', function() {
 			// Validar CPF/CNPJ
 			const cpfCnpj = cpfCnpjInput?.value.replace(/\D/g, '') || '';
 			if (!cpfCnpj || cpfCnpj.length < 11) {
-				alert('Por favor, preencha um CPF/CNPJ válido');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, preencha um CPF/CNPJ válido', cpfCnpjInput?.parentElement);
+				}
 				cpfCnpjInput?.focus();
 				return;
 			}
@@ -707,18 +1006,39 @@ document.addEventListener('DOMContentLoaded', function() {
 			const phoneArea = phoneAreaInput?.value.replace(/\D/g, '') || '';
 			const phoneNumber = phoneNumberInput?.value.replace(/\D/g, '') || '';
 			if (!phoneArea || phoneArea.length < 2) {
-				alert('Por favor, preencha o DDD do telefone');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, preencha o DDD do telefone', phoneAreaInput?.parentElement);
+				}
 				phoneAreaInput?.focus();
 				return;
 			}
 			if (!phoneNumber || phoneNumber.length < 8) {
-				alert('Por favor, preencha o número do telefone');
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, preencha o número do telefone', phoneNumberInput?.parentElement);
+				}
 				phoneNumberInput?.focus();
 				return;
 			}
 			
 			// Verificar se está usando um endereço salvo
 			let endereco_id = selectedSavedAddressId;
+			
+			// Coletar dados fiscais
+			const fiscalData = getFiscalDataFromForm();
+			
+			// Obter cupom aplicado do localStorage (se existir)
+			let cupomCodigo = null;
+			let discountValue = 0;
+			try {
+				const savedCoupon = localStorage.getItem('appliedCoupon');
+				if (savedCoupon) {
+					const couponData = JSON.parse(savedCoupon);
+					cupomCodigo = couponData.codigo;
+					discountValue = couponData.desconto || 0;
+				}
+			} catch (error) {
+				console.error('[Checkout] Erro ao carregar cupom do localStorage:', error);
+			}
 			
 			// Preparar dados do checkout
 			const checkoutData = {
@@ -738,34 +1058,77 @@ document.addEventListener('DOMContentLoaded', function() {
 					cidade: cidadeInput.value.trim(),
 					estado: estadoSelect.value
 				},
-					shipping_option: {
-						name: selectedShippingOption.name,
-						price: selectedShippingOption.price,
-						service: selectedShippingOption.service,
-						deadline: selectedShippingOption.delivery_time || selectedShippingOption.deadline
-					},
-					freight_value: selectedShippingOption.price,
-					payment_method: selectedPaymentMethod.value,
-					payment_details: {}
-				};
+				fiscal_data: fiscalData,
+				shipping_option: {
+					name: selectedShippingOption.name,
+					price: selectedShippingOption.price,
+					service: selectedShippingOption.service,
+					deadline: selectedShippingOption.delivery_time || selectedShippingOption.deadline
+				},
+				freight_value: selectedShippingOption.price,
+				discount_value: discountValue,
+				cupom_codigo: cupomCodigo,
+				payment_method: selectedPaymentMethod.value,
+				payment_details: {}
+			};
 				
-				// Adicionar dados do cartão se necessário
-				if (selectedPaymentMethod.value === 'CREDIT_CARD') {
-					const installments = parseInt(document.getElementById('installments')?.value || '1');
-					const cardExpYear = document.getElementById('card_exp_year')?.value.trim() || '';
+			// Para PIX e Boleto, enviar dados do cliente
+			if (selectedPaymentMethod.value !== 'CREDIT_CARD') {
+				checkoutData.payment_details = {
+					customer_name: nomeRecebedorInput.value.trim(),
+					customer_email: emailInput.value.trim(),
+					customer_cpf_cnpj: cpfCnpj,
+					customer_phone_area: phoneArea,
+					customer_phone_number: phoneNumber
+				};
+			}
+			
+			// Se for cartão de crédito, validar dados primeiro (dados sensíveis isolados)
+			if (selectedPaymentMethod.value === 'CREDIT_CARD') {
+				const installments = parseInt(document.getElementById('installments')?.value || '1');
+				const cardExpYear = document.getElementById('card_exp_year')?.value.trim() || '';
+				
+				// Converter ano de 4 dígitos para formato completo se necessário
+				let cardExpYearFormatted = cardExpYear;
+				if (cardExpYear.length === 2) {
+					cardExpYearFormatted = '20' + cardExpYear;
+				}
+				
+				// Primeiro: validar dados do cartão (dados sensíveis vão apenas para este endpoint)
+				try {
+					const validateResponse = await fetch('/api/pagbank/validate-card', {
+						method: 'POST',
+						credentials: 'include',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({
+							card_number: document.getElementById('card_number')?.value.replace(/\s/g, ''),
+							card_exp_month: document.getElementById('card_exp_month')?.value.trim().padStart(2, '0'),
+							card_exp_year: cardExpYearFormatted,
+							card_cvv: document.getElementById('card_cvv')?.value.trim(),
+							card_holder_name: document.getElementById('card_holder_name')?.value.trim(),
+							card_holder_cpf_cnpj: cpfCnpj
+						})
+					});
 					
-					// Converter ano de 4 dígitos para 2 dígitos se necessário (para compatibilidade)
-					let cardExpYearFormatted = cardExpYear;
-					if (cardExpYear.length === 4) {
-						cardExpYearFormatted = cardExpYear.substring(2); // Pega os últimos 2 dígitos
+					// Verificar se a resposta é JSON
+					const contentType = validateResponse.headers.get('content-type');
+					if (!contentType || !contentType.includes('application/json')) {
+						const text = await validateResponse.text();
+						console.error('Resposta não é JSON:', text.substring(0, 200));
+						throw new Error('Erro ao validar dados do cartão. Tente novamente.');
 					}
 					
+					const validateData = await validateResponse.json();
+					
+					if (!validateResponse.ok || !validateData.success) {
+						throw new Error(validateData.erro || 'Erro ao validar dados do cartão');
+					}
+					
+					// Agora enviar apenas o card_id (sem dados sensíveis) no checkout
 					checkoutData.payment_details = {
-						card_number: document.getElementById('card_number')?.value.replace(/\s/g, ''),
-						card_holder_name: document.getElementById('card_holder_name')?.value.trim(),
-						card_exp_month: document.getElementById('card_exp_month')?.value.trim().padStart(2, '0'),
-						card_exp_year: cardExpYearFormatted,
-						card_cvv: document.getElementById('card_cvv')?.value.trim(),
+						card_id: validateData.card_id,  // Apenas o ID, sem dados do cartão
 						installments: installments,
 						customer_name: nomeRecebedorInput.value.trim(),
 						customer_email: emailInput.value.trim(),
@@ -773,25 +1136,20 @@ document.addEventListener('DOMContentLoaded', function() {
 						customer_phone_area: phoneArea,
 						customer_phone_number: phoneNumber
 					};
-				} else {
-					// Para PIX e Boleto, também enviar dados do cliente
-					checkoutData.payment_details = {
-						customer_name: nomeRecebedorInput.value.trim(),
-						customer_email: emailInput.value.trim(),
-						customer_cpf_cnpj: cpfCnpj,
-						customer_phone_area: phoneArea,
-						customer_phone_number: phoneNumber
-					};
+				} catch (validateError) {
+					console.error('Erro ao validar dados do cartão:', validateError);
+					throw new Error(validateError.message || 'Erro ao processar dados do cartão. Verifique as informações e tente novamente.');
 				}
-				
-				// Fazer requisição para processar checkout
-				const headers = await getAuthHeaders();
-				const response = await fetch('/api/checkout/process', {
-					method: 'POST',
-					credentials: 'include',
-					headers: headers,
-					body: JSON.stringify(checkoutData)
-				});
+			}
+			
+			// Fazer requisição para processar checkout (sem dados sensíveis do cartão)
+			const headers = await getAuthHeaders();
+			const response = await fetch('/api/checkout/process', {
+				method: 'POST',
+				credentials: 'include',
+				headers: headers,
+				body: JSON.stringify(checkoutData)
+			});
 				
 				const responseData = await response.json();
 				
@@ -802,6 +1160,9 @@ document.addEventListener('DOMContentLoaded', function() {
 				if (!responseData.success) {
 					throw new Error(responseData.erro || 'Erro ao processar checkout');
 				}
+				
+				// Limpar cupom aplicado após checkout bem-sucedido
+				localStorage.removeItem('appliedCoupon');
 				
 				// Obter token público e método de pagamento
 				const publicToken = responseData.public_token;
@@ -828,7 +1189,9 @@ document.addEventListener('DOMContentLoaded', function() {
 				
 			} catch (error) {
 				console.error('[Checkout] Erro ao processar checkout:', error);
-				alert(`Erro ao processar checkout: ${error.message}`);
+				if (window.MessageHelper) {
+					window.MessageHelper.showError(`Erro ao processar checkout: ${error.message}`, checkoutForm);
+				}
 				
 				// Esconder loading
 				if (checkoutLoading) checkoutLoading.style.display = 'none';
@@ -841,7 +1204,18 @@ document.addEventListener('DOMContentLoaded', function() {
 	}
     
 	if (buscarCepBtn && cepInput) {
-		buscarCepBtn.addEventListener('click', function(e) { e.preventDefault(); const cep = cepInput.value.replace(/\D/g, ''); if (cep.length === 8) { fillAddressByCEP(cep); } else { alert('Por favor, digite um CEP válido (8 dígitos)'); cepInput.focus(); } });
+		buscarCepBtn.addEventListener('click', function(e) { 
+			e.preventDefault(); 
+			const cep = cepInput.value.replace(/\D/g, ''); 
+			if (cep.length === 8) { 
+				fillAddressByCEP(cep); 
+			} else { 
+				if (window.MessageHelper) {
+					window.MessageHelper.showError('Por favor, digite um CEP válido (8 dígitos)', cepInput.parentElement);
+				}
+				cepInput.focus(); 
+			} 
+		});
 	}
     
 	if (cepInput) {

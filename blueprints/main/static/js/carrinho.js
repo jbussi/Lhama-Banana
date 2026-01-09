@@ -3,21 +3,66 @@ async function getAuthHeaders() {
         'Content-Type': 'application/json'
     };
 
-    // A lógica de login Firebase ficaria aqui se você estivesse usando a SDK JS diretamente para autenticação
-    // Por simplicidade, vamos assumir que o backend Flask já lida com a sessão para usuários logados
-    // e que o X-Session-ID é apenas para anônimos.
-
     let sessionId = localStorage.getItem('cartSessionId');
-    // Se não houver session ID no localStorage, gerar um novo UUID
-    // Isso é feito apenas se o usuário NÃO estiver logado.
-    // O backend tem a lógica para priorizar o usuário logado (g.user_db_data) sobre o X-Session-ID.
     if (!sessionId) {
-        sessionId = crypto.randomUUID(); // Gerar um novo UUID se não existir
+        sessionId = crypto.randomUUID();
         localStorage.setItem('cartSessionId', sessionId);
     }
     headers['X-Session-ID'] = sessionId;
     
+    // Adicionar token Firebase se disponível
+    try {
+        const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+        const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyDd13Tl9dJaUqIvNhGWakoEbpYqw7ZrB7Y",
+            authDomain: "lhamabanana-981d5.firebaseapp.com",
+            projectId: "lhamabanana-981d5",
+            storageBucket: "lhamabanana-981d5.firebasestorage.app",
+            messagingSenderId: "209130422039",
+            appId: "1:209130422039:web:70fcf2089fa90715364152",
+            measurementId: "G-4XQSZZB0JK"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        
+        const user = auth.currentUser;
+        if (user) {
+            const idToken = await user.getIdToken();
+            headers['Authorization'] = `Bearer ${idToken}`;
+        }
+    } catch (error) {
+        // Firebase não disponível ou usuário não logado
+        console.log('Firebase não disponível ou usuário não logado');
+    }
+    
     return headers;
+}
+
+// Função auxiliar para verificar se o usuário está logado
+async function isUserLoggedIn() {
+    try {
+        const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+        const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyDd13Tl9dJaUqIvNhGWakoEbpYqw7ZrB7Y",
+            authDomain: "lhamabanana-981d5.firebaseapp.com",
+            projectId: "lhamabanana-981d5",
+            storageBucket: "lhamabanana-981d5.firebasestorage.app",
+            messagingSenderId: "209130422039",
+            appId: "1:209130422039:web:70fcf2089fa90715364152",
+            measurementId: "G-4XQSZZB0JK"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        return auth.currentUser !== null;
+    } catch (error) {
+        return false;
+    }
 }
 
 
@@ -234,9 +279,24 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         // Atualiza o resumo (sem frete, pois é calculado apenas no checkout)
         const subtotal = cartData.total_value;
-        cartTotalPriceElem.textContent = `R$ ${subtotal.toFixed(2).replace('.', ',')}`;
+        
+        // Aplicar desconto do cupom se existir
+        let totalComDesconto = subtotal;
+        if (appliedDiscount > 0) {
+            totalComDesconto = Math.max(0, subtotal - appliedDiscount);
+            if (summaryDiscountElem) {
+                summaryDiscountElem.textContent = `- R$ ${appliedDiscount.toFixed(2).replace('.', ',')}`;
+                summaryDiscountElem.style.color = '#28a745';
+            }
+        } else {
+            if (summaryDiscountElem) {
+                summaryDiscountElem.textContent = '- R$ 0,00';
+                summaryDiscountElem.style.color = '';
+            }
+        }
+        
+        cartTotalPriceElem.textContent = `R$ ${totalComDesconto.toFixed(2).replace('.', ',')}`;
         summarySubtotalElem.textContent = `R$ ${subtotal.toFixed(2).replace('.', ',')}`;
-        summaryDiscountElem.textContent = '- R$ 0,00'; // Placeholder
         
         if (clearCartBtn) clearCartBtn.disabled = false;
         if (checkoutBtn) checkoutBtn.disabled = false;
@@ -532,57 +592,195 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
     }
 
-    // Adicionar evento de submit para o formulário de cupom (lógica mocada)
+    // Variável global para armazenar o cupom aplicado
+    let appliedCoupon = null;
+    let appliedDiscount = 0;
+
+    // Adicionar evento de submit para o formulário de cupom
     const couponForm = document.getElementById('couponForm');
     if (couponForm) {
-        couponForm.addEventListener('submit', function(e) {
+        couponForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             const messagesContainer = document.getElementById('cart-messages-container');
             const couponInput = this.querySelector('input[type="text"]');
             const applyBtn = this.querySelector('button[type="submit"]');
-            const couponCode = couponInput.value.trim();
+            const couponCode = couponInput.value.trim().toUpperCase();
             
-            if (couponCode !== '') {
-                // Mostrar loading no botão
-                if (applyBtn) {
-                    const originalHTML = applyBtn.innerHTML;
-                    applyBtn.disabled = true;
-                    if (window.LoadingHelper) {
-                        window.LoadingHelper.setButtonLoading(applyBtn, 'Aplicando...');
-                    } else {
-                        applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Aplicando...';
-                    }
-                    
-                    // Simular delay (remover quando implementar backend)
-                    setTimeout(() => {
-                        if (messagesContainer && window.MessageHelper) {
-                            window.MessageHelper.showSuccess(`Cupom "${couponCode}" aplicado com sucesso! (Função de cupom mocada)`, messagesContainer, 3000);
-                        }
-                        if (window.LoadingHelper) {
-                            window.LoadingHelper.restoreButton(applyBtn, { innerHTML: originalHTML });
-                        } else {
-                            applyBtn.disabled = false;
-                            applyBtn.innerHTML = originalHTML;
-                        }
-                        couponInput.value = '';
-                    }, 1000);
-                } else {
-                    if (messagesContainer && window.MessageHelper) {
-                        window.MessageHelper.showSuccess(`Cupom "${couponCode}" aplicado com sucesso! (Função de cupom mocada)`, messagesContainer, 3000);
-                    }
-                }
-                // Aqui você faria uma chamada AJAX para validar e aplicar o cupom no backend
-                // e então recarregaria o carrinho para atualizar os valores.
-            } else {
+            if (!couponCode) {
                 if (messagesContainer && window.MessageHelper) {
                     window.MessageHelper.showError('Por favor, insira um código de cupom.', messagesContainer);
-            } else {
-                alert('Por favor, insira um código de cupom.');
                 }
                 couponInput.focus();
+                return;
+            }
+
+            // Verificar se o usuário está logado
+            const loggedIn = await isUserLoggedIn();
+            if (!loggedIn) {
+                // Mostrar mensagem explicando que precisa de conta
+                if (messagesContainer) {
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message warning';
+                    messageDiv.style.cssText = 'margin: 1rem 0; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px;';
+                    messageDiv.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                            <i class="fas fa-info-circle" style="font-size: 1.5rem; color: #856404;"></i>
+                            <div style="flex: 1;">
+                                <strong style="color: #856404; display: block; margin-bottom: 0.5rem;">Conta necessária para usar cupons</strong>
+                                <p style="margin: 0; color: #856404;">Para usar cupons de desconto, você precisa ter uma conta cadastrada.</p>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="window.location.href='/auth/register'" style="width: 100%;">
+                            <i class="fas fa-user-plus"></i> Criar Conta
+                        </button>
+                    `;
+                    messagesContainer.innerHTML = '';
+                    messagesContainer.appendChild(messageDiv);
+                    messagesContainer.style.display = 'block';
+                }
+                couponInput.focus();
+                return;
+            }
+
+                // Mostrar loading no botão
+            let loadingState = null;
+                if (applyBtn) {
+                if (window.LoadingHelper) {
+                    loadingState = window.LoadingHelper.setButtonLoading(applyBtn, 'Aplicando...');
+                } else {
+                    const originalHTML = applyBtn.innerHTML;
+                    applyBtn.disabled = true;
+                        applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Aplicando...';
+                    applyBtn.dataset.originalHTML = originalHTML;
+                }
+            }
+
+            try {
+                // Obter valor total do carrinho
+                const cartTotal = cartData?.total_value || 0;
+                
+                // Chamar API para validar cupom
+                const headers = await getAuthHeaders();
+                const response = await fetch('/api/cupom/validate', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        codigo: couponCode,
+                        valor_total_carrinho: cartTotal
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    // Cupom válido - aplicar desconto
+                    appliedCoupon = result.cupom;
+                    appliedDiscount = result.desconto;
+                    
+                    // Atualizar exibição do desconto
+                    if (summaryDiscountElem) {
+                        summaryDiscountElem.textContent = `- R$ ${appliedDiscount.toFixed(2).replace('.', ',')}`;
+                        summaryDiscountElem.style.color = '#28a745';
+                    }
+                    
+                    // Atualizar total
+                    const newTotal = Math.max(0, cartTotal - appliedDiscount);
+                    if (cartTotalPriceElem) {
+                        cartTotalPriceElem.textContent = `R$ ${newTotal.toFixed(2).replace('.', ',')}`;
+                    }
+
+                    // Mostrar mensagem de sucesso
+                        if (messagesContainer && window.MessageHelper) {
+                        window.MessageHelper.showSuccess(`Cupom "${couponCode}" aplicado com sucesso! Desconto de R$ ${appliedDiscount.toFixed(2).replace('.', ',')}`, messagesContainer, 3000);
+                    }
+
+                    // Limpar campo
+                    couponInput.value = '';
+                    
+                    // Salvar cupom no localStorage para manter após recarregar
+                    localStorage.setItem('appliedCoupon', JSON.stringify({
+                        codigo: couponCode,
+                        desconto: appliedDiscount,
+                        cupom: appliedCoupon
+                    }));
+                } else {
+                    // Erro ao validar cupom
+                    let errorMessage = result.erro || 'Erro ao validar cupom';
+                    
+                    if (result.requer_login) {
+                        // Mostrar mensagem de login necessária
+                        if (messagesContainer) {
+                            const messageDiv = document.createElement('div');
+                            messageDiv.className = 'message warning';
+                            messageDiv.style.cssText = 'margin: 1rem 0; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px;';
+                            messageDiv.innerHTML = `
+                                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                                    <i class="fas fa-info-circle" style="font-size: 1.5rem; color: #856404;"></i>
+                                    <div style="flex: 1;">
+                                        <strong style="color: #856404; display: block; margin-bottom: 0.5rem;">${result.mensagem || errorMessage}</strong>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-primary" onclick="window.location.href='/auth/register'" style="width: 100%;">
+                                    <i class="fas fa-user-plus"></i> Criar Conta
+                                </button>
+                            `;
+                            messagesContainer.innerHTML = '';
+                            messagesContainer.appendChild(messageDiv);
+                            messagesContainer.style.display = 'block';
+                        }
+                        } else {
+                        if (messagesContainer && window.MessageHelper) {
+                            window.MessageHelper.showError(errorMessage, messagesContainer);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao aplicar cupom:', error);
+                if (messagesContainer && window.MessageHelper) {
+                    window.MessageHelper.showError('Erro ao aplicar cupom. Tente novamente.', messagesContainer);
+                }
+            } finally {
+                // Restaurar botão
+                if (applyBtn) {
+                    if (window.LoadingHelper && loadingState) {
+                        window.LoadingHelper.restoreButton(applyBtn, loadingState);
+            } else {
+                        applyBtn.disabled = false;
+                        applyBtn.innerHTML = applyBtn.dataset.originalHTML || 'Aplicar';
+                    }
+                }
             }
         });
     }
+
+    // Carregar cupom aplicado do localStorage ao carregar a página
+    function loadAppliedCoupon() {
+        try {
+            const savedCoupon = localStorage.getItem('appliedCoupon');
+            if (savedCoupon) {
+                const couponData = JSON.parse(savedCoupon);
+                appliedCoupon = couponData.cupom;
+                appliedDiscount = couponData.desconto || 0;
+                
+                // Atualizar exibição
+                if (summaryDiscountElem && appliedDiscount > 0) {
+                    summaryDiscountElem.textContent = `- R$ ${appliedDiscount.toFixed(2).replace('.', ',')}`;
+                    summaryDiscountElem.style.color = '#28a745';
+                }
+                
+                // Preencher campo de cupom
+                const couponInput = document.querySelector('#couponForm input[type="text"]');
+                if (couponInput && couponData.codigo) {
+                    couponInput.value = couponData.codigo;
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao carregar cupom aplicado:', error);
+        }
+    }
+
+    // Carregar cupom ao iniciar
+    loadAppliedCoupon();
 
     // Carrega o carrinho quando a página é carregada
     fetchAndRenderCart();

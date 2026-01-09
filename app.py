@@ -9,9 +9,11 @@ import time
 from blueprints import auth_bp, produtos_bp, api_bp, main_bp, checkout_api_bp, shipping_api_bp
 from blueprints.api.labels import labels_api_bp
 from blueprints.api.webhook import webhook_api_bp
+from blueprints.api.pagbank import pagbank_api_bp
+from blueprints.api.bling import bling_bp
 from blueprints.admin import admin_bp
 from blueprints.admin.api import admin_api_bp
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 from config import CurrentConfig
 from plataform_config import init_app
 from flask_cors import CORS
@@ -95,20 +97,38 @@ def create_app(config_class=None):
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(checkout_api_bp)
     app.register_blueprint(shipping_api_bp, url_prefix='/api/shipping')
+    app.register_blueprint(pagbank_api_bp)
     app.register_blueprint(labels_api_bp)
     app.register_blueprint(webhook_api_bp)
+    app.register_blueprint(bling_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(admin_api_bp)
     
     # Handler para erro 404
     @app.errorhandler(404)
     def not_found_error(error):
+        # Se for uma requisição de API, retornar JSON
+        from flask import request
+        if request.path.startswith('/api/'):
+            return jsonify({"erro": "Endpoint não encontrado", "path": request.path}), 404
         return render_template('404.html'), 404
     
     # Handler para erro 403 (Forbidden) - redireciona para 404
     @app.errorhandler(403)
     def forbidden_error(error):
+        # Se for uma requisição de API, retornar JSON
+        from flask import request
+        if request.path.startswith('/api/'):
+            return jsonify({"erro": "Acesso negado", "path": request.path}), 403
         return render_template('404.html'), 404
+    
+    # Handler para erro 500 (Internal Server Error) - retornar JSON para APIs
+    @app.errorhandler(500)
+    def internal_error(error):
+        from flask import request
+        if request.path.startswith('/api/'):
+            return jsonify({"erro": "Erro interno do servidor"}), 500
+        return render_template('500.html') if hasattr(app, 'template_folder') else "Erro interno do servidor", 500
     
     return app
 

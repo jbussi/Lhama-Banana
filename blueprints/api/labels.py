@@ -1,7 +1,9 @@
 from flask import Blueprint, request, jsonify, current_app, g
 from ..services.label_service import label_service
+from ..services import get_db
 import json
 from typing import Dict, Optional
+import psycopg2.extras
 
 labels_api_bp = Blueprint('labels_api', __name__, url_prefix='/api/labels')
 
@@ -61,6 +63,201 @@ def save_label_to_db(venda_id: int, codigo_pedido: str, shipment_data: Dict,
         raise
     finally:
         cur.close()
+
+def create_label_automatically(venda_id: int) -> Optional[int]:
+    """
+    Cria etiqueta automaticamente quando o pedido é aprovado.
+    Esta função é chamada quando o status do pedido muda para 'processando_envio'.
+    
+    Args:
+        venda_id: ID da venda
+        
+    Returns:
+        ID da etiqueta criada, ou None se houver erro ou se já existir etiqueta
+    """
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
+    try:
+        # Verificar se já existe etiqueta para esta venda
+        cur.execute("""
+            SELECT id FROM etiquetas_frete 
+            WHERE venda_id = %s 
+            ORDER BY criado_em DESC 
+            LIMIT 1
+        """, (venda_id,))
+        existing_label = cur.fetchone()
+        
+        if existing_label:
+            current_app.logger.info(f"Etiqueta já existe para venda {venda_id} (ID: {existing_label[0]})")
+            return existing_label[0]
+        
+        # Buscar dados da venda
+        cur.execute("""
+            SELECT 
+                id, codigo_pedido, valor_total, valor_frete,
+                nome_recebedor, rua_entrega, numero_entrega, complemento_entrega,
+                bairro_entrega, cidade_entrega, estado_entrega, cep_entrega,
+                telefone_entrega, email_entrega
+            FROM vendas 
+            WHERE id = %s
+        """, (venda_id,))
+        
+        venda_row = cur.fetchone()
+        if not venda_row:
+            current_app.logger.error(f"Venda {venda_id} não encontrada para criar etiqueta")
+            return None
+        
+        venda_data = dict(venda_row)
+        
+        # Buscar itens da venda para calcular peso e dimensões
+        cur.execute("""
+            SELECT 
+                iv.quantidade, 
+                iv.nome_produto_snapshot,
+                iv.produto_id
+            FROM itens_venda iv
+            WHERE iv.venda_id = %s
+        """, (venda_id,))
+        
+        itens = cur.fetchall()
+        
+        # Calcular peso total (usar padrão: 500g por item)
+        peso_total = 0.5  # Padrão: 500g por item
+        if itens:
+            quantidade_total = sum(item['quantidade'] for item in itens)
+            peso_total = max(quantidade_total * 0.5, 0.3)  # Mínimo de 300g
+        
+        # Usar dimensões padrão (pode ser ajustado depois com campos de produtos)
+        dimensoes = {
+            'altura': 10,
+            'largura': 20,
+            'comprimento': 30
+        }
+        
+        # Ajustar dimensões baseado na quantidade de itens
+        if itens:
+            quantidade_total = sum(item['quantidade'] for item in itens)
+            if quantidade_total > 1:
+                # Para múltiplos itens, aumentar comprimento proporcionalmente
+                dimensoes['comprimento'] = max(30, quantidade_total * 15)
+        
+        # Preparar dados para o Melhor Envio
+        order_data = {
+            'nome_recebedor': venda_data['nome_recebedor'],
+            'rua': venda_data['rua_entrega'],
+            'numero': venda_data['numero_entrega'],
+            'complemento': venda_data['complemento_entrega'] or '',
+            'bairro': venda_data['bairro_entrega'],
+            'cidade': venda_data['cidade_entrega'],
+            'estado': venda_data['estado_entrega'],
+            'cep': venda_data['cep_entrega'],
+            'telefone': venda_data.get('telefone_entrega', ''),
+            'email': venda_data.get('email_entrega', ''),
+            'valor_total': float(venda_data['valor_total']),
+            'produtos': []  # Será preenchido se necessário
+        }
+        
+        # Preparar shipping_option (usar valor_frete e dimensões calculadas)
+        # Para service, usar padrão (1 = PAC) - pode ser ajustado depois
+        cep_origem = current_app.config.get('MELHOR_ENVIO_CEP_ORIGEM', '').replace('-', '').replace(' ', '')
+        shipping_option = {
+            'service': 1,  # PAC padrão - pode ser ajustado no futuro
+            'name': 'PAC',  # Nome padrão
+            'dimensoes': dimensoes,
+            'peso_total': peso_total,
+            'price': float(venda_data['valor_frete']),
+            'cep_origem': cep_origem
+        }
+        
+        current_app.logger.info(f"🚀 Criando etiqueta automaticamente para venda {venda_id}")
+        current_app.logger.info(f"   Peso: {peso_total}kg, Dimensões: {dimensoes}")
+        
+        # Criar envio no Melhor Envio
+        shipment_data = label_service.create_shipment(
+            venda_id=venda_id,
+            order_data=order_data,
+            shipping_option=shipping_option
+        )
+        
+        # Salvar etiqueta no banco de dados diretamente
+        protocol = shipment_data.get('protocol') or shipment_data.get('protocolo')
+        service_id = shipping_option.get('service')
+        service_name = shipping_option.get('name', '')
+        
+        cur.execute("""
+            INSERT INTO etiquetas_frete (
+                venda_id, codigo_pedido,
+                melhor_envio_shipment_id, melhor_envio_protocol,
+                melhor_envio_service_id, melhor_envio_service_name,
+                status_etiqueta,
+                transportadora_nome, transportadora_codigo,
+                cep_origem, cep_destino,
+                peso_total, valor_frete, dimensoes,
+                url_rastreamento, codigo_rastreamento,
+                dados_etiqueta_json
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (
+            venda_id, venda_data['codigo_pedido'],
+            shipment_data.get('id'), protocol,
+            service_id, service_name,
+            'criada',
+            shipment_data.get('company', {}).get('name', ''), 
+            shipment_data.get('company', {}).get('id', ''),
+            shipping_option.get('cep_origem', '').replace('-', ''), 
+            order_data.get('cep', '').replace('-', ''),
+            shipping_option.get('peso_total', 0), 
+            shipping_option.get('price', 0),
+            json.dumps(shipping_option.get('dimensoes', {})),
+            shipment_data.get('tracking', {}).get('url', ''), 
+            shipment_data.get('tracking', {}).get('code', ''),
+            json.dumps(shipment_data)
+        ))
+        
+        etiqueta_id = cur.fetchone()[0]
+        conn.commit()
+        
+        # Buscar dados completos da etiqueta para sincronizar com Bling
+        cur.execute("""
+            SELECT codigo_rastreamento, transportadora_nome, url_rastreamento
+            FROM etiquetas_frete
+            WHERE id = %s
+        """, (etiqueta_id,))
+        
+        etiqueta_completa = cur.fetchone()
+        
+        current_app.logger.info(f"✅ Etiqueta {etiqueta_id} criada automaticamente para venda {venda_id}")
+        
+        # Sincronizar código de rastreamento com Bling (se disponível)
+        if etiqueta_completa and etiqueta_completa[0]:  # codigo_rastreamento
+            try:
+                from ..services.bling_logistics_service import sync_tracking_to_bling
+                bling_result = sync_tracking_to_bling(
+                    venda_id=venda_id,
+                    codigo_rastreamento=etiqueta_completa[0],
+                    transportadora=etiqueta_completa[1],  # transportadora_nome
+                    url_rastreamento=etiqueta_completa[2]  # url_rastreamento
+                )
+                if bling_result.get('success'):
+                    current_app.logger.info(f"✅ Código de rastreamento sincronizado com Bling para venda {venda_id}")
+                else:
+                    current_app.logger.warning(f"⚠️ Falha ao sincronizar rastreamento com Bling: {bling_result.get('error')}")
+            except Exception as bling_error:
+                current_app.logger.warning(f"⚠️ Erro ao sincronizar rastreamento com Bling: {bling_error}")
+        
+        return etiqueta_id
+        
+    except Exception as e:
+        conn.rollback()
+        current_app.logger.error(f"Erro ao criar etiqueta automaticamente para venda {venda_id}: {e}")
+        import traceback
+        current_app.logger.error(traceback.format_exc())
+        # Não falhar o processo principal se houver erro na criação da etiqueta
+        return None
+    finally:
+        cur.close()
+
 
 def get_label_from_db(venda_id: Optional[int] = None, 
                      codigo_pedido: Optional[str] = None,
@@ -198,6 +395,16 @@ def create_label(venda_id: int):
             """, (venda_id,))
             conn.commit()
             
+            # Verificar se precisa emitir NFe
+            try:
+                from ..services.nfe_service import check_and_emit_nfe
+                nfe_result = check_and_emit_nfe(venda_id)
+                if nfe_result:
+                    current_app.logger.info(f"NFe registrada para venda {venda_id}: {nfe_result}")
+            except Exception as nfe_error:
+                current_app.logger.error(f"Erro ao processar NFe para venda {venda_id}: {nfe_error}")
+                # Não falhar a criação da etiqueta por erro na NFe
+            
             return jsonify({
                 "success": True,
                 "etiqueta_id": etiqueta_id,
@@ -287,11 +494,60 @@ def print_label(etiqueta_id: int):
         
         try:
             url_etiqueta = print_data.get('url') or print_data.get('link')
+            
+            # Buscar venda_id antes de atualizar
+            cur.execute("""
+                SELECT venda_id, codigo_rastreamento, transportadora_nome, url_rastreamento
+                FROM etiquetas_frete
+                WHERE id = %s
+            """, (etiqueta_id,))
+            
+            etiqueta_info = cur.fetchone()
+            venda_id = etiqueta_info[0] if etiqueta_info else None
+            
             cur.execute("""
                 UPDATE etiquetas_frete 
                 SET url_etiqueta = %s, status_etiqueta = 'impressa', impressa_em = NOW()
                 WHERE id = %s
             """, (url_etiqueta, etiqueta_id))
+            
+            # Atualizar status do pedido para 'enviado' quando etiqueta for impressa
+            if venda_id:
+                try:
+                    cur.execute("""
+                        UPDATE vendas
+                        SET status_pedido = 'enviado',
+                            data_envio = NOW(),
+                            atualizado_em = NOW()
+                        WHERE id = %s AND status_pedido = 'processando_envio'
+                    """, (venda_id,))
+                    
+                    # Sincronizar status de envio com Bling
+                    if cur.rowcount > 0:  # Se status foi atualizado
+                        try:
+                            from ..services.bling_logistics_service import sync_shipping_status_to_bling
+                            bling_result = sync_shipping_status_to_bling(venda_id, 'enviado')
+                            if bling_result.get('success'):
+                                current_app.logger.info(f"✅ Status 'enviado' sincronizado com Bling para venda {venda_id}")
+                        except Exception as bling_error:
+                            current_app.logger.warning(f"⚠️ Erro ao sincronizar status com Bling: {bling_error}")
+                    
+                    # Sincronizar código de rastreamento se ainda não foi sincronizado
+                    if etiqueta_info and etiqueta_info[1]:  # codigo_rastreamento
+                        try:
+                            from ..services.bling_logistics_service import sync_tracking_to_bling
+                            sync_tracking_to_bling(
+                                venda_id=venda_id,
+                                codigo_rastreamento=etiqueta_info[1],
+                                transportadora=etiqueta_info[2],
+                                url_rastreamento=etiqueta_info[3]
+                            )
+                        except Exception as bling_error:
+                            current_app.logger.warning(f"⚠️ Erro ao sincronizar rastreamento com Bling: {bling_error}")
+                            
+                except Exception as status_error:
+                    current_app.logger.warning(f"⚠️ Erro ao atualizar status do pedido: {status_error}")
+            
             conn.commit()
             
             return jsonify({

@@ -16,7 +16,17 @@ Este documento descreve todos os Content Types criados para o painel administrat
   - `nome_produtos` (oneToMany)
   - `estampas` (oneToMany)
 
-### 2. Tamanho (`tamanho`)
+### 2. Tecido (`tecido`)
+- **Descrição**: Tipos de tecidos disponíveis para estampas
+- **Campos principais**:
+  - `nome` (string, único, obrigatório)
+  - `descricao` (text)
+  - `ativo` (boolean)
+  - `ordem_exibicao` (integer)
+- **Relações**: 
+  - `estampas` (oneToMany)
+
+### 3. Tamanho (`tamanho`)
 - **Descrição**: Tamanhos disponíveis para produtos
 - **Campos principais**:
   - `nome` (string, único, obrigatório)
@@ -25,13 +35,14 @@ Este documento descreve todos os Content Types criados para o painel administrat
 - **Relações**: 
   - `produtos` (oneToMany)
 
-### 3. Estampa (`estampa`)
+### 4. Estampa (`estampa`)
 - **Descrição**: Estampas disponíveis para produtos
 - **Campos principais**:
   - `nome` (string, único, obrigatório)
   - `descricao` (text)
   - `imagem_url` (string, obrigatório)
   - `categoria` (relation → categoria)
+  - `tecido` (relation → tecido)
   - `sexo` (enum: m/f/u)
   - `custo_por_metro` (decimal, obrigatório)
   - `ativo` (boolean)
@@ -39,7 +50,7 @@ Este documento descreve todos os Content Types criados para o painel administrat
 - **Relações**: 
   - `produtos` (oneToMany)
 
-### 4. Nome do Produto (`nome-produto`)
+### 5. Nome do Produto (`nome-produto`)
 - **Descrição**: Nomes e descrições base dos produtos
 - **Campos principais**:
   - `nome` (string, único, obrigatório)
@@ -57,7 +68,7 @@ Este documento descreve todos os Content Types criados para o painel administrat
 - **Relações**: 
   - `produtos` (oneToMany)
 
-### 5. Produto (`produto`)
+### 6. Produto (`produto`)
 - **Descrição**: Variações de produtos com estoque
 - **Campos principais**:
   - `nome_produto` (relation → nome-produto)
@@ -71,11 +82,12 @@ Este documento descreve todos os Content Types criados para o painel administrat
   - `estoque_reservado` (integer)
   - `codigo_sku` (string, único, obrigatório)
   - `codigo_barras` (string)
+  - `ncm` (string, 8 caracteres) - NCM para emissão de nota fiscal
   - `ativo` (boolean)
 - **Relações**: 
   - `imagens` (oneToMany → imagem-produto)
 
-### 6. Imagem do Produto (`imagem-produto`)
+### 7. Imagem do Produto (`imagem-produto`)
 - **Descrição**: Imagens dos produtos
 - **Campos principais**:
   - `produto` (relation → produto)

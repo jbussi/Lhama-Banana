@@ -80,9 +80,33 @@ class Config:
     PAGBANK_ENVIRONMENT = os.environ.get('PAGBANK_ENVIRONMENT', 'sandbox')
     PAGBANK_NOTIFICATION_URL = os.environ.get(
         'PAGBANK_NOTIFICATION_URL',
-        'http://localhost:5000/api/webhook/pagbank' if ENV == 'development' else
-        'https://seudominio.com/api/webhook/pagbank'
+        'https://efractory-burdenless-kathlene.ngrok-free.dev/api/webhook/pagbank' if ENV == 'development' else
+        'https://efractory-burdenless-kathlene.ngrok-free.dev/api/webhook/pagbank'
     )
+    # Token secreto para validação de webhooks (recomendado usar token diferente do API_TOKEN)
+    # Se não configurado, usará PAGBANK_API_TOKEN como fallback
+    PAGBANK_WEBHOOK_SECRET = os.environ.get('PAGBANK_WEBHOOK_SECRET', '')
+    
+    # ============================================
+    # BLING - ERP FISCAL E OPERACIONAL
+    # ============================================
+    BLING_CLIENT_ID = os.environ.get('BLING_CLIENT_ID', '')
+    BLING_CLIENT_SECRET = os.environ.get('BLING_CLIENT_SECRET', '')
+    BLING_REDIRECT_URI = os.environ.get('BLING_REDIRECT_URI', '')
+    # URL base para webhooks e callbacks (usado com ngrok em desenvolvimento)
+    NGROK_URL = os.environ.get('NGROK_URL', 'https://efractory-burdenless-kathlene.ngrok-free.dev')
+    
+    # Estado da loja (emitente) para cálculo de CFOP
+    # Use a UF do estado onde sua loja está registrada (ex: 'SP', 'RJ', 'MG')
+    BLING_EMITENTE_ESTADO = os.environ.get('BLING_EMITENTE_ESTADO', 'SP')
+    
+    # Bling - Financeiro
+    BLING_CATEGORIA_VENDAS_ID = os.environ.get('BLING_CATEGORIA_VENDAS_ID', '') # ID da categoria de vendas no Bling
+    BLING_VENDEDOR_ID = os.environ.get('BLING_VENDEDOR_ID', '') # ID do vendedor padrão no Bling
+    BASE_URL = os.environ.get('BASE_URL', NGROK_URL if ENV == 'development' else 'https://lhama-banana.com.br')
+    # URL base para webhooks e callbacks (usado com ngrok em desenvolvimento)
+    NGROK_URL = os.environ.get('NGROK_URL', 'https://efractory-burdenless-kathlene.ngrok-free.dev')
+    BASE_URL = os.environ.get('BASE_URL', NGROK_URL if ENV == 'development' else 'https://lhama-banana.com.br')
     
     # ============================================
     # MELHOR ENVIO - CÁLCULO DE FRETE

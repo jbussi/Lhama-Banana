@@ -70,6 +70,11 @@
       "type": "string",
       "maxLength": 50
     },
+    "ncm": {
+      "type": "string",
+      "maxLength": 8,
+      "description": "NCM (Nomenclatura Comum do Mercosul) - 8 dígitos para emissão de nota fiscal"
+    },
     "ativo": {
       "type": "boolean",
       "default": true

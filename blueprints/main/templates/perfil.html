@@ -353,6 +353,204 @@
                     </a>
                 </div>
             </section>
+
+            <!-- Seção de Dados Fiscais -->
+            <section class="profile-section" id="fiscal-section">
+                <div class="section-header">
+                    <h2><i class="fas fa-file-invoice"></i> Dados Fiscais</h2>
+                    <p class="section-description">Configure seus dados fiscais para emissão de nota fiscal</p>
+                </div>
+                
+                <div id="fiscal-message" class="message" style="display: none;"></div>
+                
+                <div id="fiscal-container">
+                    <!-- Visualização dos Dados Fiscais (quando salvos) -->
+                    <div id="fiscal-data-display" class="fiscal-data-display" style="display: none;">
+                        <div class="fiscal-data-card">
+                            <div class="fiscal-data-header">
+                                <div class="fiscal-data-icon">
+                                    <i class="fas fa-file-invoice-dollar"></i>
+                                </div>
+                                <div class="fiscal-data-title">
+                                    <h3 id="display-fiscal-nome-razao-social">-</h3>
+                                    <p class="fiscal-data-subtitle">
+                                        <span id="display-fiscal-tipo">CPF</span> • 
+                                        <span id="display-fiscal-cpf-cnpj">-</span>
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div class="fiscal-data-body">
+                                <div class="fiscal-data-row">
+                                    <i class="fas fa-map-marker-alt"></i>
+                                    <div>
+                                        <p class="fiscal-data-label">Endereço Fiscal</p>
+                                        <p class="fiscal-data-value" id="display-fiscal-endereco-completo">-</p>
+                                    </div>
+                                </div>
+                                
+                                <div id="display-fiscal-inscricoes" style="display: none;">
+                                    <div class="fiscal-data-row">
+                                        <i class="fas fa-building"></i>
+                                        <div>
+                                            <p class="fiscal-data-label">Inscrições</p>
+                                            <p class="fiscal-data-value" id="display-fiscal-inscricoes-value">-</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="fiscal-data-actions">
+                                <button type="button" class="btn btn-outline" id="edit-fiscal-btn">
+                                    <i class="fas fa-edit"></i> Editar
+                                </button>
+                                <button type="button" class="btn btn-danger" id="delete-fiscal-btn">
+                                    <i class="fas fa-trash"></i> Remover
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Formulário de Dados Fiscais -->
+                    <form id="fiscal-form" class="fiscal-form" style="display: none;">
+                        <div class="form-group">
+                            <label for="fiscal-tipo">Tipo de Documento *</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="fiscal-tipo" value="CPF" id="fiscal-tipo-cpf" checked>
+                                    <span>CPF</span>
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="fiscal-tipo" value="CNPJ" id="fiscal-tipo-cnpj">
+                                    <span>CNPJ</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fiscal-cpf-cnpj" id="fiscal-cpf-cnpj-label">CPF *</label>
+                            <input type="text" id="fiscal-cpf-cnpj" name="fiscal-cpf-cnpj" 
+                                   placeholder="000.000.000-00" maxlength="18" required>
+                            <small class="form-text" id="fiscal-cpf-cnpj-help">Digite apenas números</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fiscal-nome" id="fiscal-nome-label">Nome Completo *</label>
+                            <input type="text" id="fiscal-nome" name="fiscal-nome" 
+                                   placeholder="Seu nome completo" required>
+                        </div>
+
+                        <div class="form-group" id="fiscal-inscricao-estadual-group" style="display: none;">
+                            <label for="fiscal-inscricao-estadual">Inscrição Estadual</label>
+                            <input type="text" id="fiscal-inscricao-estadual" name="fiscal-inscricao-estadual" 
+                                   placeholder="ISENTO ou número da inscrição">
+                        </div>
+
+                        <div class="form-group" id="fiscal-inscricao-municipal-group" style="display: none;">
+                            <label for="fiscal-inscricao-municipal">Inscrição Municipal</label>
+                            <input type="text" id="fiscal-inscricao-municipal" name="fiscal-inscricao-municipal" 
+                                   placeholder="Opcional">
+                        </div>
+
+                        <div class="form-section-divider">
+                            <h3>Endereço Fiscal</h3>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 2;">
+                                <label for="fiscal-rua">Rua *</label>
+                                <input type="text" id="fiscal-rua" name="fiscal-rua" required>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="fiscal-numero">Número *</label>
+                                <input type="text" id="fiscal-numero" name="fiscal-numero" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fiscal-complemento">Complemento</label>
+                            <input type="text" id="fiscal-complemento" name="fiscal-complemento" 
+                                   placeholder="Apto, Bloco, etc.">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fiscal-bairro">Bairro *</label>
+                            <input type="text" id="fiscal-bairro" name="fiscal-bairro" required>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 2;">
+                                <label for="fiscal-cidade">Cidade *</label>
+                                <input type="text" id="fiscal-cidade" name="fiscal-cidade" required>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="fiscal-estado">Estado *</label>
+                                <select id="fiscal-estado" name="fiscal-estado" required>
+                                    <option value="">Selecione</option>
+                                    <option value="AC">AC</option>
+                                    <option value="AL">AL</option>
+                                    <option value="AP">AP</option>
+                                    <option value="AM">AM</option>
+                                    <option value="BA">BA</option>
+                                    <option value="CE">CE</option>
+                                    <option value="DF">DF</option>
+                                    <option value="ES">ES</option>
+                                    <option value="GO">GO</option>
+                                    <option value="MA">MA</option>
+                                    <option value="MT">MT</option>
+                                    <option value="MS">MS</option>
+                                    <option value="MG">MG</option>
+                                    <option value="PA">PA</option>
+                                    <option value="PB">PB</option>
+                                    <option value="PR">PR</option>
+                                    <option value="PE">PE</option>
+                                    <option value="PI">PI</option>
+                                    <option value="RJ">RJ</option>
+                                    <option value="RN">RN</option>
+                                    <option value="RS">RS</option>
+                                    <option value="RO">RO</option>
+                                    <option value="RR">RR</option>
+                                    <option value="SC">SC</option>
+                                    <option value="SP">SP</option>
+                                    <option value="SE">SE</option>
+                                    <option value="TO">TO</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="fiscal-cep">CEP *</label>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <input type="text" id="fiscal-cep" name="fiscal-cep" 
+                                           placeholder="00000-000" maxlength="9" required style="flex: 1;">
+                                    <button type="button" id="buscar-fiscal-cep-btn" class="btn btn-outline" style="white-space: nowrap;">
+                                        <i class="fas fa-search"></i> Buscar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="save-fiscal-btn">
+                                <i class="fas fa-save"></i> Salvar Dados Fiscais
+                            </button>
+                            <button type="button" class="btn btn-outline" id="cancel-fiscal-edit-btn" style="display: none;">
+                                <i class="fas fa-times"></i> Cancelar
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <!-- Estado vazio (quando não há dados) -->
+                    <div id="fiscal-empty-state" class="empty-state-small" style="display: none;">
+                        <div class="empty-state-icon">
+                            <i class="fas fa-file-invoice"></i>
+                        </div>
+                        <h3>Nenhum dado fiscal cadastrado</h3>
+                        <p>Cadastre seus dados fiscais para facilitar a emissão de notas fiscais em suas compras.</p>
+                        <button type="button" class="btn btn-primary" id="add-fiscal-data-btn">
+                            <i class="fas fa-plus-circle"></i> Cadastrar Dados Fiscais
+                        </button>
+                    </div>
+                </div>
+            </section>
         </div>
     </div>
 </div>

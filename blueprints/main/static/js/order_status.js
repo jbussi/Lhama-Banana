@@ -24,7 +24,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const deliveredMessage = document.getElementById('deliveredMessage');
     const errorMessage = document.getElementById('errorMessage');
     
+    // Elementos de rastreio
+    const trackingCard = document.getElementById('trackingCard');
+    const trackingCode = document.getElementById('trackingCode');
+    const trackingCodeRow = document.getElementById('trackingCodeRow');
+    const transportadora = document.getElementById('transportadora');
+    const transportadoraRow = document.getElementById('transportadoraRow');
+    const trackingLink = document.getElementById('trackingLink');
+    const trackingAction = document.getElementById('trackingAction');
+    const trackingStatus = document.getElementById('trackingStatus');
+    const trackingStatusText = document.getElementById('trackingStatusText');
+    
     let pollingInterval = null;
+    let lastKnownStatus = null; // Rastrear último status conhecido para detectar mudanças
     
     // Status possíveis em ordem
     const statusOrder = [
@@ -46,6 +58,15 @@ document.addEventListener('DOMContentLoaded', function() {
             if (statusLoading) statusLoading.style.display = 'flex';
             
             const response = await fetch(`/api/orders/${token}`);
+            
+            // Verificar se a resposta é JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error('Resposta não é JSON:', text.substring(0, 200));
+                throw new Error('Resposta inválida do servidor. Tente novamente.');
+            }
+            
             const data = await response.json();
             
             if (!response.ok || !data.success) {
@@ -79,14 +100,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 lastUpdate.textContent = date.toLocaleString('pt-BR');
             }
             
-            // Atualizar status
-            updateStatus(order.status);
+            // Verificar se o status mudou
+            if (lastKnownStatus !== order.status) {
+                console.log(`Status mudou: ${lastKnownStatus} -> ${order.status}`);
+                lastKnownStatus = order.status;
+                // Atualizar status visual
+                updateStatus(order.status);
+            } else if (!lastKnownStatus) {
+                // Primeira carga
+                lastKnownStatus = order.status;
+                updateStatus(order.status);
+            }
             
             // Se pedido foi entregue, mostrar mensagem e parar polling
             if (order.status === 'ENTREGUE') {
                 showDeliveredMessage();
                 stopPolling();
             }
+            
+            // Atualizar informações de rastreio se disponíveis
+            updateTrackingInfo(order);
             
         } catch (error) {
             console.error('Erro ao carregar dados do pedido:', error);
@@ -103,12 +136,25 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateStatus(status) {
         if (!currentStatusIndicator || !currentStatusText) return;
         
-        // Remover todas as classes de status
-        currentStatusIndicator.className = 'status-indicator';
+        console.log('Atualizando status para:', status);
+        
+        // Remover todas as classes de status existentes
+        const statusClasses = ['status-criado', 'status-pendente', 'status-pago', 'status-aprovado', 
+                              'status-na-transportadora', 'status-entregue', 'status-cancelado', 'status-expirado'];
+        statusClasses.forEach(cls => currentStatusIndicator.classList.remove(cls));
         
         // Adicionar classe baseada no status
         const statusClass = status.toLowerCase().replace(/\s+/g, '-');
-        currentStatusIndicator.classList.add(`status-${statusClass}`);
+        const fullStatusClass = `status-${statusClass}`;
+        currentStatusIndicator.classList.add(fullStatusClass);
+        
+        console.log('Classe CSS aplicada:', fullStatusClass);
+        
+        // Adicionar animação de atualização
+        currentStatusIndicator.style.animation = 'none';
+        setTimeout(() => {
+            currentStatusIndicator.style.animation = 'pulse 0.5s ease-in-out';
+        }, 10);
         
         // Atualizar texto do status
         const statusTexts = {
@@ -177,36 +223,155 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
+     * Atualiza as informações de rastreio do pedido
+     */
+    function updateTrackingInfo(order) {
+        if (!trackingCard) return;
+        
+        const urlRastreamento = order.url_rastreamento;
+        const codigoRastreamento = order.codigo_rastreamento;
+        const transportadoraNome = order.transportadora_nome;
+        const statusEtiqueta = order.status_etiqueta;
+        
+        // Verificar se há informações de rastreio
+        const hasTrackingInfo = urlRastreamento || codigoRastreamento || statusEtiqueta;
+        
+        if (!hasTrackingInfo) {
+            // Não há informações de rastreio ainda
+            trackingCard.style.display = 'none';
+            return;
+        }
+        
+        // Mostrar card de rastreio
+        trackingCard.style.display = 'block';
+        
+        // Exibir código de rastreamento se disponível
+        if (codigoRastreamento) {
+            if (trackingCode) {
+                trackingCode.textContent = codigoRastreamento;
+            }
+            if (trackingCodeRow) {
+                trackingCodeRow.style.display = 'flex';
+            }
+        } else {
+            if (trackingCodeRow) {
+                trackingCodeRow.style.display = 'none';
+            }
+        }
+        
+        // Exibir transportadora se disponível
+        if (transportadoraNome) {
+            if (transportadora) {
+                transportadora.textContent = transportadoraNome;
+            }
+            if (transportadoraRow) {
+                transportadoraRow.style.display = 'flex';
+            }
+        } else {
+            if (transportadoraRow) {
+                transportadoraRow.style.display = 'none';
+            }
+        }
+        
+        // Configurar link de rastreamento
+        if (urlRastreamento && trackingLink) {
+            trackingLink.href = urlRastreamento;
+            trackingLink.style.display = 'inline-flex';
+            if (trackingAction) {
+                trackingAction.style.display = 'block';
+            }
+        } else if (codigoRastreamento && trackingLink) {
+            // Se não houver URL, criar link genérico com código de rastreamento
+            // Pode usar um serviço de rastreamento genérico ou o código diretamente
+            const genericTrackingUrl = `https://www.google.com/search?q=rastreamento+${encodeURIComponent(codigoRastreamento)}`;
+            trackingLink.href = genericTrackingUrl;
+            trackingLink.style.display = 'inline-flex';
+            if (trackingAction) {
+                trackingAction.style.display = 'block';
+            }
+        } else {
+            if (trackingAction) {
+                trackingAction.style.display = 'none';
+            }
+        }
+        
+        // Atualizar status da etiqueta
+        if (statusEtiqueta) {
+            const statusMessages = {
+                'pendente': 'Aguardando criação da etiqueta',
+                'criada': 'Etiqueta criada',
+                'paga': 'Etiqueta paga e pronta para envio',
+                'impressa': 'Etiqueta impressa',
+                'em_transito': 'Pedido em trânsito',
+                'entregue': 'Pedido entregue',
+                'cancelada': 'Etiqueta cancelada',
+                'erro': 'Erro ao processar etiqueta'
+            };
+            
+            const statusMessage = statusMessages[statusEtiqueta] || `Status: ${statusEtiqueta}`;
+            
+            if (trackingStatusText) {
+                trackingStatusText.textContent = statusMessage;
+            }
+            
+            // Mostrar status apenas se a etiqueta ainda não foi impressa/enviada
+            if (['pendente', 'criada', 'paga'].includes(statusEtiqueta)) {
+                if (trackingStatus) {
+                    trackingStatus.style.display = 'block';
+                }
+            } else {
+                if (trackingStatus) {
+                    trackingStatus.style.display = 'none';
+                }
+            }
+        } else {
+            if (trackingStatus) {
+                trackingStatus.style.display = 'none';
+            }
+        }
+    }
+    
+    /**
      * Faz polling do status do pedido
      */
     function startPolling() {
         // Parar polling anterior se existir
         stopPolling();
         
-        // Fazer polling a cada 10 segundos (menos frequente que PIX/Boleto)
+        // Fazer polling a cada 5 segundos para detectar mudanças mais rapidamente
         pollingInterval = setInterval(async () => {
             try {
+                console.log('[Polling] Verificando status do pedido...');
                 const response = await fetch(`/api/orders/${token}/status`);
+                
+                // Verificar se a resposta é JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    console.warn('Resposta de status não é JSON, ignorando...');
+                    return;
+                }
+                
                 const data = await response.json();
                 
                 if (data.success && data.status) {
-                    // Verificar se o status mudou
-                    const currentStatus = currentStatusText?.textContent || '';
-                    const newStatusText = getStatusText(data.status);
-                    
-                    if (currentStatus !== newStatusText) {
+                    // Verificar se o status mudou comparando com o último status conhecido
+                    if (lastKnownStatus !== data.status) {
+                        console.log(`[Polling] ⚠️ Status mudou detectado: ${lastKnownStatus} -> ${data.status}`);
                         // Status mudou, recarregar dados completos
                         await loadOrderData();
+                    } else {
+                        console.log(`[Polling] Status mantido: ${data.status}`);
                     }
                 } else if (response.status === 404) {
                     // Pedido não encontrado (provavelmente entregue e token removido)
+                    console.log('[Polling] Pedido não encontrado (404)');
                     showDeliveredMessage();
                     stopPolling();
                 }
             } catch (error) {
-                console.error('Erro ao verificar status:', error);
+                console.error('[Polling] Erro ao verificar status:', error);
             }
-        }, 10000); // 10 segundos
+        }, 5000); // 5 segundos para detectar mudanças mais rapidamente
     }
     
     /**

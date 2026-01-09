@@ -57,7 +57,7 @@ services:
       # PagBank
       PAGBANK_API_TOKEN: ${PAGBANK_API_TOKEN:-}
       PAGBANK_ENVIRONMENT: ${PAGBANK_ENVIRONMENT:-sandbox}
-      PAGBANK_NOTIFICATION_URL: ${PAGBANK_NOTIFICATION_URL:-http://localhost:5000/api/webhook/pagbank}
+      PAGBANK_NOTIFICATION_URL: ${PAGBANK_NOTIFICATION_URL:-https://efractory-burdenless-kathlene.ngrok-free.dev/api/webhook/pagbank}
       PAGBANK_SIMULATION_MODE: ${PAGBANK_SIMULATION_MODE:-true}
       
       # Melhor Envio

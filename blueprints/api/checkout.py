@@ -1,3 +1,27 @@
+"""
+API de Checkout - Processamento de Pedidos
+
+ARQUITETURA DE PAGAMENTO:
+========================
+O webhook do PagBank é a ÚNICA fonte de verdade do status do pagamento.
+
+REGRAS ARQUITETURAIS (NÃO NEGOCIAR):
+- Pagamento só existe depois do webhook
+- A resposta do /orders é apenas uma intenção de pagamento
+- Webhook é assíncrono, idempotente e confiável
+- IDs do PagBank são a chave de reconciliação
+- Status inicial SEMPRE é PENDING/AWAITING_PAYMENT
+- Backend nunca considera pagamento confirmado fora do webhook
+- Frontend nunca valida pagamento, apenas faz polling
+
+FLUXO OBRIGATÓRIO:
+1. Checkout cria pedido no banco com status PENDING
+2. Backend chama /orders do PagBank
+3. Backend salva apenas IDs retornados (order_id, charge_id)
+4. Backend NÃO confirma pagamento
+5. Backend retorna apenas: public_token, método de pagamento, status inicial (PENDING)
+6. Webhook recebe notificação e atualiza status final
+"""
 from flask import Blueprint, request, jsonify, current_app, session
 from ..services import (
     create_order_and_items, create_payment_entry, get_order_status, 
@@ -28,6 +52,7 @@ def process_checkout():
 
         shipping_info = data.get('shipping_info')
         payment_details = data.get('payment_details')
+        fiscal_data = data.get('fiscal_data')
         
         # Extrair método de pagamento dos payment_details se não estiver no root
         payment_method = data.get('payment_method') or payment_details.get('payment_method_type', '').upper()
@@ -118,14 +143,29 @@ def process_checkout():
                     }
                 })
 
-            # 4. Calcular valores finais
-            freight_value = float(shipping_option.get('price', data.get('freight_value', 0)))
+            # 4. Processar cupom se fornecido
+            cupom_id = None
             discount_value = float(data.get('discount_value', 0))
+            
+            # Se houver desconto, buscar o cupom_id do código do cupom
+            if discount_value > 0 and data.get('cupom_codigo'):
+                cupom_codigo = data.get('cupom_codigo').strip().upper()
+                cur.execute("SELECT id FROM cupom WHERE codigo = %s AND ativo = TRUE", (cupom_codigo,))
+                cupom_result = cur.fetchone()
+                if cupom_result:
+                    cupom_id = cupom_result[0]
+            
+            # Calcular valores finais
+            freight_value = float(shipping_option.get('price', data.get('freight_value', 0)))
             final_total = total_value + freight_value - discount_value
             
             # Validação básica
             if final_total <= 0:
                 return jsonify({"erro": "Valor total do pedido deve ser maior que zero"}), 400
+            
+            # Validar valor mínimo para boleto (R$ 0,20)
+            if payment_method == 'BOLETO' and final_total < 0.20:
+                return jsonify({"erro": "O valor mínimo para pagamento via boleto é R$ 0,20"}), 400
             
             if not shipping_info.get('nome_recebedor'):
                 return jsonify({"erro": "Nome do recebedor é obrigatório"}), 400
@@ -146,7 +186,9 @@ def process_checkout():
                 freight_value=freight_value,
                 discount_value=discount_value,
                 client_ip=client_ip,
-                user_agent=user_agent
+                user_agent=user_agent,
+                fiscal_data=fiscal_data,
+                cupom_id=cupom_id
             )
 
             # 7. Preparar dados do cliente
@@ -181,57 +223,59 @@ def process_checkout():
             
             # Adicionar dados específicos do cartão se necessário
             if payment_method == 'CREDIT_CARD':
+                # SEGURANÇA: O checkout principal NUNCA recebe dados completos do cartão diretamente.
+                # Os dados são validados no endpoint isolado /api/pagbank/validate-card
+                # e recuperados aqui apenas para envio ao PagBank (não são armazenados)
+                
+                # Validar que temos o card_id (obrigatório)
+                card_id = payment_details.get('card_id', '')
+                if not card_id:
+                    conn.rollback()
+                    return jsonify({
+                        "erro": "Dados do cartão não validados. Por favor, tente novamente."
+                    }), 400
+                
+                # Recuperar dados do cartão do cache temporário (uso único, será removido após)
+                # Importação lazy para evitar importação circular
+                try:
+                    from ..api.pagbank import get_card_data_by_id
+                    card_data = get_card_data_by_id(card_id)
+                except ImportError:
+                    # Fallback: tentar importar diretamente
+                    import sys
+                    import os
+                    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    from blueprints.api.pagbank import get_card_data_by_id
+                    card_data = get_card_data_by_id(card_id)
+                if not card_data:
+                    conn.rollback()
+                    return jsonify({
+                        "erro": "Dados do cartão expirados ou inválidos. Por favor, tente novamente."
+                    }), 400
+                
                 # Usar CPF/CNPJ do portador do cartão, ou do cliente como fallback
                 card_holder_cpf_cnpj = (
-                    payment_details.get('card_holder_cpf_cnpj', '') or 
+                    card_data.get('card_holder_cpf_cnpj', '') or 
                     payment_details.get('customer_cpf_cnpj', '') or
                     customer_data.get('tax_id', '')
                 )
                 
-                # Validar que temos os dados necessários do cartão
-                if not payment_details.get('card_number') or not payment_details.get('card_cvv'):
-                    conn.rollback()
-                    return jsonify({
-                        "erro": "Dados do cartão incompletos. Por favor, preencha todos os campos do cartão."
-                    }), 400
+                # Limpar CPF/CNPJ do portador do cartão
+                card_holder_cpf_cnpj_clean = str(card_holder_cpf_cnpj).replace('.', '').replace('-', '').replace('/', '').strip()
                 
-                # Tentar criar token do cartão (opcional - se falhar, usaremos dados diretos)
-                card_token = payment_details.get('card_token', '')
-                if not card_token:
-                    try:
-                        api_token = current_app.config.get('PAGBANK_API_TOKEN')
-                        if api_token:
-                            from ..services.checkout_service import create_card_token
-                            
-                            card_data_for_token = {
-                                'card_number': payment_details.get('card_number', ''),
-                                'card_exp_month': payment_details.get('card_exp_month', ''),
-                                'card_exp_year': payment_details.get('card_exp_year', ''),
-                                'card_cvv': payment_details.get('card_cvv', ''),
-                                'card_holder_name': payment_details.get('card_holder_name', '') or customer_data.get('name', ''),
-                                'card_holder_cpf_cnpj': card_holder_cpf_cnpj
-                            }
-                            
-                            card_token = create_card_token(api_token, card_data_for_token)
-                            current_app.logger.info(f"[Checkout] Token do cartão criado: {card_token}")
-                        else:
-                            current_app.logger.warning("[Checkout] Token de API não configurado, usando dados do cartão diretamente")
-                    except Exception as token_error:
-                        # Se falhar ao criar token, continuar com dados diretos (fallback)
-                        current_app.logger.warning(f"[Checkout] Não foi possível criar token do cartão, usando dados diretos: {token_error}")
-                        card_token = None
-                
+                # Preparar dados para envio ao PagBank (dados serão usados apenas uma vez e descartados)
                 payment_data.update({
-                    'card_token': card_token,
-                    'card_number': payment_details.get('card_number', ''),
-                    'card_exp_month': payment_details.get('card_exp_month', ''),
-                    'card_exp_year': payment_details.get('card_exp_year', ''),
-                    'card_cvv': payment_details.get('card_cvv', ''),
-                    'security_code': payment_details.get('card_cvv', ''),  # CVV para validação do token
-                    'card_holder_name': payment_details.get('card_holder_name', '') or customer_data.get('name', ''),
-                    'card_holder_cpf_cnpj': card_holder_cpf_cnpj,
+                    'card_number': card_data.get('card_number', ''),
+                    'card_exp_month': card_data.get('card_exp_month', ''),
+                    'card_exp_year': card_data.get('card_exp_year', ''),
+                    'card_cvv': card_data.get('card_cvv', ''),
+                    'card_holder_name': card_data.get('card_holder_name', '') or customer_data.get('name', ''),
+                    'card_holder_cpf_cnpj': card_holder_cpf_cnpj_clean,
                     'installments': payment_details.get('installments', 1)
                 })
+                
+                # Limpar dados do cartão da memória (já foram recuperados)
+                # Os dados serão enviados ao PagBank e depois descartados
 
             # 9. Criar payload para PagBank
             pagbank_payload = create_pagbank_payload(
@@ -278,12 +322,17 @@ def process_checkout():
                 if not pagbank_response:
                     raise Exception("Resposta vazia do PagBank")
                 
-                # Verificar se a resposta contém charges
+                # Verificar se a resposta contém charges ou qr_codes (para PIX)
                 charges = pagbank_response.get('charges', [])
-                if not charges or len(charges) == 0:
-                    raise Exception("Resposta do PagBank não contém informações de cobrança")
+                qr_codes = pagbank_response.get('qr_codes', [])
                 
-                current_app.logger.info(f"[PagBank] Resposta recebida com sucesso. Charges: {len(charges)}")
+                if not charges and not qr_codes:
+                    raise Exception("Resposta do PagBank não contém informações de cobrança (charges) nem QR codes (qr_codes)")
+                
+                if qr_codes:
+                    current_app.logger.info(f"[PagBank] Resposta recebida com sucesso. QR Codes PIX: {len(qr_codes)}")
+                else:
+                    current_app.logger.info(f"[PagBank] Resposta recebida com sucesso. Charges: {len(charges)}")
                 
             except Exception as api_error:
                 current_app.logger.error(f"[PagBank] Erro ao chamar API: {api_error}")
@@ -321,25 +370,16 @@ def process_checkout():
                 }), 500
 
             # 11. Salvar resposta do pagamento
+            # IMPORTANTE: O status do pagamento NÃO é confirmado aqui.
+            # Apenas salvamos os IDs do PagBank (order_id, charge_id) para reconciliação.
+            # O webhook do PagBank é a ÚNICA fonte de verdade do status do pagamento.
             payment_id = create_payment_entry(venda_id, payment_data, pagbank_response)
 
             # 11.5. Criar registro na tabela orders com token público
-            # Determinar status inicial baseado no método de pagamento
-            initial_status = 'CRIADO'
-            if payment_method == 'CREDIT_CARD':
-                # Para cartão, verificar se foi aprovado
-                charges = pagbank_response.get('charges', [])
-                if charges:
-                    charge_status = charges[0].get('status', '').upper()
-                    if charge_status in ['PAID', 'AUTHORIZED', 'APPROVED']:
-                        initial_status = 'APROVADO'
-                    else:
-                        initial_status = 'PENDENTE'
-                else:
-                    initial_status = 'PENDENTE'
-            else:
-                # PIX e Boleto começam como PENDENTE
-                initial_status = 'PENDENTE'
+            # REGRA ARQUITETURAL: Status inicial SEMPRE é PENDENTE.
+            # A resposta do /orders é apenas uma intenção de pagamento, não confirmação.
+            # Toda mudança de estado vem exclusivamente do webhook.
+            initial_status = 'PENDENTE'
             
             order_record = create_order_record(venda_id, final_total, initial_status)
             public_token = order_record['public_token']
@@ -362,30 +402,57 @@ def process_checkout():
 
             # Adicionar dados específicos do pagamento da resposta do PagBank
             charges = pagbank_response.get('charges', [])
+            qr_codes = pagbank_response.get('qr_codes', [])
             
-            # Validar que temos charges (já validado antes, mas garantir)
-            if not charges or len(charges) == 0:
-                current_app.logger.error(f"[PagBank] Resposta inválida: sem charges")
-                conn.rollback()
-                return jsonify({
-                    "erro": "Resposta inválida do gateway de pagamento. Tente novamente.",
-                    "detalhes": "A resposta do PagBank não contém informações de cobrança válidas"
-                }), 500
-            
-            # Processar charges da resposta do PagBank
-            if charges:
+            # Processar resposta baseado no tipo de pagamento
+            if qr_codes and len(qr_codes) > 0:
+                # PIX: os dados vêm em qr_codes no nível raiz
+                qr_code = qr_codes[0]
+                links = qr_code.get('links', [])
+                
+                if links:
+                    # Buscar link do QR code PNG
+                    qr_code_link = None
+                    for link in links:
+                        if link.get('rel') == 'QRCODE.PNG':
+                            qr_code_link = link.get('href', '')
+                            break
+                        elif link.get('rel') == 'QRCODE.BASE64' and not qr_code_link:
+                            qr_code_link = link.get('href', '')
+                    
+                    # Se não encontrou link específico, usar o primeiro
+                    if not qr_code_link and links:
+                        qr_code_link = links[0].get('href', '')
+                    
+                    response_data.update({
+                        'payment_method_type': 'pix',
+                        'pix_qr_code_link': qr_code_link,
+                        'pix_qr_code_text': qr_code.get('text', ''),
+                        'pix_qr_code': qr_code.get('text', '')  # Backup
+                    })
+                else:
+                    # Tentar estrutura alternativa
+                    response_data.update({
+                        'payment_method_type': 'pix',
+                        'pix_qr_code_link': qr_code.get('href', ''),
+                        'pix_qr_code_text': qr_code.get('text', ''),
+                        'pix_qr_code': qr_code.get('text', '')
+                    })
+                    
+            elif charges and len(charges) > 0:
+                # CREDIT_CARD ou BOLETO: os dados vêm em charges
                 charge = charges[0]
                 payment_method_type = charge.get('payment_method', {}).get('type', '').upper()
                 
                 if payment_method_type == 'PIX':
+                    # PIX dentro de charges (estrutura alternativa - não esperada, mas tratamos)
                     pix_data = charge.get('payment_method', {}).get('pix', {})
-                    # Tentar diferentes estruturas de resposta do PagBank
-                    qr_codes = pix_data.get('qr_codes', [])
-                    if not qr_codes:
-                        qr_codes = pix_data.get('qr_code', [])
+                    qr_codes_in_charge = pix_data.get('qr_codes', [])
+                    if not qr_codes_in_charge:
+                        qr_codes_in_charge = pix_data.get('qr_code', [])
                     
-                    if qr_codes and len(qr_codes) > 0:
-                        qr_code = qr_codes[0]
+                    if qr_codes_in_charge and len(qr_codes_in_charge) > 0:
+                        qr_code = qr_codes_in_charge[0]
                         links = qr_code.get('links', [])
                         if links:
                             response_data.update({
@@ -395,45 +462,64 @@ def process_checkout():
                                 'pix_qr_code': qr_code.get('text', '')  # Backup
                             })
                         else:
-                            # Tentar estrutura alternativa
                             response_data.update({
                                 'payment_method_type': 'pix',
                                 'pix_qr_code_link': qr_code.get('href', ''),
                                 'pix_qr_code_text': qr_code.get('text', '')
                             })
                     else:
-                        # Se não encontrou QR code na estrutura esperada, logar erro
                         current_app.logger.error(f"[PagBank] Estrutura de resposta PIX inválida: {pix_data}")
                         conn.rollback()
                         return jsonify({
                             "erro": "Resposta inválida do gateway de pagamento. Tente novamente.",
                             "detalhes": "A resposta do PagBank não contém QR Code PIX válido"
                         }), 500
-                        
+                
                 elif payment_method_type == 'BOLETO':
                     boleto_data = charge.get('payment_method', {}).get('boleto', {})
-                    links = boleto_data.get('links', [])
+                    
+                    # Os links do boleto vêm em charges.links, não em boleto.links
+                    charge_links = charge.get('links', [])
+                    
+                    # Tentar também em boleto_data.links como fallback
+                    boleto_links = boleto_data.get('links', [])
+                    
+                    # Usar links do charge primeiro, depois do boleto
+                    all_links = charge_links if charge_links else boleto_links
+                    
+                    # Buscar código de barras (pode ser barcode ou formatted_barcode)
+                    barcode = None
+                    formatted_barcode = None
+                    
+                    if isinstance(boleto_data.get('barcode'), dict):
+                        barcode = boleto_data.get('barcode', {}).get('content', '')
+                    elif boleto_data.get('barcode'):
+                        barcode = boleto_data.get('barcode', '')
+                    
+                    if boleto_data.get('formatted_barcode'):
+                        formatted_barcode = boleto_data.get('formatted_barcode', '')
+                    
+                    # Usar formatted_barcode se disponível, senão usar barcode
+                    barcode_to_use = formatted_barcode if formatted_barcode else barcode
+                    
                     response_data.update({
                         'payment_method_type': 'boleto',
-                        'boleto_link': links[0].get('href', '') if links else boleto_data.get('link', ''),
-                        'boleto_barcode': boleto_data.get('barcode', {}).get('content', '') if isinstance(boleto_data.get('barcode'), dict) else boleto_data.get('barcode', ''),
+                        'boleto_link': all_links[0].get('href', '') if all_links else '',
+                        'boleto_barcode': barcode_to_use or '',
+                        'boleto_formatted_barcode': formatted_barcode or '',
                         'boleto_expires_at': boleto_data.get('due_date', '')
                     })
                     
                 elif payment_method_type == 'CREDIT_CARD':
+                    # IMPORTANTE: Não consideramos o status da resposta como confirmação.
+                    # O status retornado aqui é apenas informativo.
+                    # O webhook do PagBank é a única fonte de verdade.
                     status = charge.get('status', '').lower()
                     response_data.update({
                         'payment_method_type': 'credit_card',
-                        'status': status,
-                        'installments': charge.get('installments', 1),
-                        'payment_status': status  # Status do pagamento (paid, pending, etc)
+                        'installments': charge.get('installments', 1)
+                        # Não incluímos status ou payment_approved - webhook é a fonte de verdade
                     })
-                    
-                    # Se o cartão foi aprovado, não precisa de ação adicional
-                    if status == 'paid' or status == 'approved':
-                        response_data['payment_approved'] = True
-                    else:
-                        response_data['payment_approved'] = False
 
             current_app.logger.info(f"Checkout processado com sucesso: {codigo_pedido}")
             

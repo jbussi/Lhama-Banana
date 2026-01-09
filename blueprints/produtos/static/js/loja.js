@@ -384,15 +384,32 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         products.forEach(product => {
-            const priceDisplay = product.preco_minimo !== null ?
-                               `R$ ${product.preco_minimo.toFixed(2).replace('.', ',')}` :
-                               'Preço indisponível';
+            // Formatar preço com promoção se existir
+            let priceDisplay = '';
+            if (product.preco_minimo !== null) {
+                if (product.tem_promocao && product.preco_minimo_original !== null && product.preco_minimo < product.preco_minimo_original) {
+                    // Com promoção: mostrar preço promocional e preço original riscado
+                    const descontoPercentual = Math.round(((product.preco_minimo_original - product.preco_minimo) / product.preco_minimo_original) * 100);
+                    priceDisplay = `
+                        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                            <span class="price-promo">R$ ${product.preco_minimo.toFixed(2).replace('.', ',')}</span>
+                            <span class="old-price">R$ ${product.preco_minimo_original.toFixed(2).replace('.', ',')}</span>
+                            <span class="discount-badge-card">${descontoPercentual}% OFF</span>
+                        </div>
+                    `;
+                } else {
+                    // Sem promoção: apenas preço normal
+                    priceDisplay = `<span style="color: #2ab7a9;">R$ ${product.preco_minimo.toFixed(2).replace('.', ',')}</span>`;
+                }
+            } else {
+                priceDisplay = '<span style="color: #6c757d;">Preço indisponível</span>';
+            }
 
             let statusBadgeText = '';
             let statusBadgeClass = '';
             if (product.estoque > 0) {
-                statusBadgeText = 'Em Estoque';
-                statusBadgeClass = 'status-in-stock';
+                statusBadgeText = product.tem_promocao ? 'Promoção' : 'Em Estoque';
+                statusBadgeClass = product.tem_promocao ? 'status-promocao' : 'status-in-stock';
             } else {
                 statusBadgeText = 'Sob Demanda';
                 statusBadgeClass = 'status-out-of-stock';

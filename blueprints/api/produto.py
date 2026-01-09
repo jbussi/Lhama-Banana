@@ -40,6 +40,7 @@ def get_product_details(nome_produto_id):
                 t.id AS tamanho_id,
                 t.nome AS tamanho_nome,
                 p.preco_venda,
+                p.preco_promocional,
                 p.estoque,
                 p.codigo_sku,
                 -- Agrega as imagens de CADA VARIAÇÃO em um array JSON (Recurso do PostgreSQL)
@@ -49,22 +50,31 @@ def get_product_details(nome_produto_id):
             JOIN tamanho t ON p.tamanho_id = t.id
             LEFT JOIN imagens_produto ip ON p.id = ip.produto_id -- LEFT JOIN para incluir variações sem imagem
             WHERE p.nome_produto_id = %s
-            GROUP BY p.id, e.id, t.id, p.preco_venda, p.estoque, p.codigo_sku -- Agrupa por variação para que ARRAY_AGG funcione
+            GROUP BY p.id, e.id, t.id, p.preco_venda, p.preco_promocional, p.estoque, p.codigo_sku -- Agrupa por variação para que ARRAY_AGG funcione
             ORDER BY estampa_nome, tamanho_nome; -- Ordena para consistência
         """, (nome_produto_id,))
         variations_data = cur.fetchall()
 
         # 3. Formata os dados das variações
         for var in variations_data:
-            # Pega as imagens agregadas (o elemento var[9] da tupla)
-            images = var[9] if var[9] and var[9][0] is not None else []
+            # Pega as imagens agregadas (o elemento var[10] da tupla)
+            images = var[10] if var[10] and var[10][0] is not None else []
+            preco_venda = float(var[6])
+            preco_promocional = float(var[7]) if var[7] is not None else None
+            
+            # Determina o preço final (promocional se existir, senão preço de venda)
+            preco_final = preco_promocional if preco_promocional is not None else preco_venda
+            
             product_details['variations'].append({
                 'id': var[0], # ID da variação específica de 'produtos'
                 'estampa': {'id': var[1], 'nome': var[2], 'imagem_url': var[3]},
                 'tamanho': {'id': var[4], 'nome': var[5]},
-                'preco': float(var[6]),
-                'estoque': var[7],
-                'sku': var[8],
+                'preco': preco_final,
+                'preco_original': preco_venda,
+                'preco_promocional': preco_promocional,
+                'tem_promocao': preco_promocional is not None,
+                'estoque': var[8],
+                'sku': var[9],
                 'images': images # Array de URLs de todas as imagens para esta variação
             })
         

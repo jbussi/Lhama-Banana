@@ -32,6 +32,12 @@
       "target": "api::categoria.categoria",
       "inversedBy": "estampas"
     },
+    "tecido": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::tecido.tecido",
+      "inversedBy": "estampas"
+    },
     "sexo": {
       "type": "enumeration",
       "enum": ["m", "f", "u"],

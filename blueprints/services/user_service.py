@@ -332,7 +332,7 @@ def get_user_orders(user_id):
             SELECT 
                 v.id,
                 v.codigo_pedido,
-                v.data_venda,
+                COALESCE(v.data_venda, o.criado_em) as data_venda,
                 v.valor_total,
                 v.valor_frete,
                 v.valor_desconto,
@@ -353,7 +353,7 @@ def get_user_orders(user_id):
             FROM vendas v
             LEFT JOIN orders o ON o.venda_id = v.id
             WHERE v.usuario_id = %s
-            ORDER BY v.data_venda DESC
+            ORDER BY COALESCE(v.data_venda, o.criado_em) DESC NULLS LAST
         """, (user_id,))
         
         orders = cur.fetchall()
@@ -388,8 +388,8 @@ def get_user_orders(user_id):
                     'detalhes': item[6] if item[6] else {}
                 })
             
-            # Mapear status para português
-            status_map = {
+            # Mapear status para português (tabela vendas)
+            status_map_vendas = {
                 'pendente': 'Pendente',
                 'pendente_pagamento': 'Aguardando Pagamento',
                 'processando_envio': 'Processando Envio',
@@ -401,15 +401,76 @@ def get_user_orders(user_id):
                 'reembolsado': 'Reembolsado'
             }
             
+            # Mapear status da tabela orders
+            status_map_orders = {
+                'CRIADO': 'Criado',
+                'PENDENTE': 'Aguardando Pagamento',
+                'PAGO': 'Pago',
+                'APROVADO': 'Aprovado',
+                'CANCELADO': 'Cancelado',
+                'EXPIRADO': 'Expirado',
+                'NA TRANSPORTADORA': 'Em Trânsito',
+                'ENTREGUE': 'Entregue'
+            }
+            
+            # Usar status da tabela orders se disponível, senão usar status_pedido
+            order_status = order[19] if order[19] else order[6]
+            status_display = status_map_orders.get(order_status, status_map_vendas.get(order_status, order_status))
+            
+            # Formatar data_venda como ISO string com timezone
+            from datetime import datetime, timezone, timedelta
+            
+            def format_date_with_timezone(date_value):
+                """Formata uma data do PostgreSQL para ISO string com timezone do Brasil (UTC-3)"""
+                if not date_value:
+                    return None
+                try:
+                    # Timezone do Brasil (UTC-3)
+                    tz_brasil = timezone(timedelta(hours=-3))
+                    
+                    # Se é datetime do psycopg2, já vem como datetime
+                    if hasattr(date_value, 'isoformat'):
+                        dt = date_value
+                    elif isinstance(date_value, str):
+                        # Se já é string, tentar converter para datetime
+                        # Remover 'Z' e substituir por +00:00 se necessário
+                        date_str = date_value.replace('Z', '+00:00')
+                        # Tentar parse ISO primeiro
+                        try:
+                            dt = datetime.fromisoformat(date_str)
+                        except:
+                            # Se falhar, tentar parse direto
+                            dt = datetime.fromisoformat(date_str.replace(' ', 'T'))
+                    else:
+                        dt = date_value
+                    
+                    # Se não tem timezone, assumir UTC (PostgreSQL retorna em UTC)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    
+                    # Converter para timezone do Brasil
+                    dt_brasil = dt.astimezone(tz_brasil)
+                    return dt_brasil.isoformat()
+                except Exception as e:
+                    # Se houver erro, tentar retornar como string simples ou isoformat se for datetime
+                    try:
+                        if hasattr(date_value, 'isoformat'):
+                            return date_value.isoformat()
+                        return str(date_value) if date_value else None
+                    except:
+                        return None
+            
+            data_venda_str = format_date_with_timezone(order[2])
+            
             result.append({
                 'id': order[0],
                 'codigo_pedido': order[1],
-                'data_venda': str(order[2]) if order[2] else None,
+                'data_venda': data_venda_str,
                 'valor_total': float(order[3]),
                 'valor_frete': float(order[4]),
                 'valor_desconto': float(order[5]),
-                'status': order[6],
-                'status_display': status_map.get(order[6], order[6]),
+                'status': order_status,
+                'status_display': status_display,
                 'endereco': {
                     'rua': order[7],
                     'numero': order[8],
@@ -419,9 +480,9 @@ def get_user_orders(user_id):
                     'estado': order[12],
                     'cep': order[13]
                 },
-                'data_envio': str(order[14]) if order[14] else None,
-                'data_entrega_estimada': str(order[15]) if order[15] else None,
-                'data_entrega_real': str(order[16]) if order[16] else None,
+                'data_envio': format_date_with_timezone(order[14]),
+                'data_entrega_estimada': format_date_with_timezone(order[15]),
+                'data_entrega_real': format_date_with_timezone(order[16]),
                 'observacoes': order[17] or '',
                 'public_token': str(order[18]) if order[18] else None,
                 'order_status': order[19] if order[19] else None,

@@ -1,5 +1,10 @@
 """
 Serviços para gerenciar pedidos (orders) com token público
+
+ARQUITETURA:
+===========
+O webhook do PagBank é a ÚNICA fonte de verdade do status do pagamento.
+Status inicial SEMPRE deve ser PENDENTE no checkout.
 """
 import uuid
 import psycopg2.extras
@@ -8,14 +13,17 @@ from flask import g, current_app
 from .db import get_db
 
 
-def create_order(venda_id: int, valor: float, status: str = 'CRIADO') -> Dict:
+def create_order(venda_id: int, valor: float, status: str = 'PENDENTE') -> Dict:
     """
     Cria um registro na tabela orders com token público
+    
+    IMPORTANTE: No checkout, o status inicial deve SEMPRE ser 'PENDENTE'.
+    O webhook do PagBank é a única fonte de verdade para atualização do status.
     
     Args:
         venda_id: ID da venda na tabela vendas
         valor: Valor total do pedido
-        status: Status inicial do pedido (padrão: CRIADO)
+        status: Status inicial do pedido (padrão: PENDENTE)
         
     Returns:
         Dicionário com id, public_token e status do pedido criado
@@ -24,6 +32,51 @@ def create_order(venda_id: int, valor: float, status: str = 'CRIADO') -> Dict:
     cur = conn.cursor()
     
     try:
+        # Verificar se a tabela orders existe, se não, criar
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'orders'
+            )
+        """)
+        table_exists = cur.fetchone()[0]
+        
+        if not table_exists:
+            current_app.logger.info("Tabela orders não existe. Criando...")
+            try:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS orders (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        venda_id INTEGER REFERENCES vendas(id) ON DELETE CASCADE,
+                        public_token UUID UNIQUE NOT NULL DEFAULT gen_random_uuid(),
+                        status VARCHAR(50) NOT NULL DEFAULT 'CRIADO' CHECK (status IN (
+                            'CRIADO', 
+                            'PENDENTE', 
+                            'PAGO', 
+                            'APROVADO', 
+                            'CANCELADO', 
+                            'EXPIRADO', 
+                            'NA TRANSPORTADORA', 
+                            'ENTREGUE'
+                        )),
+                        valor DECIMAL(10, 2) NOT NULL,
+                        token_expires_at TIMESTAMP,
+                        criado_em TIMESTAMP DEFAULT NOW(),
+                        atualizado_em TIMESTAMP DEFAULT NOW()
+                    )
+                """)
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_orders_venda_id ON orders (venda_id)
+                """)
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_orders_public_token ON orders (public_token)
+                """)
+                conn.commit()
+                current_app.logger.info("Tabela orders criada com sucesso")
+            except Exception as create_error:
+                conn.rollback()
+                current_app.logger.warning(f"Erro ao criar tabela orders (pode já existir): {create_error}")
+        
         # Gerar token público único (convertido para string)
         public_token = str(uuid.uuid4())
         
@@ -89,10 +142,24 @@ def get_order_by_token(public_token: str) -> Optional[Dict]:
                 p.pagbank_boleto_link,
                 p.pagbank_barcode_data,
                 p.pagbank_boleto_expires_at,
-                p.json_resposta_api
+                p.json_resposta_api,
+                e.url_rastreamento,
+                e.codigo_rastreamento,
+                e.transportadora_nome,
+                e.status_etiqueta
             FROM orders o
             LEFT JOIN vendas v ON o.venda_id = v.id
             LEFT JOIN pagamentos p ON v.id = p.venda_id
+            LEFT JOIN (
+                SELECT DISTINCT ON (venda_id)
+                    venda_id,
+                    url_rastreamento,
+                    codigo_rastreamento,
+                    transportadora_nome,
+                    status_etiqueta
+                FROM etiquetas_frete
+                ORDER BY venda_id, criado_em DESC
+            ) e ON v.id = e.venda_id
             WHERE o.public_token = %s
         """, (public_token,))
         
@@ -104,19 +171,34 @@ def get_order_by_token(public_token: str) -> Optional[Dict]:
         # Extrair código PIX do JSON se disponível
         pix_qr_code_text = None
         json_resposta = result.get('json_resposta_api')
+        
+        # Se json_resposta é string, fazer parse
+        if json_resposta and isinstance(json_resposta, str):
+            import json
+            try:
+                json_resposta = json.loads(json_resposta)
+            except (json.JSONDecodeError, TypeError):
+                json_resposta = None
+        
         if json_resposta and isinstance(json_resposta, dict):
-            # Tentar extrair código PIX do JSON
-            charges = json_resposta.get('charges', [])
-            if charges:
-                charge = charges[0]
-                payment_method = charge.get('payment_method', {})
-                if payment_method.get('type') == 'PIX':
-                    pix_data = payment_method.get('pix', {})
-                    qr_codes = pix_data.get('qr_codes', [])
-                    if not qr_codes:
-                        qr_codes = pix_data.get('qr_code', [])
-                    if qr_codes and len(qr_codes) > 0:
-                        pix_qr_code_text = qr_codes[0].get('text')
+            # Para PIX, os dados vêm em qr_codes no nível raiz, não dentro de charges
+            qr_codes = json_resposta.get('qr_codes', [])
+            if qr_codes and len(qr_codes) > 0:
+                # PIX: extrair do qr_codes no nível raiz
+                pix_qr_code_text = qr_codes[0].get('text')
+            else:
+                # Fallback: tentar dentro de charges (estrutura alternativa)
+                charges = json_resposta.get('charges', [])
+                if charges:
+                    charge = charges[0]
+                    payment_method = charge.get('payment_method', {})
+                    if payment_method.get('type') == 'PIX':
+                        pix_data = payment_method.get('pix', {})
+                        qr_codes_in_charge = pix_data.get('qr_codes', [])
+                        if not qr_codes_in_charge:
+                            qr_codes_in_charge = pix_data.get('qr_code', [])
+                        if qr_codes_in_charge and len(qr_codes_in_charge) > 0:
+                            pix_qr_code_text = qr_codes_in_charge[0].get('text')
         
         # Converter para dicionário
         order_data = {
@@ -137,7 +219,12 @@ def get_order_by_token(public_token: str) -> Optional[Dict]:
             'pix_qr_code_text': pix_qr_code_text,
             'boleto_link': result['pagbank_boleto_link'],
             'boleto_barcode': result['pagbank_barcode_data'],
-            'boleto_expires_at': result['pagbank_boleto_expires_at'].isoformat() if result['pagbank_boleto_expires_at'] else None
+            'boleto_expires_at': result['pagbank_boleto_expires_at'].isoformat() if result['pagbank_boleto_expires_at'] else None,
+            # Informações de rastreio
+            'url_rastreamento': result['url_rastreamento'],
+            'codigo_rastreamento': result['codigo_rastreamento'],
+            'transportadora_nome': result['transportadora_nome'],
+            'status_etiqueta': result['status_etiqueta']
         }
         
         return order_data

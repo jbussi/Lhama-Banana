@@ -756,16 +756,72 @@ function renderOrders(orders) {
     }
     
     let html = '<div class="orders-list">';
-    orders.forEach(order => {
-        const formattedDate = new Date(order.data_venda).toLocaleDateString('pt-BR', {
+    
+    // Função auxiliar para formatar datas de forma segura (fora do loop)
+    function formatOrderDate(dateString, includeTime = true) {
+        if (!dateString) {
+            console.warn('Data vazia ou nula');
+            return 'Data não disponível';
+        }
+        
+        try {
+            // Se a string parece ser uma data inválida ou muito antiga, retornar mensagem
+            if (typeof dateString === 'string' && dateString.includes('1960')) {
+                console.warn('Data suspeita (1960):', dateString);
+                return 'Data não disponível';
+            }
+            
+            // Tentar parse da data
+            let date;
+            if (typeof dateString === 'string') {
+                // Se tem timezone no formato ISO, usar diretamente
+                if (dateString.includes('T') || dateString.includes('+') || dateString.includes('-') && dateString.length > 10) {
+                    date = new Date(dateString);
+                } else {
+                    // Tentar adicionar timezone se não tiver
+                    date = new Date(dateString + (dateString.includes('T') ? '' : 'T00:00:00-03:00'));
+                }
+            } else {
+                date = new Date(dateString);
+            }
+            
+            // Verificar se a data é válida e não é muito antiga (antes de 1970)
+            if (isNaN(date.getTime())) {
+                console.error('Data inválida (NaN):', dateString);
+                return 'Data não disponível';
+            }
+            
+            if (date.getFullYear() < 1970) {
+                console.error('Data muito antiga:', dateString, 'Ano:', date.getFullYear());
+                return 'Data não disponível';
+            }
+            
+            const options = {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+                timeZone: 'America/Sao_Paulo'
+            };
+            
+            if (includeTime) {
+                options.hour = '2-digit';
+                options.minute = '2-digit';
+            }
+            
+            return date.toLocaleDateString('pt-BR', options);
+        } catch (e) {
+            console.error('Erro ao formatar data:', e, dateString, typeof dateString);
+            return 'Data não disponível';
+        }
+    }
+    
+    orders.forEach(order => {
+        const formattedDate = formatOrderDate(order.data_venda, true);
         
         const totalItems = order.itens.reduce((sum, item) => sum + item.quantidade, 0);
+        
+        // Normalizar status para formato de classe CSS (remover espaços e converter para minúsculas)
+        const statusClass = (order.status || '').toLowerCase().replace(/\s+/g, '-').replace(/_/g, '-');
         
         html += `
             <div class="order-card">
@@ -774,8 +830,8 @@ function renderOrders(orders) {
                         <h3>Pedido ${order.codigo_pedido}</h3>
                         <span class="order-date">${formattedDate}</span>
                     </div>
-                    <div class="order-status-badge status-${order.status}">
-                        ${order.status_display}
+                    <div class="order-status-badge status-${statusClass}">
+                        ${order.status_display || order.status || 'Desconhecido'}
                     </div>
                 </div>
                 <div class="order-details">
@@ -821,12 +877,12 @@ function renderOrders(orders) {
                     </div>
                     ${order.data_envio ? `
                         <div class="order-tracking">
-                            <p><i class="fas fa-truck"></i> Enviado em: ${new Date(order.data_envio).toLocaleDateString('pt-BR')}</p>
+                            <p><i class="fas fa-truck"></i> Enviado em: ${formatOrderDate(order.data_envio, false)}</p>
                         </div>
                     ` : ''}
                     ${order.data_entrega_real ? `
                         <div class="order-delivered">
-                            <p><i class="fas fa-check-circle"></i> Entregue em: ${new Date(order.data_entrega_real).toLocaleDateString('pt-BR')}</p>
+                            <p><i class="fas fa-check-circle"></i> Entregue em: ${formatOrderDate(order.data_entrega_real, false)}</p>
                         </div>
                     ` : ''}
                 </div>
@@ -835,6 +891,428 @@ function renderOrders(orders) {
     });
     html += '</div>';
     ordersContainer.innerHTML = html;
+}
+
+// =====================================================
+// FUNÇÕES DE DADOS FISCAIS
+// =====================================================
+
+// Função para formatar CPF
+function formatCPF(value) {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 11) {
+        return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+    return value;
+}
+
+// Função para formatar CNPJ
+function formatCNPJ(value) {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 14) {
+        return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+    }
+    return value;
+}
+
+// Função para formatar CEP
+function formatCEP(value) {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 8) {
+        return numbers.replace(/(\d{5})(\d{3})/, '$1-$2');
+    }
+    return value;
+}
+
+// Função para carregar dados fiscais
+async function loadFiscalData() {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    
+    const fiscalForm = document.getElementById('fiscal-form');
+    const fiscalDisplay = document.getElementById('fiscal-data-display');
+    const fiscalEmptyState = document.getElementById('fiscal-empty-state');
+    
+    try {
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch('/api/fiscal-data', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${idToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.fiscal_data) {
+                // Há dados fiscais salvos - mostrar modo de visualização
+                renderFiscalDataDisplay(result.fiscal_data);
+                populateFiscalForm(result.fiscal_data);
+                fiscalDisplay.style.display = 'block';
+                fiscalForm.style.display = 'none';
+                fiscalEmptyState.style.display = 'none';
+            } else {
+                // Não há dados fiscais - mostrar estado vazio
+                fiscalDisplay.style.display = 'none';
+                fiscalForm.style.display = 'none';
+                fiscalEmptyState.style.display = 'block';
+                document.getElementById('fiscal-form').reset();
+                updateFiscalFormLabels('CPF');
+            }
+        } else {
+            console.error("Erro ao carregar dados fiscais:", response.status);
+            fiscalDisplay.style.display = 'none';
+            fiscalForm.style.display = 'none';
+            fiscalEmptyState.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Erro ao carregar dados fiscais:', error);
+        fiscalDisplay.style.display = 'none';
+        fiscalForm.style.display = 'none';
+        fiscalEmptyState.style.display = 'block';
+    }
+}
+
+// Função para renderizar a visualização dos dados fiscais
+function renderFiscalDataDisplay(data) {
+    // Nome/Razão Social
+    document.getElementById('display-fiscal-nome-razao-social').textContent = data.nome_razao_social || '-';
+    
+    // Tipo e CPF/CNPJ
+    document.getElementById('display-fiscal-tipo').textContent = data.tipo || 'CPF';
+    const cpfCnpjFormatted = data.tipo === 'CNPJ' 
+        ? formatCNPJ(data.cpf_cnpj) 
+        : formatCPF(data.cpf_cnpj);
+    document.getElementById('display-fiscal-cpf-cnpj').textContent = cpfCnpjFormatted || '-';
+    
+    // Endereço completo - verificar se endereco é um objeto ou se os campos estão no nível raiz
+    const endereco = data.endereco || {};
+    const rua = endereco.rua || data.rua;
+    const numero = endereco.numero || data.numero;
+    const complemento = endereco.complemento || data.complemento;
+    const bairro = endereco.bairro || data.bairro;
+    const cidade = endereco.cidade || data.cidade;
+    const estado = endereco.estado || data.estado;
+    const cep = endereco.cep || data.cep;
+    
+    let enderecoCompleto = '';
+    if (rua && numero) {
+        enderecoCompleto = `${rua}, ${numero}`;
+        if (complemento) {
+            enderecoCompleto += ` - ${complemento}`;
+        }
+        enderecoCompleto += `\n${bairro || ''} - ${cidade || ''}/${estado || ''}`;
+        if (cep) {
+            enderecoCompleto += `\nCEP: ${formatCEP(cep)}`;
+        }
+    } else {
+        enderecoCompleto = 'Endereço não informado';
+    }
+    document.getElementById('display-fiscal-endereco-completo').innerHTML = enderecoCompleto.replace(/\n/g, '<br>');
+    
+    // Inscrições (apenas para CNPJ)
+    if (data.tipo === 'CNPJ') {
+        const inscricoes = [];
+        if (data.inscricao_estadual) {
+            inscricoes.push(`IE: ${data.inscricao_estadual}`);
+        }
+        if (data.inscricao_municipal) {
+            inscricoes.push(`IM: ${data.inscricao_municipal}`);
+        }
+        if (inscricoes.length > 0) {
+            document.getElementById('display-fiscal-inscricoes-value').textContent = inscricoes.join(' • ');
+            document.getElementById('display-fiscal-inscricoes').style.display = 'block';
+        } else {
+            document.getElementById('display-fiscal-inscricoes').style.display = 'none';
+        }
+    } else {
+        document.getElementById('display-fiscal-inscricoes').style.display = 'none';
+    }
+}
+
+// Função para preencher formulário com dados fiscais
+function populateFiscalForm(data) {
+    document.getElementById('fiscal-tipo-' + data.tipo.toLowerCase()).checked = true;
+    updateFiscalFormLabels(data.tipo);
+    
+    document.getElementById('fiscal-cpf-cnpj').value = data.cpf_cnpj ? (data.tipo === 'CNPJ' ? formatCNPJ(data.cpf_cnpj) : formatCPF(data.cpf_cnpj)) : '';
+    document.getElementById('fiscal-nome').value = data.nome_razao_social || '';
+    
+    if (data.tipo === 'CNPJ') {
+        document.getElementById('fiscal-inscricao-estadual').value = data.inscricao_estadual || '';
+        document.getElementById('fiscal-inscricao-municipal').value = data.inscricao_municipal || '';
+        document.getElementById('fiscal-inscricao-estadual-group').style.display = 'block';
+        document.getElementById('fiscal-inscricao-municipal-group').style.display = 'block';
+    } else {
+        document.getElementById('fiscal-inscricao-estadual-group').style.display = 'none';
+        document.getElementById('fiscal-inscricao-municipal-group').style.display = 'none';
+    }
+    
+    // Verificar se endereco é um objeto ou se os campos estão no nível raiz
+    const endereco = data.endereco || {};
+    document.getElementById('fiscal-rua').value = endereco.rua || data.rua || '';
+    document.getElementById('fiscal-numero').value = endereco.numero || data.numero || '';
+    document.getElementById('fiscal-complemento').value = endereco.complemento || data.complemento || '';
+    document.getElementById('fiscal-bairro').value = endereco.bairro || data.bairro || '';
+    document.getElementById('fiscal-cidade').value = endereco.cidade || data.cidade || '';
+    document.getElementById('fiscal-estado').value = endereco.estado || data.estado || '';
+    const cep = endereco.cep || data.cep || '';
+    document.getElementById('fiscal-cep').value = cep ? formatCEP(cep) : '';
+}
+
+// Função para atualizar labels do formulário baseado no tipo
+function updateFiscalFormLabels(tipo) {
+    const cpfCnpjLabel = document.getElementById('fiscal-cpf-cnpj-label');
+    const nomeLabel = document.getElementById('fiscal-nome-label');
+    const cpfCnpjInput = document.getElementById('fiscal-cpf-cnpj');
+    const nomeInput = document.getElementById('fiscal-nome');
+    
+    if (tipo === 'CNPJ') {
+        cpfCnpjLabel.textContent = 'CNPJ *';
+        cpfCnpjInput.placeholder = '00.000.000/0000-00';
+        cpfCnpjInput.maxLength = 18;
+        nomeLabel.textContent = 'Razão Social *';
+        nomeInput.placeholder = 'Razão social da empresa';
+    } else {
+        cpfCnpjLabel.textContent = 'CPF *';
+        cpfCnpjInput.placeholder = '000.000.000-00';
+        cpfCnpjInput.maxLength = 14;
+        nomeLabel.textContent = 'Nome Completo *';
+        nomeInput.placeholder = 'Seu nome completo';
+    }
+}
+
+// Função para salvar dados fiscais
+async function saveFiscalData(event) {
+    event.preventDefault();
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    
+    const saveBtn = document.getElementById('save-fiscal-btn');
+    const messageDiv = document.getElementById('fiscal-message');
+    
+    try {
+        const idToken = await currentUser.getIdToken();
+        
+        // Coletar dados do formulário
+        const tipo = document.querySelector('input[name="fiscal-tipo"]:checked').value;
+        const cpfCnpj = document.getElementById('fiscal-cpf-cnpj').value.replace(/\D/g, '');
+        const nomeRazaoSocial = document.getElementById('fiscal-nome').value.trim();
+        
+        const fiscalData = {
+            tipo: tipo,
+            cpf_cnpj: cpfCnpj,
+            nome_razao_social: nomeRazaoSocial,
+            endereco: {
+                rua: document.getElementById('fiscal-rua').value.trim(),
+                numero: document.getElementById('fiscal-numero').value.trim(),
+                complemento: document.getElementById('fiscal-complemento').value.trim(),
+                bairro: document.getElementById('fiscal-bairro').value.trim(),
+                cidade: document.getElementById('fiscal-cidade').value.trim(),
+                estado: document.getElementById('fiscal-estado').value,
+                cep: document.getElementById('fiscal-cep').value.replace(/\D/g, '')
+            }
+        };
+        
+        if (tipo === 'CNPJ') {
+            fiscalData.inscricao_estadual = document.getElementById('fiscal-inscricao-estadual').value.trim() || null;
+            fiscalData.inscricao_municipal = document.getElementById('fiscal-inscricao-municipal').value.trim() || null;
+        }
+        
+        let loadingState = null;
+        if (window.LoadingHelper && window.LoadingHelper.setButtonLoading) {
+            loadingState = window.LoadingHelper.setButtonLoading(saveBtn, 'Salvando...');
+            if (loadingState) {
+                saveBtn.dataset.loadingState = JSON.stringify(loadingState);
+            }
+        } else {
+            saveBtn.disabled = true;
+            const originalHTML = saveBtn.innerHTML;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+            saveBtn.dataset.originalHTML = originalHTML;
+        }
+        
+        const response = await fetch('/api/fiscal-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`
+            },
+            body: JSON.stringify(fiscalData)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // Mostrar mensagem de sucesso
+            if (window.MessageHelper) {
+                window.MessageHelper.showSuccess('✅ Dados fiscais salvos com sucesso!', messageDiv);
+            } else {
+                messageDiv.className = 'message success';
+                messageDiv.textContent = '✅ Dados fiscais salvos com sucesso!';
+                messageDiv.style.display = 'block';
+            }
+            
+            // Recarregar dados e mudar para modo de visualização
+            await loadFiscalData();
+            
+            // Esconder botão cancelar
+            const cancelBtn = document.getElementById('cancel-fiscal-edit-btn');
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            
+            // Esconder mensagem após 4 segundos
+            setTimeout(() => {
+                if (messageDiv) {
+                    messageDiv.style.display = 'none';
+                }
+            }, 4000);
+        } else {
+            if (window.MessageHelper) {
+                window.MessageHelper.showError(result.erro || 'Erro ao salvar dados fiscais', messageDiv);
+            } else {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = result.erro || 'Erro ao salvar dados fiscais';
+                messageDiv.style.display = 'block';
+            }
+        }
+    } catch (error) {
+        console.error('Erro ao salvar dados fiscais:', error);
+        if (window.MessageHelper) {
+            window.MessageHelper.showError('Erro ao salvar dados fiscais. Tente novamente.', messageDiv);
+        } else {
+            messageDiv.className = 'message error';
+            messageDiv.textContent = 'Erro ao salvar dados fiscais. Tente novamente.';
+            messageDiv.style.display = 'block';
+        }
+    } finally {
+        // Restaurar botão
+        if (window.LoadingHelper && window.LoadingHelper.restoreButton && saveBtn.dataset.loadingState) {
+            try {
+                const state = JSON.parse(saveBtn.dataset.loadingState);
+                if (state && state.originalHTML !== undefined && state.originalDisabled !== undefined) {
+                    window.LoadingHelper.restoreButton(saveBtn, state);
+                } else {
+                    // Fallback se o state não estiver no formato correto
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = saveBtn.dataset.originalHTML || '<i class="fas fa-save"></i> Salvar Dados Fiscais';
+                    saveBtn.classList.remove('loading');
+                }
+            } catch (e) {
+                console.error('Erro ao restaurar botão:', e);
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = saveBtn.dataset.originalHTML || '<i class="fas fa-save"></i> Salvar Dados Fiscais';
+                saveBtn.classList.remove('loading');
+            }
+            saveBtn.removeAttribute('data-loading-state');
+            saveBtn.removeAttribute('data-original-html');
+        } else {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = saveBtn.dataset.originalHTML || '<i class="fas fa-save"></i> Salvar Dados Fiscais';
+            saveBtn.classList.remove('loading');
+            saveBtn.removeAttribute('data-loading-state');
+            saveBtn.removeAttribute('data-original-html');
+        }
+    }
+}
+
+// Função para deletar dados fiscais
+async function deleteFiscalData() {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    
+    const deleteBtn = document.getElementById('delete-fiscal-btn');
+    const messageDiv = document.getElementById('fiscal-message');
+    
+    try {
+        const idToken = await currentUser.getIdToken();
+        
+        let deleteLoadingState = null;
+        if (window.LoadingHelper && window.LoadingHelper.setButtonLoading) {
+            deleteLoadingState = window.LoadingHelper.setButtonLoading(deleteBtn, 'Removendo...');
+            if (deleteLoadingState) {
+                deleteBtn.dataset.loadingState = JSON.stringify(deleteLoadingState);
+            }
+        } else {
+            deleteBtn.disabled = true;
+            const originalHTML = deleteBtn.innerHTML;
+            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Removendo...';
+            deleteBtn.dataset.originalHTML = originalHTML;
+        }
+        
+        const response = await fetch('/api/fiscal-data', {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${idToken}`
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            if (window.MessageHelper) {
+                window.MessageHelper.showSuccess('✅ Dados fiscais removidos com sucesso!', messageDiv);
+            } else {
+                messageDiv.className = 'message success';
+                messageDiv.textContent = '✅ Dados fiscais removidos com sucesso!';
+                messageDiv.style.display = 'block';
+            }
+            
+            // Recarregar dados e mostrar estado vazio
+            await loadFiscalData();
+            
+            // Esconder mensagem após 4 segundos
+            setTimeout(() => {
+                if (messageDiv) {
+                    messageDiv.style.display = 'none';
+                }
+            }, 4000);
+        } else {
+            if (window.MessageHelper) {
+                window.MessageHelper.showError(result.erro || 'Erro ao remover dados fiscais', messageDiv);
+            } else {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = result.erro || 'Erro ao remover dados fiscais';
+                messageDiv.style.display = 'block';
+            }
+        }
+    } catch (error) {
+        console.error('Erro ao remover dados fiscais:', error);
+        if (window.MessageHelper) {
+            window.MessageHelper.showError('Erro ao remover dados fiscais. Tente novamente.', messageDiv);
+        } else {
+            messageDiv.className = 'message error';
+            messageDiv.textContent = 'Erro ao remover dados fiscais. Tente novamente.';
+            messageDiv.style.display = 'block';
+        }
+    } finally {
+        // Restaurar botão
+        if (window.LoadingHelper && window.LoadingHelper.restoreButton && deleteBtn.dataset.loadingState) {
+            try {
+                const state = JSON.parse(deleteBtn.dataset.loadingState);
+                if (state && state.originalHTML !== undefined && state.originalDisabled !== undefined) {
+                    window.LoadingHelper.restoreButton(deleteBtn, state);
+                } else {
+                    // Fallback se o state não estiver no formato correto
+                    deleteBtn.disabled = false;
+                    deleteBtn.innerHTML = deleteBtn.dataset.originalHTML || '<i class="fas fa-trash"></i> Remover Dados Fiscais';
+                    deleteBtn.classList.remove('loading');
+                }
+            } catch (e) {
+                console.error('Erro ao restaurar botão:', e);
+                deleteBtn.disabled = false;
+                deleteBtn.innerHTML = deleteBtn.dataset.originalHTML || '<i class="fas fa-trash"></i> Remover Dados Fiscais';
+                deleteBtn.classList.remove('loading');
+            }
+            deleteBtn.removeAttribute('data-loading-state');
+            deleteBtn.removeAttribute('data-original-html');
+        } else {
+            deleteBtn.disabled = false;
+            deleteBtn.innerHTML = deleteBtn.dataset.originalHTML || '<i class="fas fa-trash"></i> Remover Dados Fiscais';
+            deleteBtn.classList.remove('loading');
+            deleteBtn.removeAttribute('data-loading-state');
+            deleteBtn.removeAttribute('data-original-html');
+        }
+    }
 }
 
 // --- Inicialização do script quando o DOM estiver carregado ---
@@ -890,6 +1368,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Carregar pedidos do usuário
                 await loadUserOrders();
+                
+                // Carregar dados fiscais
+                await loadFiscalData();
 
             } catch (error) {
                 console.error("Erro ao carregar o perfil:", error);
@@ -924,6 +1405,230 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('edit-btn').addEventListener('click', togglePersonalInfoEdit);
     document.getElementById('cancel-btn').addEventListener('click', togglePersonalInfoEdit);
     document.getElementById('save-btn').addEventListener('click', savePersonalInfo);
+
+    // Event listeners para dados fiscais
+    const fiscalForm = document.getElementById('fiscal-form');
+    if (fiscalForm) {
+        fiscalForm.addEventListener('submit', saveFiscalData);
+    }
+    
+    // Botão de editar dados fiscais
+    const editFiscalBtn = document.getElementById('edit-fiscal-btn');
+    if (editFiscalBtn) {
+        editFiscalBtn.addEventListener('click', () => {
+            const fiscalForm = document.getElementById('fiscal-form');
+            const fiscalDisplay = document.getElementById('fiscal-data-display');
+            const cancelBtn = document.getElementById('cancel-fiscal-edit-btn');
+            
+            fiscalDisplay.style.display = 'none';
+            fiscalForm.style.display = 'block';
+            if (cancelBtn) cancelBtn.style.display = 'inline-block';
+        });
+    }
+    
+    // Botão de cancelar edição
+    const cancelFiscalEditBtn = document.getElementById('cancel-fiscal-edit-btn');
+    if (cancelFiscalEditBtn) {
+        cancelFiscalEditBtn.addEventListener('click', () => {
+            const fiscalForm = document.getElementById('fiscal-form');
+            const fiscalDisplay = document.getElementById('fiscal-data-display');
+            const fiscalEmptyState = document.getElementById('fiscal-empty-state');
+            const cancelBtn = document.getElementById('cancel-fiscal-edit-btn');
+            
+            // Recarregar dados para restaurar valores originais ou voltar ao estado inicial
+            loadFiscalData();
+            if (cancelBtn) cancelBtn.style.display = 'none';
+        });
+    }
+    
+        // Botão de adicionar dados fiscais (do estado vazio)
+        const addFiscalDataBtn = document.getElementById('add-fiscal-data-btn');
+        if (addFiscalDataBtn) {
+            addFiscalDataBtn.addEventListener('click', () => {
+                const fiscalForm = document.getElementById('fiscal-form');
+                const fiscalEmptyState = document.getElementById('fiscal-empty-state');
+                const cancelBtn = document.getElementById('cancel-fiscal-edit-btn');
+                
+                fiscalEmptyState.style.display = 'none';
+                fiscalForm.style.display = 'block';
+                if (cancelBtn) cancelBtn.style.display = 'inline-block';
+                
+                // Limpar formulário
+                document.getElementById('fiscal-form').reset();
+                updateFiscalFormLabels('CPF');
+            });
+        }
+    
+    // Botão de deletar dados fiscais
+    const deleteFiscalBtn = document.getElementById('delete-fiscal-btn');
+    if (deleteFiscalBtn) {
+        deleteFiscalBtn.addEventListener('click', async () => {
+            // Mostrar confirmação inline
+            const messageDiv = document.getElementById('fiscal-message');
+            if (!messageDiv) return;
+            
+            messageDiv.innerHTML = `
+                <div class="confirmation-dialog">
+                    <p>⚠️ Tem certeza que deseja remover seus dados fiscais? Esta ação não pode ser desfeita.</p>
+                    <div class="confirmation-actions">
+                        <button type="button" class="btn btn-danger" id="confirm-delete-fiscal">
+                            <i class="fas fa-trash"></i> Sim, remover
+                        </button>
+                        <button type="button" class="btn btn-outline" id="cancel-delete-fiscal">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                    </div>
+                </div>
+            `;
+            messageDiv.style.display = 'block';
+            
+            // Event listener para confirmar remoção
+            const confirmBtn = document.getElementById('confirm-delete-fiscal');
+            if (confirmBtn) {
+                confirmBtn.addEventListener('click', async () => {
+                    messageDiv.style.display = 'none';
+                    messageDiv.innerHTML = '';
+                    await deleteFiscalData();
+                });
+            }
+            
+            // Event listener para cancelar
+            const cancelBtn = document.getElementById('cancel-delete-fiscal');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', () => {
+                    messageDiv.style.display = 'none';
+                    messageDiv.innerHTML = '';
+                });
+            }
+        });
+    }
+    
+    // Toggle CPF/CNPJ
+    const fiscalTipoInputs = document.querySelectorAll('input[name="fiscal-tipo"]');
+    fiscalTipoInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            updateFiscalFormLabels(this.value);
+            const cpfCnpjInput = document.getElementById('fiscal-cpf-cnpj');
+            cpfCnpjInput.value = '';
+            
+            if (this.value === 'CNPJ') {
+                document.getElementById('fiscal-inscricao-estadual-group').style.display = 'block';
+                document.getElementById('fiscal-inscricao-municipal-group').style.display = 'block';
+            } else {
+                document.getElementById('fiscal-inscricao-estadual-group').style.display = 'none';
+                document.getElementById('fiscal-inscricao-municipal-group').style.display = 'none';
+            }
+        });
+    });
+    
+    // Máscaras de input
+    const fiscalCpfCnpjInput = document.getElementById('fiscal-cpf-cnpj');
+    if (fiscalCpfCnpjInput) {
+        fiscalCpfCnpjInput.addEventListener('input', function() {
+            const tipo = document.querySelector('input[name="fiscal-tipo"]:checked').value;
+            if (tipo === 'CPF') {
+                this.value = formatCPF(this.value);
+            } else {
+                this.value = formatCNPJ(this.value);
+            }
+        });
+    }
+    
+    // Função para preencher endereço fiscal automaticamente por CEP
+    async function fillFiscalAddressByCEP(cep) {
+        if (!cep || cep.replace(/\D/g, '').length !== 8) return;
+        
+        const cepInput = document.getElementById('fiscal-cep');
+        const buscarCepBtn = document.getElementById('buscar-fiscal-cep-btn');
+        const streetInput = document.getElementById('fiscal-rua');
+        const neighborhoodInput = document.getElementById('fiscal-bairro');
+        const cityInput = document.getElementById('fiscal-cidade');
+        const stateSelect = document.getElementById('fiscal-estado');
+        const numberInput = document.getElementById('fiscal-numero');
+        const messageDiv = document.getElementById('fiscal-message');
+        
+        if (!cepInput) return;
+        
+        const originalPlaceholder = cepInput.placeholder;
+        cepInput.disabled = true;
+        cepInput.placeholder = 'Buscando endereço...';
+        
+        if (buscarCepBtn) {
+            buscarCepBtn.disabled = true;
+            buscarCepBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Buscando...';
+        }
+        
+        try {
+            const addressData = await fetchAddressByCEP(cep);
+            if (addressData) {
+                if (streetInput) streetInput.value = addressData.street;
+                if (neighborhoodInput) neighborhoodInput.value = addressData.district;
+                if (cityInput) cityInput.value = addressData.city;
+                if (stateSelect && addressData.state) stateSelect.value = addressData.state;
+                const formattedCEP = addressData.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2');
+                cepInput.value = formattedCEP;
+                if (numberInput) setTimeout(() => numberInput.focus(), 100);
+                
+                if (messageDiv && window.MessageHelper) {
+                    window.MessageHelper.showSuccess('Endereço encontrado e preenchido automaticamente!', messageDiv);
+                }
+            } else {
+                if (messageDiv && window.MessageHelper) {
+                    window.MessageHelper.showError('CEP não encontrado. Verifique o CEP digitado.', messageDiv);
+                }
+            }
+        } catch (error) {
+            console.error('[Perfil] Erro ao preencher endereço fiscal:', error);
+            if (messageDiv && window.MessageHelper) {
+                window.MessageHelper.showError('Erro ao buscar CEP. Verifique sua conexão e tente novamente.', messageDiv);
+            }
+        } finally {
+            cepInput.disabled = false;
+            cepInput.placeholder = originalPlaceholder;
+            if (buscarCepBtn) {
+                buscarCepBtn.disabled = false;
+                buscarCepBtn.innerHTML = '<i class="fas fa-search"></i> Buscar';
+            }
+        }
+    }
+    
+    const fiscalCepInput = document.getElementById('fiscal-cep');
+    const buscarFiscalCepBtn = document.getElementById('buscar-fiscal-cep-btn');
+    
+    if (fiscalCepInput) {
+        fiscalCepInput.addEventListener('input', function() {
+            this.value = formatCEP(this.value);
+        });
+        
+        // Busca automática quando o CEP estiver completo
+        fiscalCepInput.addEventListener('blur', function(e) {
+            const cep = this.value.replace(/\D/g, '');
+            if (cep.length === 8) {
+                fillFiscalAddressByCEP(cep);
+            }
+        });
+    }
+    
+    // Event listener para o botão de buscar CEP fiscal
+    if (buscarFiscalCepBtn && fiscalCepInput) {
+        buscarFiscalCepBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const cep = fiscalCepInput.value.replace(/\D/g, '');
+            if (cep.length === 8) {
+                fillFiscalAddressByCEP(cep);
+            } else {
+                const messageDiv = document.getElementById('fiscal-message');
+                if (window.MessageHelper) {
+                    window.MessageHelper.showError('Por favor, digite um CEP válido (8 dígitos)', messageDiv);
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.textContent = 'Por favor, digite um CEP válido (8 dígitos)';
+                    messageDiv.style.display = 'block';
+                }
+                fiscalCepInput.focus();
+            }
+        });
+    }
 
     // Botão de logout
     const logoutBtn = document.getElementById('logout-btn');
@@ -985,10 +1690,13 @@ document.addEventListener('DOMContentLoaded', function() {
             if (cep.length === 8) {
                 fillAddressByCEP(cep);
             } else {
-                if (window.MessageHelper) {
-                    window.MessageHelper.showError('Por favor, digite um CEP válido (8 dígitos)', document.getElementById('new-address-form'));
-                } else {
-                    alert('Por favor, digite um CEP válido (8 dígitos)');
+                const messageDiv = document.getElementById('address-message') || document.getElementById('fiscal-message');
+                if (window.MessageHelper && messageDiv) {
+                    window.MessageHelper.showError('Por favor, digite um CEP válido (8 dígitos)', messageDiv);
+                } else if (messageDiv) {
+                    messageDiv.className = 'message error';
+                    messageDiv.textContent = 'Por favor, digite um CEP válido (8 dígitos)';
+                    messageDiv.style.display = 'block';
                 }
                 cepInput.focus();
             }

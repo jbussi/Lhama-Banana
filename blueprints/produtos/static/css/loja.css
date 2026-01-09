@@ -360,14 +360,52 @@ body {
     margin: 0;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.price-promo {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #e74c3c;
+    display: inline-block;
 }
 
 .old-price {
     text-decoration: line-through;
     color: #adb5bd;
     font-size: 0.95rem;
-    margin-left: 0.5rem;
     font-weight: 500;
+    opacity: 0.8;
+}
+
+.discount-badge-card {
+    background: linear-gradient(135deg, #f9d71c 0%, #f0cc18 100%);
+    color: #2d3436;
+    padding: 0.3rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 4px rgba(249, 215, 28, 0.3);
+    white-space: nowrap;
+}
+
+.status-promocao {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    color: white !important;
+    box-shadow: 0 2px 8px rgba(231, 76, 60, 0.4);
+    animation: pulse-promo 2s ease-in-out infinite;
+}
+
+@keyframes pulse-promo {
+    0%, 100% {
+        box-shadow: 0 2px 8px rgba(231, 76, 60, 0.4);
+    }
+    50% {
+        box-shadow: 0 4px 12px rgba(231, 76, 60, 0.6);
+    }
 }
 
 .add-to-cart-btn {

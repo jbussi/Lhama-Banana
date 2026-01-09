@@ -140,6 +140,40 @@
             </div>
         </div>
 
+        <!-- Card de Rastreio de Envio -->
+        <div class="tracking-card card animate-fadeInUp" id="trackingCard" style="display: none;">
+            <div class="info-header">
+                <h2>🚚 Rastreio de Envio</h2>
+            </div>
+            
+            <div class="tracking-content" id="trackingContent">
+                <div class="tracking-info" id="trackingInfo">
+                    <div class="info-row" id="trackingCodeRow" style="display: none;">
+                        <span class="info-label">Código de Rastreamento:</span>
+                        <span class="info-value tracking-code" id="trackingCode">--</span>
+                    </div>
+                    <div class="info-row" id="transportadoraRow" style="display: none;">
+                        <span class="info-label">Transportadora:</span>
+                        <span class="info-value" id="transportadora">--</span>
+                    </div>
+                </div>
+                
+                <div class="tracking-action" id="trackingAction" style="display: none;">
+                    <a href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary" id="trackingLink">
+                        <i class="fas fa-external-link-alt"></i>
+                        <span>Rastrear Pedido</span>
+                    </a>
+                </div>
+                
+                <div class="tracking-status" id="trackingStatus" style="display: none;">
+                    <p class="tracking-status-text">
+                        <i class="fas fa-info-circle"></i>
+                        <span id="trackingStatusText">Aguardando envio...</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+
         <!-- Card de Ações -->
         <div class="actions-card card animate-fadeInUp">
             <div class="actions-content">

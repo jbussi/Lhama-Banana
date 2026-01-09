@@ -2,7 +2,7 @@ from flask import Blueprint
 
 api_bp = Blueprint("api", __name__)
 
-from . import carrinho, login, loja, perfil, produto, register, checkout, orders, webhook, auth, addresses, reviews
+from . import carrinho, login, loja, perfil, produto, register, checkout, orders, webhook, auth, addresses, reviews, dados_fiscais, cupom, bling
 
 # Importar módulo de teste apenas em desenvolvimento
 import os

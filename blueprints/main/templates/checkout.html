@@ -150,6 +150,137 @@
                     </div>
                 </div>
 
+                <!-- Dados Fiscais para Nota Fiscal -->
+                <div class="form-section card animate-fadeInUp">
+                    <div class="section-header">
+                        <h2>📄 Dados Fiscais</h2>
+                        <div class="section-icon">🧾</div>
+                    </div>
+                    <p class="section-description">Informações necessárias para emissão da nota fiscal</p>
+                    
+                    <!-- Opção de usar dados fiscais salvos -->
+                    <div id="saved-fiscal-section" style="display: none;">
+                        <div class="form-group">
+                            <label for="use-saved-fiscal">Usar dados fiscais salvos</label>
+                            <select id="use-saved-fiscal" class="form-control">
+                                <option value="">Preencher manualmente</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Formulário de Dados Fiscais -->
+                    <div id="fiscal-form-checkout">
+                        <div class="form-group">
+                            <label for="fiscal-tipo-checkout">Tipo de Documento *</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="fiscal-tipo-checkout" value="CPF" id="fiscal-tipo-cpf-checkout" checked>
+                                    <span>CPF</span>
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="fiscal-tipo-checkout" value="CNPJ" id="fiscal-tipo-cnpj-checkout">
+                                    <span>CNPJ</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fiscal-cpf-cnpj-checkout" id="fiscal-cpf-cnpj-label-checkout">CPF *</label>
+                            <input type="text" id="fiscal-cpf-cnpj-checkout" name="fiscal-cpf-cnpj-checkout" 
+                                   placeholder="000.000.000-00" maxlength="18" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fiscal-nome-checkout" id="fiscal-nome-label-checkout">Nome Completo *</label>
+                            <input type="text" id="fiscal-nome-checkout" name="fiscal-nome-checkout" 
+                                   placeholder="Seu nome completo" required>
+                        </div>
+
+                        <div class="form-group" id="fiscal-inscricao-estadual-group-checkout" style="display: none;">
+                            <label for="fiscal-inscricao-estadual-checkout">Inscrição Estadual</label>
+                            <input type="text" id="fiscal-inscricao-estadual-checkout" name="fiscal-inscricao-estadual-checkout" 
+                                   placeholder="ISENTO ou número da inscrição">
+                        </div>
+
+                        <div class="form-group" id="fiscal-inscricao-municipal-group-checkout" style="display: none;">
+                            <label for="fiscal-inscricao-municipal-checkout">Inscrição Municipal</label>
+                            <input type="text" id="fiscal-inscricao-municipal-checkout" name="fiscal-inscricao-municipal-checkout" 
+                                   placeholder="Opcional">
+                        </div>
+
+                        <div class="form-section-divider">
+                            <h3>Endereço Fiscal</h3>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 2;">
+                                <label for="fiscal-rua-checkout">Rua *</label>
+                                <input type="text" id="fiscal-rua-checkout" name="fiscal-rua-checkout" required>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="fiscal-numero-checkout">Número *</label>
+                                <input type="text" id="fiscal-numero-checkout" name="fiscal-numero-checkout" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fiscal-complemento-checkout">Complemento</label>
+                            <input type="text" id="fiscal-complemento-checkout" name="fiscal-complemento-checkout" 
+                                   placeholder="Apto, Bloco, etc.">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fiscal-bairro-checkout">Bairro *</label>
+                            <input type="text" id="fiscal-bairro-checkout" name="fiscal-bairro-checkout" required>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 2;">
+                                <label for="fiscal-cidade-checkout">Cidade *</label>
+                                <input type="text" id="fiscal-cidade-checkout" name="fiscal-cidade-checkout" required>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="fiscal-estado-checkout">Estado *</label>
+                                <select id="fiscal-estado-checkout" name="fiscal-estado-checkout" required>
+                                    <option value="">Selecione</option>
+                                    <option value="AC">AC</option>
+                                    <option value="AL">AL</option>
+                                    <option value="AP">AP</option>
+                                    <option value="AM">AM</option>
+                                    <option value="BA">BA</option>
+                                    <option value="CE">CE</option>
+                                    <option value="DF">DF</option>
+                                    <option value="ES">ES</option>
+                                    <option value="GO">GO</option>
+                                    <option value="MA">MA</option>
+                                    <option value="MT">MT</option>
+                                    <option value="MS">MS</option>
+                                    <option value="MG">MG</option>
+                                    <option value="PA">PA</option>
+                                    <option value="PB">PB</option>
+                                    <option value="PR">PR</option>
+                                    <option value="PE">PE</option>
+                                    <option value="PI">PI</option>
+                                    <option value="RJ">RJ</option>
+                                    <option value="RN">RN</option>
+                                    <option value="RS">RS</option>
+                                    <option value="RO">RO</option>
+                                    <option value="RR">RR</option>
+                                    <option value="SC">SC</option>
+                                    <option value="SP">SP</option>
+                                    <option value="SE">SE</option>
+                                    <option value="TO">TO</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="fiscal-cep-checkout">CEP *</label>
+                                <input type="text" id="fiscal-cep-checkout" name="fiscal-cep-checkout" 
+                                       placeholder="00000-000" maxlength="9" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Método de Pagamento -->
                 <div class="form-section card animate-fadeInUp">
                     <div class="section-header">

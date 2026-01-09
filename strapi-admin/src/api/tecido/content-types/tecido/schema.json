@@ -1,0 +1,47 @@
+{
+  "kind": "collectionType",
+  "collectionName": "tecidos",
+  "info": {
+    "singularName": "tecido",
+    "pluralName": "tecidos",
+    "displayName": "Tecido",
+    "description": "Tipos de tecidos disponíveis para estampas"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "nome": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "maxLength": 100
+    },
+    "descricao": {
+      "type": "text"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    },
+    "ordem_exibicao": {
+      "type": "integer",
+      "default": 0
+    },
+    "criado_por": {
+      "type": "integer"
+    },
+    "atualizado_por": {
+      "type": "integer"
+    },
+    "estampas": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::estampa.estampa",
+      "mappedBy": "tecido"
+    }
+  }
+}
+
+

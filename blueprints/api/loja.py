@@ -55,33 +55,77 @@ def get_store_filters():
         tamanhos = cur.fetchall()
         filters['tamanhos'] = [{'id': tam[0], 'nome': tam[1]} for tam in tamanhos]
         
-        # Buscar estampas disponíveis (apenas as que têm produtos em estoque)
+        # Verificar se a tabela tecidos existe
         cur.execute("""
-            SELECT DISTINCT e.id, e.nome, e.imagem_url, e.tecido, e.sexo, COALESCE(e.ordem_exibicao, 999) as ordem
-            FROM estampa e
-            JOIN produtos p ON e.id = p.estampa_id
-            WHERE e.ativo = TRUE AND p.estoque > 0
-            ORDER BY ordem, e.nome
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'tecidos'
+            )
         """)
-        estampas = cur.fetchall()
-        filters['estampas'] = [{
-            'id': est[0], 
-            'nome': est[1], 
-            'imagem_url': est[2] if est[2] else '/static/img/placeholder.jpg', 
-            'tecido': est[3] if est[3] else None, 
-            'sexo': est[4] if est[4] else 'u'
-        } for est in estampas]
+        tecidos_table_exists = cur.fetchone()[0]
         
-        # Buscar tecidos únicos disponíveis (apenas os que têm produtos em estoque)
-        cur.execute("""
-            SELECT DISTINCT e.tecido
-            FROM estampa e
-            JOIN produtos p ON e.id = p.estampa_id
-            WHERE e.ativo = TRUE AND p.estoque > 0 AND e.tecido IS NOT NULL AND e.tecido != ''
-            ORDER BY e.tecido
-        """)
-        tecidos = cur.fetchall()
-        filters['tecidos'] = [{'value': tec[0], 'label': tec[0]} for tec in tecidos if tec[0]]
+        # Buscar estampas disponíveis (apenas as que têm produtos em estoque)
+        if tecidos_table_exists:
+            cur.execute("""
+                SELECT DISTINCT e.id, e.nome, e.imagem_url, t.id as tecido_id, t.nome as tecido_nome, e.sexo, COALESCE(e.ordem_exibicao, 999) as ordem
+                FROM estampa e
+                JOIN produtos p ON e.id = p.estampa_id
+                LEFT JOIN tecidos t ON e.tecido_id = t.id
+                WHERE e.ativo = TRUE AND p.estoque > 0
+                ORDER BY ordem, e.nome
+            """)
+            estampas = cur.fetchall()
+            filters['estampas'] = [{
+                'id': est[0], 
+                'nome': est[1], 
+                'imagem_url': est[2] if est[2] else '/static/img/placeholder.jpg', 
+                'tecido_id': est[3] if est[3] else None,
+                'tecido': est[4] if est[4] else None, 
+                'sexo': est[5] if est[5] else 'u'
+            } for est in estampas]
+            
+            # Buscar tecidos únicos disponíveis (apenas os que têm produtos em estoque)
+            cur.execute("""
+                SELECT DISTINCT t.id, t.nome
+                FROM tecidos t
+                JOIN estampa e ON t.id = e.tecido_id
+                JOIN produtos p ON e.id = p.estampa_id
+                WHERE t.ativo = TRUE AND e.ativo = TRUE AND p.estoque > 0
+                ORDER BY t.nome
+            """)
+            tecidos = cur.fetchall()
+            # Quando a tabela tecidos existe, usar o ID como value para filtragem
+            filters['tecidos'] = [{'id': tec[0], 'value': str(tec[0]), 'label': tec[1]} for tec in tecidos if tec[1]]
+        else:
+            # Fallback: usar campo tecido VARCHAR se a tabela não existir
+            cur.execute("""
+                SELECT DISTINCT e.id, e.nome, e.imagem_url, e.tecido, e.sexo, COALESCE(e.ordem_exibicao, 999) as ordem
+                FROM estampa e
+                JOIN produtos p ON e.id = p.estampa_id
+                WHERE e.ativo = TRUE AND p.estoque > 0
+                ORDER BY ordem, e.nome
+            """)
+            estampas = cur.fetchall()
+            filters['estampas'] = [{
+                'id': est[0], 
+                'nome': est[1], 
+                'imagem_url': est[2] if est[2] else '/static/img/placeholder.jpg', 
+                'tecido_id': None,
+                'tecido': est[3] if est[3] else None, 
+                'sexo': est[4] if est[4] else 'u'
+            } for est in estampas]
+            
+            # Buscar tecidos únicos (campo VARCHAR)
+            cur.execute("""
+                SELECT DISTINCT e.tecido
+                FROM estampa e
+                JOIN produtos p ON e.id = p.estampa_id
+                WHERE e.ativo = TRUE AND p.estoque > 0 AND e.tecido IS NOT NULL AND e.tecido != ''
+                ORDER BY e.tecido
+            """)
+            tecidos = cur.fetchall()
+            filters['tecidos'] = [{'id': None, 'value': tec[0], 'label': tec[0]} for tec in tecidos if tec[0]]
         
         return jsonify(filters), 200
         
@@ -128,8 +172,11 @@ def get_base_products():
                  WHERE p_var.nome_produto_id = np.id
                  ORDER BY ip.ordem ASC
                  LIMIT 1) AS imagem_representativa_url,
-                (SELECT MIN(p_var.preco_venda) FROM produtos p_var WHERE p_var.nome_produto_id = np.id) AS preco_minimo,
-                (SELECT COUNT(*) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.estoque > 0) AS variacoes_em_estoque_count
+                (SELECT MIN(COALESCE(p_var.preco_promocional, p_var.preco_venda)) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.ativo = TRUE) AS preco_minimo,
+                (SELECT MIN(p_var.preco_venda) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.ativo = TRUE) AS preco_minimo_original,
+                (SELECT MIN(p_var.preco_promocional) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.preco_promocional IS NOT NULL AND p_var.estoque > 0 AND p_var.ativo = TRUE) AS preco_promocional_minimo,
+                (SELECT COUNT(*) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.estoque > 0 AND p_var.ativo = TRUE) AS variacoes_em_estoque_count,
+                (SELECT COUNT(*) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.preco_promocional IS NOT NULL AND p_var.estoque > 0 AND p_var.ativo = TRUE) AS tem_promocao_count
             FROM nome_produto np
             JOIN categorias c ON np.categoria_id = c.id
             WHERE np.ativo = TRUE
@@ -142,6 +189,23 @@ def get_base_products():
         if categoria_ids:
             conditions.append(f"c.id = ANY(%s)")
             params.append(categoria_ids)
+        
+        # Verificar se tabela tecidos existe (uma vez, antes dos filtros)
+        # Reutilizar a verificação já feita em get_store_filters se possível
+        # Mas como estamos em uma função diferente, vamos verificar novamente
+        try:
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'tecidos'
+                )
+            """)
+            result = cur.fetchone()
+            tecidos_table_exists = result[0] if result else False
+        except Exception as e:
+            current_app.logger.warning(f"Erro ao verificar existência da tabela tecidos: {e}")
+            tecidos_table_exists = False
         
         # Construir condições para filtros de variações (produtos)
         variation_conditions = []
@@ -157,19 +221,72 @@ def get_base_products():
         
         # Filtros de tecido e sexo (via estampa)
         if tecidos:
-            variation_conditions.append("EXISTS (SELECT 1 FROM estampa e WHERE e.id = p.estampa_id AND e.tecido = ANY(%s))")
-            variation_params.append(tecidos)
+            if tecidos_table_exists:
+                # Usar tecido_id se a tabela existir
+                # Converter strings para inteiros se necessário
+                tecido_ids = []
+                tecido_nomes = []
+                
+                for t in tecidos:
+                    try:
+                        if isinstance(t, str):
+                            # Tentar converter para int
+                            if t.isdigit():
+                                tecido_ids.append(int(t))
+                            else:
+                                # Se não for dígito, guardar para buscar pelo nome depois
+                                tecido_nomes.append(t)
+                        elif isinstance(t, int):
+                            tecido_ids.append(t)
+                    except Exception as e:
+                        current_app.logger.warning(f"Erro ao processar filtro de tecido {t}: {e}")
+                        continue
+                
+                # Buscar IDs dos tecidos por nome se necessário
+                if tecido_nomes:
+                    placeholders_nomes = ','.join(['%s'] * len(tecido_nomes))
+                    cur.execute(f"SELECT id FROM tecidos WHERE nome IN ({placeholders_nomes}) AND ativo = TRUE", tecido_nomes)
+                    ids_por_nome = [row[0] for row in cur.fetchall()]
+                    tecido_ids.extend(ids_por_nome)
+                
+                # Remover duplicatas
+                tecido_ids = list(set(tecido_ids))
+                
+                if tecido_ids:
+                    # Usar IN ao invés de ANY para melhor compatibilidade
+                    placeholders = ','.join(['%s'] * len(tecido_ids))
+                    variation_conditions.append(f"EXISTS (SELECT 1 FROM estampa e WHERE e.id = p.estampa_id AND e.tecido_id IN ({placeholders}))")
+                    variation_params.extend(tecido_ids)
+            else:
+                # Fallback: usar campo tecido VARCHAR (se existir)
+                # Verificar se a coluna tecido existe
+                try:
+                    cur.execute("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.columns 
+                            WHERE table_name = 'estampa' 
+                            AND column_name = 'tecido'
+                        )
+                    """)
+                    result = cur.fetchone()
+                    tecido_column_exists = result[0] if result else False
+                    if tecido_column_exists:
+                        variation_conditions.append("EXISTS (SELECT 1 FROM estampa e WHERE e.id = p.estampa_id AND e.tecido = ANY(%s))")
+                        variation_params.append(tecidos)
+                except:
+                    # Se não conseguir verificar, simplesmente ignorar o filtro de tecido
+                    pass
         
         if sexos:
             variation_conditions.append("EXISTS (SELECT 1 FROM estampa e WHERE e.id = p.estampa_id AND e.sexo = ANY(%s))")
             variation_params.append(sexos)
         
         if preco_min is not None:
-            variation_conditions.append("p.preco_venda >= %s")
+            variation_conditions.append("COALESCE(p.preco_promocional, p.preco_venda) >= %s")
             variation_params.append(preco_min)
         
         if preco_max is not None:
-            variation_conditions.append("p.preco_venda <= %s")
+            variation_conditions.append("COALESCE(p.preco_promocional, p.preco_venda) <= %s")
             variation_params.append(preco_max)
         
         # Se houver filtros de variação, adicionar subquery
@@ -201,6 +318,25 @@ def get_base_products():
         products_db = cur.fetchall()
 
         for prod in products_db:
+            preco_minimo = float(prod[6]) if prod[6] is not None else None
+            preco_minimo_original = float(prod[7]) if prod[7] is not None else None
+            preco_promocional_minimo = float(prod[8]) if prod[8] is not None else None
+            variacoes_em_estoque = prod[9] if prod[9] is not None else 0
+            tem_promocao_count = prod[10] if prod[10] is not None else 0
+            
+            # Só considerar como promoção se:
+            # 1. Existe pelo menos uma variação com preco_promocional
+            # 2. E o menor preço promocional é menor que o menor preço de venda
+            tem_promocao = False
+            preco_original_para_exibir = None
+            
+            if tem_promocao_count > 0 and preco_promocional_minimo is not None and preco_minimo_original is not None:
+                # Se o menor preço promocional é menor que o menor preço de venda, tem promoção
+                if preco_promocional_minimo < preco_minimo_original:
+                    tem_promocao = True
+                    preco_original_para_exibir = preco_minimo_original
+                    # O preco_minimo já considera promoções, então será o preço promocional
+            
             base_products_list.append({
                 'id': prod[0],
                 'nome': prod[1],
@@ -208,8 +344,10 @@ def get_base_products():
                 'categoria': prod[3],
                 'categoria_id': prod[4],
                 'imagem_url': prod[5] if prod[5] else '/static/img/placeholder.jpg',
-                'preco_minimo': float(prod[6]) if prod[6] is not None else None,
-                'estoque': prod[7]
+                'preco_minimo': preco_minimo,
+                'preco_minimo_original': preco_original_para_exibir,
+                'tem_promocao': tem_promocao,
+                'estoque': variacoes_em_estoque
             })
 
         return jsonify(base_products_list), 200

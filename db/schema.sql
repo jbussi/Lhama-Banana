@@ -81,6 +81,19 @@ CREATE TABLE IF NOT EXISTS categorias (
   atualizado_por INTEGER -- ID do usuário/admin que atualizou
 );
 
+-- Tabela para gerenciar tipos de tecidos
+CREATE TABLE IF NOT EXISTS tecidos (
+  id SERIAL PRIMARY KEY,
+  nome VARCHAR(100) UNIQUE NOT NULL,
+  descricao TEXT,
+  ativo BOOLEAN DEFAULT TRUE,
+  ordem_exibicao INTEGER DEFAULT 0,
+  criado_em TIMESTAMP DEFAULT NOW(),
+  atualizado_em TIMESTAMP DEFAULT NOW(),
+  criado_por INTEGER,
+  atualizado_por INTEGER
+);
+
 -- Tabela para armazenar informações de usuários (clientes e admins)
 CREATE TABLE IF NOT EXISTS usuarios (
   id SERIAL PRIMARY KEY,
@@ -124,6 +137,30 @@ CREATE TABLE IF NOT EXISTS enderecos (
   atualizado_em TIMESTAMP DEFAULT NOW()
 );
 
+-- Tabela para dados fiscais dos usuários (apenas um por usuário)
+CREATE TABLE IF NOT EXISTS dados_fiscais (
+  id SERIAL PRIMARY KEY,
+  usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE UNIQUE NOT NULL,
+  tipo CHAR(3) NOT NULL CHECK (tipo IN ('CPF', 'CNPJ')),
+  cpf_cnpj VARCHAR(18) NOT NULL, -- CPF: 14 chars (com formatação), CNPJ: 18 chars (com formatação)
+  nome_razao_social VARCHAR(255) NOT NULL, -- Nome para CPF, Razão Social para CNPJ
+  inscricao_estadual VARCHAR(20), -- Opcional, apenas para CNPJ
+  inscricao_municipal VARCHAR(20), -- Opcional
+  -- Endereço fiscal completo
+  rua VARCHAR(255) NOT NULL,
+  numero VARCHAR(20) NOT NULL,
+  complemento VARCHAR(100),
+  bairro VARCHAR(100) NOT NULL,
+  cidade VARCHAR(100) NOT NULL,
+  estado CHAR(2) NOT NULL,
+  cep CHAR(8) NOT NULL,
+  ativo BOOLEAN DEFAULT TRUE,
+  criado_em TIMESTAMP DEFAULT NOW(),
+  atualizado_em TIMESTAMP DEFAULT NOW(),
+  criado_por INTEGER,
+  atualizado_por INTEGER
+);
+
 -- =====================================================
 -- TABELAS DE PRODUTOS
 -- =====================================================
@@ -159,6 +196,7 @@ CREATE TABLE IF NOT EXISTS estampa (
   descricao TEXT,
   imagem_url VARCHAR(2000) NOT NULL,
   categoria_id INTEGER REFERENCES categorias(id) NOT NULL,
+  tecido_id INTEGER REFERENCES tecidos(id),
   sexo CHAR(1) DEFAULT 'u' CHECK (sexo IN ('m', 'f', 'u')),
   custo_por_metro DECIMAL(10, 2) NOT NULL,
   ativo BOOLEAN DEFAULT TRUE,
@@ -194,6 +232,7 @@ CREATE TABLE IF NOT EXISTS produtos (
   estoque_reservado INTEGER DEFAULT 0, -- Estoque reservado para pedidos pendentes
   codigo_sku VARCHAR(50) UNIQUE NOT NULL,
   codigo_barras VARCHAR(50), -- Código de barras (EAN)
+  ncm VARCHAR(8), -- NCM (Nomenclatura Comum do Mercosul) para nota fiscal
   ativo BOOLEAN DEFAULT TRUE,
   criado_em TIMESTAMP DEFAULT NOW(),
   atualizado_em TIMESTAMP DEFAULT NOW(),
@@ -300,6 +339,20 @@ CREATE TABLE IF NOT EXISTS vendas (
   data_entrega_real TIMESTAMP, -- Data real de entrega
   observacoes TEXT, -- Observações internas do pedido
   observacoes_cliente TEXT, -- Observações do cliente
+  
+  -- Dados Fiscais (snapshot para emissão de NFe)
+  fiscal_tipo CHAR(3), -- CPF ou CNPJ
+  fiscal_cpf_cnpj VARCHAR(18), -- CPF/CNPJ do cliente
+  fiscal_nome_razao_social VARCHAR(255), -- Nome ou Razão Social
+  fiscal_inscricao_estadual VARCHAR(20), -- Inscrição Estadual (opcional)
+  fiscal_inscricao_municipal VARCHAR(20), -- Inscrição Municipal (opcional)
+  fiscal_rua VARCHAR(255), -- Endereço fiscal
+  fiscal_numero VARCHAR(20),
+  fiscal_complemento VARCHAR(100),
+  fiscal_bairro VARCHAR(100),
+  fiscal_cidade VARCHAR(100),
+  fiscal_estado CHAR(2),
+  fiscal_cep CHAR(8)
   
   -- Campos para operação diária
   prioridade INTEGER DEFAULT 0, -- 0=normal, 1=alta, 2=urgente
@@ -503,6 +556,39 @@ CREATE TABLE IF NOT EXISTS etiquetas_frete (
   entregue_em TIMESTAMP -- Quando foi entregue
 );
 
+-- Tabela para controle de emissão de notas fiscais
+CREATE TABLE IF NOT EXISTS notas_fiscais (
+  id SERIAL PRIMARY KEY,
+  venda_id INTEGER REFERENCES vendas(id) ON DELETE CASCADE,
+  codigo_pedido VARCHAR(50) REFERENCES vendas(codigo_pedido),
+  
+  -- Dados da NFe
+  numero_nfe VARCHAR(50), -- Número da nota fiscal
+  serie_nfe VARCHAR(10), -- Série da nota fiscal
+  chave_acesso VARCHAR(44), -- Chave de acesso da NFe (44 dígitos)
+  
+  -- Status da emissão
+  status_emissao VARCHAR(50) NOT NULL DEFAULT 'pendente' CHECK (status_emissao IN (
+    'pendente',
+    'processando',
+    'emitida',
+    'erro',
+    'cancelada'
+  )),
+  
+  -- Resposta da API externa
+  api_response JSONB, -- Resposta completa da API de NFe
+  erro_mensagem TEXT, -- Mensagem de erro se houver
+  
+  -- Datas
+  data_emissao TIMESTAMP, -- Quando a nota foi emitida
+  data_cancelamento TIMESTAMP, -- Quando foi cancelada (se aplicável)
+  
+  -- Timestamps
+  criado_em TIMESTAMP DEFAULT NOW(),
+  atualizado_em TIMESTAMP DEFAULT NOW()
+);
+
 -- =====================================================
 -- TABELAS DE AUDITORIA E LOGS
 -- =====================================================
@@ -627,6 +713,15 @@ CREATE INDEX IF NOT EXISTS idx_nome_produto_categoria_id ON nome_produto (catego
 CREATE INDEX IF NOT EXISTS idx_nome_produto_ativo ON nome_produto (ativo);
 CREATE INDEX IF NOT EXISTS idx_nome_produto_slug ON nome_produto (slug);
 
+-- Índices para tecidos
+CREATE INDEX IF NOT EXISTS idx_tecidos_ativo ON tecidos (ativo);
+CREATE INDEX IF NOT EXISTS idx_tecidos_nome ON tecidos (nome);
+
+-- Índices para estampa
+CREATE INDEX IF NOT EXISTS idx_estampa_categoria_id ON estampa (categoria_id);
+CREATE INDEX IF NOT EXISTS idx_estampa_tecido_id ON estampa (tecido_id);
+CREATE INDEX IF NOT EXISTS idx_estampa_ativo ON estampa (ativo);
+
 -- Índices para orders
 CREATE INDEX IF NOT EXISTS idx_orders_public_token ON orders (public_token);
 CREATE INDEX IF NOT EXISTS idx_orders_venda_id ON orders (venda_id);
@@ -645,6 +740,13 @@ CREATE INDEX IF NOT EXISTS idx_etiquetas_codigo_pedido ON etiquetas_frete (codig
 CREATE INDEX IF NOT EXISTS idx_etiquetas_status ON etiquetas_frete (status_etiqueta);
 CREATE INDEX IF NOT EXISTS idx_etiquetas_protocol ON etiquetas_frete (melhor_envio_protocol);
 CREATE INDEX IF NOT EXISTS idx_etiquetas_codigo_rastreamento ON etiquetas_frete (codigo_rastreamento);
+
+-- Índices para notas fiscais
+CREATE INDEX IF NOT EXISTS idx_notas_fiscais_venda_id ON notas_fiscais (venda_id);
+CREATE INDEX IF NOT EXISTS idx_notas_fiscais_codigo_pedido ON notas_fiscais (codigo_pedido);
+CREATE INDEX IF NOT EXISTS idx_notas_fiscais_status ON notas_fiscais (status_emissao);
+CREATE INDEX IF NOT EXISTS idx_notas_fiscais_chave_acesso ON notas_fiscais (chave_acesso);
+CREATE INDEX IF NOT EXISTS idx_notas_fiscais_numero_nfe ON notas_fiscais (numero_nfe);
 
 -- Índices para auditoria
 CREATE INDEX IF NOT EXISTS idx_auditoria_tabela ON auditoria_logs (tabela_afetada);
@@ -667,6 +769,11 @@ CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario_id ON notificacoes (usuario_
 CREATE INDEX IF NOT EXISTS idx_notificacoes_lida ON notificacoes (lida);
 CREATE INDEX IF NOT EXISTS idx_notificacoes_criado_em ON notificacoes (criado_em);
 
+-- Índices para dados fiscais
+CREATE INDEX IF NOT EXISTS idx_dados_fiscais_usuario_id ON dados_fiscais (usuario_id);
+CREATE INDEX IF NOT EXISTS idx_dados_fiscais_cpf_cnpj ON dados_fiscais (cpf_cnpj);
+CREATE INDEX IF NOT EXISTS idx_dados_fiscais_ativo ON dados_fiscais (ativo);
+
 -- =====================================================
 -- TRIGGERS PARA ATUALIZAÇÃO AUTOMÁTICA DE TIMESTAMPS
 -- =====================================================
@@ -674,11 +781,17 @@ CREATE INDEX IF NOT EXISTS idx_notificacoes_criado_em ON notificacoes (criado_em
 DROP TRIGGER IF EXISTS trg_categorias_update_timestamp ON categorias;
 CREATE TRIGGER trg_categorias_update_timestamp BEFORE UPDATE ON categorias FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
+DROP TRIGGER IF EXISTS trg_tecidos_update_timestamp ON tecidos;
+CREATE TRIGGER trg_tecidos_update_timestamp BEFORE UPDATE ON tecidos FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
 DROP TRIGGER IF EXISTS trg_usuarios_update_timestamp ON usuarios;
 CREATE TRIGGER trg_usuarios_update_timestamp BEFORE UPDATE ON usuarios FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
 DROP TRIGGER IF EXISTS trg_enderecos_update_timestamp ON enderecos;
 CREATE TRIGGER trg_enderecos_update_timestamp BEFORE UPDATE ON enderecos FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_dados_fiscais_update_timestamp ON dados_fiscais;
+CREATE TRIGGER trg_dados_fiscais_update_timestamp BEFORE UPDATE ON dados_fiscais FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
 DROP TRIGGER IF EXISTS trg_nome_produto_update_timestamp ON nome_produto;
 CREATE TRIGGER trg_nome_produto_update_timestamp BEFORE UPDATE ON nome_produto FOR EACH ROW EXECUTE FUNCTION update_timestamp();
@@ -718,6 +831,9 @@ CREATE TRIGGER trg_orders_update_timestamp BEFORE UPDATE ON orders FOR EACH ROW 
 
 DROP TRIGGER IF EXISTS trg_etiquetas_update_timestamp ON etiquetas_frete;
 CREATE TRIGGER trg_etiquetas_update_timestamp BEFORE UPDATE ON etiquetas_frete FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+DROP TRIGGER IF EXISTS trg_notas_fiscais_update_timestamp ON notas_fiscais;
+CREATE TRIGGER trg_notas_fiscais_update_timestamp BEFORE UPDATE ON notas_fiscais FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
 DROP TRIGGER IF EXISTS trg_configuracoes_update_timestamp ON configuracoes;
 CREATE TRIGGER trg_configuracoes_update_timestamp BEFORE UPDATE ON configuracoes FOR EACH ROW EXECUTE FUNCTION update_timestamp();

@@ -33,3 +33,6 @@ COMMENT ON COLUMN avaliacoes.aprovado IS 'Se a avaliação foi aprovada para exi
 
 
 
+
+
+

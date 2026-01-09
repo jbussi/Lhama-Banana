@@ -152,7 +152,8 @@
 .status-timeline::before {
     content: '';
     position: absolute;
-    left: 15px;
+    /* Centralizar no círculo: círculo está em 15px (40px padding - 25px left), centro em 30px (15px + 15px), linha centralizada em 28.5px (30px - 1.5px) */
+    left: 28.5px;
     top: 0;
     bottom: 0;
     width: 3px;
@@ -210,7 +211,7 @@
 .timeline-marker {
     position: absolute;
     left: -25px;
-    top: 4px;
+    top: 0; /* Alinhado no topo para melhor centralização com a linha */
     width: 30px;
     height: 30px;
     border-radius: 50%;
@@ -248,7 +249,8 @@
 }
 
 /* Card de Informações */
-.order-info-card {
+.order-info-card,
+.tracking-card {
     background: white;
     border-radius: 20px;
     padding: 30px;
@@ -294,6 +296,77 @@
 .info-value {
     font-weight: 700;
     color: var(--cor-texto-preto);
+    font-size: 1.1rem;
+}
+
+/* Card de Rastreio */
+.tracking-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.tracking-info {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.tracking-code {
+    font-family: 'Courier New', monospace;
+    font-size: 1rem;
+    letter-spacing: 1px;
+    color: var(--cor-principal-turquesa);
+    font-weight: 700;
+}
+
+.tracking-action {
+    margin-top: 8px;
+    text-align: center;
+}
+
+.tracking-action .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+.tracking-action .btn-primary {
+    background: var(--cor-principal-turquesa);
+    color: white;
+    border: 2px solid var(--cor-principal-turquesa);
+}
+
+.tracking-action .btn-primary:hover {
+    background: #00897b;
+    border-color: #00897b;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(64, 224, 208, 0.3);
+}
+
+.tracking-status {
+    padding: 16px;
+    background: rgba(33, 150, 243, 0.05);
+    border-left: 4px solid #2196f3;
+    border-radius: 8px;
+    margin-top: 8px;
+}
+
+.tracking-status-text {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #1976d2;
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+.tracking-status-text i {
     font-size: 1.1rem;
 }
 
@@ -512,6 +585,7 @@
     }
 
     .order-info-card,
+    .tracking-card,
     .actions-card {
         padding: 20px;
     }

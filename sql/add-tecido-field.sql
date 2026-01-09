@@ -14,3 +14,6 @@ COMMENT ON COLUMN estampa.tecido IS 'Tipo de tecido/material da estampa (ex: Alg
 
 
 
+
+
+

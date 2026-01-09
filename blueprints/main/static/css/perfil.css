@@ -184,6 +184,331 @@
     box-shadow: 0 2px 8px rgba(249, 215, 28, 0.3);
 }
 
+/* Estilos para formulário de dados fiscais */
+.fiscal-form {
+    padding: 1.5rem;
+}
+
+.fiscal-form .form-group {
+    margin-bottom: 1.5rem;
+}
+
+.fiscal-form .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #2d3436;
+    font-size: 0.95rem;
+}
+
+.fiscal-form .form-group input,
+.fiscal-form .form-group select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    transition: border-color 0.2s;
+}
+
+.fiscal-form .form-group input:focus,
+.fiscal-form .form-group select:focus {
+    outline: none;
+    border-color: #2ab7a9;
+    box-shadow: 0 0 0 3px rgba(42, 183, 169, 0.1);
+}
+
+.radio-group {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #fff;
+}
+
+.radio-label:hover {
+    border-color: #2ab7a9;
+    background: #f8f9fa;
+}
+
+.radio-label input[type="radio"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+}
+
+.radio-label input[type="radio"]:checked + span {
+    color: #2ab7a9;
+    font-weight: 600;
+}
+
+.radio-label:has(input[type="radio"]:checked) {
+    border-color: #2ab7a9;
+    background: #e8f5f3;
+}
+
+.form-section-divider {
+    margin: 2rem 0 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid #e9ecef;
+}
+
+.form-section-divider h3 {
+    margin: 0;
+    color: #2d3436;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.form-row {
+    display: flex;
+    gap: 1rem;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e9ecef;
+}
+
+/* Visualização dos Dados Fiscais */
+.fiscal-data-display {
+    margin-top: 1.5rem;
+}
+
+.fiscal-data-card {
+    background: #fff;
+    border: 2px solid #e9ecef;
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+}
+
+.fiscal-data-card:hover {
+    border-color: #40e0d0;
+    box-shadow: 0 6px 20px rgba(64, 224, 208, 0.15);
+    transform: translateY(-2px);
+}
+
+.fiscal-data-header {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.fiscal-data-icon {
+    width: 64px;
+    height: 64px;
+    background: linear-gradient(135deg, #40e0d0 0%, #2ab7a9 100%);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.fiscal-data-icon i {
+    font-size: 2rem;
+    color: white;
+}
+
+.fiscal-data-title h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.5rem;
+    color: #2d3436;
+    font-weight: 700;
+}
+
+.fiscal-data-subtitle {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.fiscal-data-body {
+    margin-bottom: 2rem;
+}
+
+.fiscal-data-row {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    align-items: flex-start;
+}
+
+.fiscal-data-row:last-child {
+    margin-bottom: 0;
+}
+
+.fiscal-data-row i {
+    font-size: 1.2rem;
+    color: #40e0d0;
+    margin-top: 0.2rem;
+    flex-shrink: 0;
+}
+
+.fiscal-data-label {
+    margin: 0 0 0.25rem 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fiscal-data-value {
+    margin: 0;
+    font-size: 1rem;
+    color: #2d3436;
+    line-height: 1.6;
+}
+
+.fiscal-data-actions {
+    display: flex;
+    gap: 1rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid #f0f0f0;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+}
+
+/* Estado Vazio para Dados Fiscais */
+#fiscal-empty-state.empty-state-small {
+    text-align: center;
+    padding: 3rem 2rem;
+    margin-top: 1.5rem;
+    background: #fff;
+    border: 2px dashed #dee2e6;
+    border-radius: 16px;
+}
+
+#fiscal-empty-state .empty-state-icon {
+    font-size: 4rem;
+    color: #ced4da;
+    margin-bottom: 1rem;
+}
+
+#fiscal-empty-state h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.3rem;
+    color: #495057;
+    font-weight: 600;
+}
+
+#fiscal-empty-state p {
+    margin: 0 0 2rem 0;
+    color: #6c757d;
+    font-size: 0.95rem;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Diálogo de Confirmação Inline */
+.confirmation-dialog {
+    padding: 1.5rem;
+    background: #fff3cd;
+    border: 2px solid #ffc107;
+    border-radius: 12px;
+    margin-top: 1rem;
+}
+
+.confirmation-dialog p {
+    margin: 0 0 1.5rem 0;
+    color: #856404;
+    font-size: 1rem;
+    font-weight: 500;
+    line-height: 1.6;
+}
+
+.confirmation-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+.confirmation-actions .btn {
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: none;
+}
+
+.confirmation-actions .btn-danger {
+    background-color: #dc3545;
+    color: white;
+}
+
+.confirmation-actions .btn-danger:hover {
+    background-color: #c82333;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+}
+
+.confirmation-actions .btn-outline {
+    background-color: #fff;
+    color: #495057;
+    border: 2px solid #dee2e6;
+}
+
+.confirmation-actions .btn-outline:hover {
+    border-color: #adb5bd;
+    background-color: #f8f9fa;
+}
+
+.form-text {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.section-description {
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
 /* Estilos para lista de pedidos */
 .orders-list {
     padding: 1.5rem;
@@ -233,15 +558,29 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+/* Status da tabela orders */
+.status-criado {
+    background-color: #e3f2fd;
+    color: #1976d2;
 }
 
 .status-pendente,
-.status-pendente_pagamento {
+.status-pendente_pagamento,
+.status-pago {
     background-color: #fff3cd;
     color: #856404;
 }
 
-.status-processando_envio {
+.status-aprovado {
+    background-color: #cfe2ff;
+    color: #084298;
+}
+
+.status-processando_envio,
+.status-na-transportadora {
     background-color: #cfe2ff;
     color: #084298;
 }
@@ -256,8 +595,14 @@
     color: #155724;
 }
 
+.status-cancelado,
 .status-cancelado_pelo_cliente,
 .status-cancelado_pelo_vendedor {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.status-expirado {
     background-color: #f8d7da;
     color: #721c24;
 }
@@ -266,6 +611,12 @@
 .status-reembolsado {
     background-color: #e2e3e5;
     color: #383d41;
+}
+
+/* Fallback para status não mapeados */
+.order-status-badge:not([class*="status-"]) {
+    background-color: #e9ecef;
+    color: #495057;
 }
 
 .order-details {
