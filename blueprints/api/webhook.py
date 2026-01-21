@@ -630,7 +630,8 @@ def pagbank_webhook():
                 """, (new_venda_status, venda_id))
                 conn.commit()
                 
-                # Se status mudou para processando_envio, verificar se precisa emitir NFe e criar etiqueta
+                # Se status mudou para processando_envio, sincronizar estoque com Bling
+                # REMOVIDO: Criação automática de etiqueta - será criada apenas após aprovação do SEFAZ
                 if new_venda_status == 'processando_envio':
                     # 1. Sincronizar estoque com Bling (estoque já foi decrementado na criação do pedido)
                     try:
@@ -646,24 +647,10 @@ def pagbank_webhook():
                         current_app.logger.error(traceback.format_exc())
                         # Não falhar o webhook por erro na sincronização de estoque
                     
-                    # 2. Criar etiqueta automaticamente
-                    try:
-                        from ..api.labels import create_label_automatically
-                        etiqueta_id = create_label_automatically(venda_id)
-                        if etiqueta_id:
-                            current_app.logger.info(f"✅ Etiqueta {etiqueta_id} criada automaticamente para venda {venda_id}")
-                        else:
-                            current_app.logger.warning(f"⚠️ Etiqueta não criada para venda {venda_id} (pode já existir ou erro na criação)")
-                    except Exception as label_error:
-                        current_app.logger.error(f"❌ Erro ao criar etiqueta automaticamente para venda {venda_id}: {label_error}")
-                        import traceback
-                        current_app.logger.error(traceback.format_exc())
-                        # Não falhar o webhook por erro na criação da etiqueta
-                    
-                    # 3. Criar conta a receber no Bling - REMOVIDO (não essencial para o escopo atual)
+                    # 2. Criar conta a receber no Bling - REMOVIDO (não essencial para o escopo atual)
                     # A criação de contas a receber será gerenciada diretamente pelo Bling quando necessário
                     
-                    # 4. Verificar se precisa emitir NFe
+                    # 3. Verificar se precisa emitir NFe
                     try:
                         from ..services.nfe_service import check_and_emit_nfe
                         nfe_result = check_and_emit_nfe(venda_id)
@@ -838,13 +825,19 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
             
             # Buscar nome da situação se não fornecido
             if not situacao_bling_nome:
+                current_app.logger.info(f"🔍 [WEBHOOK] Nome da situação não fornecido no webhook, buscando no banco...")
                 try:
                     from ..services.bling_situacao_service import get_situacao_mapping
                     situacao_info = get_situacao_mapping(situacao_bling_id)
                     if situacao_info:
                         situacao_bling_nome = situacao_info.get('nome')
+                        current_app.logger.info(f"✅ [WEBHOOK] Nome encontrado: '{situacao_bling_nome}'")
+                    else:
+                        current_app.logger.warning(f"⚠️ [WEBHOOK] Situação ID {situacao_bling_id} não encontrada no banco")
                 except Exception as e:
-                    current_app.logger.warning(f"Erro ao buscar nome da situação: {e}")
+                    current_app.logger.error(f"❌ [WEBHOOK] Erro ao buscar nome da situação: {e}")
+            else:
+                current_app.logger.info(f"📋 [WEBHOOK] Nome da situação fornecido no webhook: '{situacao_bling_nome}'")
             
             # Atualizar situação e status do pedido usando o serviço de situação
             from ..services.bling_situacao_service import update_pedido_situacao
@@ -873,6 +866,75 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
                 current_app.logger.info(f"   Nome Situação: {situacao_bling_nome}")
                 current_app.logger.info(f"   Status Site: {status_atual} → {novo_status}")
                 current_app.logger.info("=" * 80)
+                
+                # Verificar se mudou para "Em andamento" e emitir NF-e
+                situacao_nome_lower = (situacao_bling_nome or '').lower()
+                is_em_andamento = 'em andamento' in situacao_nome_lower
+                
+                # Também verificar pelo ID se conhecido (pode ser mapeado depois)
+                # Por enquanto, usar apenas o nome
+                if is_em_andamento:
+                    current_app.logger.info(f"🚀 Pedido {venda_id} mudou para 'Em andamento'. Emitindo NF-e...")
+                    
+                    try:
+                        from ..services.bling_nfe_service import emit_nfe
+                        
+                        # Verificar se NF-e já foi emitida
+                        cur.execute("""
+                            SELECT bling_nfe_id, nfe_status
+                            FROM bling_pedidos
+                            WHERE venda_id = %s
+                        """, (venda_id,))
+                        
+                        nfe_info = cur.fetchone()
+                        
+                        if nfe_info and nfe_info.get('bling_nfe_id'):
+                            current_app.logger.info(
+                                f"ℹ️ NF-e já existe para pedido {venda_id}. "
+                                f"ID: {nfe_info.get('bling_nfe_id')}, Status: {nfe_info.get('nfe_status')}"
+                            )
+                        else:
+                            # Emitir NF-e
+                            nfe_result = emit_nfe(venda_id)
+                            
+                            if nfe_result.get('success'):
+                                current_app.logger.info(
+                                    f"✅ NF-e emitida com sucesso para pedido {venda_id}. "
+                                    f"Número: {nfe_result.get('nfe_numero')}, "
+                                    f"Chave: {nfe_result.get('nfe_chave_acesso')}"
+                                )
+                                
+                                # Atualizar status do pedido para aguardando aprovação SEFAZ
+                                cur.execute("""
+                                    UPDATE vendas
+                                    SET status_pedido = 'nfe_aguardando_aprovacao',
+                                        atualizado_em = NOW()
+                                    WHERE id = %s
+                                """, (venda_id,))
+                                conn.commit()
+                                
+                                current_app.logger.info(
+                                    f"📋 Status do pedido {venda_id} atualizado para 'nfe_aguardando_aprovacao'"
+                                )
+                            else:
+                                current_app.logger.error(
+                                    f"❌ Erro ao emitir NF-e para pedido {venda_id}: {nfe_result.get('error')}"
+                                )
+                                
+                                # Atualizar status para erro
+                                cur.execute("""
+                                    UPDATE vendas
+                                    SET status_pedido = 'erro_nfe_timeout',
+                                        atualizado_em = NOW()
+                                    WHERE id = %s
+                                """, (venda_id,))
+                                conn.commit()
+                                
+                    except Exception as e:
+                        current_app.logger.error(
+                            f"❌ Erro ao processar emissão de NF-e para pedido {venda_id}: {e}",
+                            exc_info=True
+                        )
             else:
                 current_app.logger.warning(f"Falha ao atualizar situação do pedido {venda_id}")
             
@@ -917,6 +979,278 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
             
     except Exception as e:
         current_app.logger.error(f"Erro no webhook Bling: {e}")
+        import traceback
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({
+            "status": "ok",
+            "message": "Erro ao processar webhook"
+        }), 200
+
+
+def process_nfe_webhook(webhook_data: dict, event: str, event_id: str, data: dict):
+    """
+    Processa webhook de nota fiscal do Bling
+    
+    Eventos suportados:
+    - consumer_invoice.created: NF-e criada
+    - consumer_invoice.updated: NF-e atualizada (situação mudou)
+    - consumer_invoice.deleted: NF-e deletada
+    
+    Quando situação = 1 (Autorizada), atualiza pedido e muda para Logística no Bling.
+    
+    Args:
+        webhook_data: Dados completos do webhook
+        event: Tipo do evento (ex: "consumer_invoice.updated")
+        event_id: ID do evento
+        data: Dados da nota fiscal do webhook
+    
+    Returns:
+        Response Flask
+    """
+    try:
+        # Determinar ação (created, updated, deleted)
+        action = event.split('.')[-1] if '.' in event else 'unknown'
+        
+        current_app.logger.info("=" * 80)
+        current_app.logger.info(f"📄 WEBHOOK NOTA FISCAL BLING - {action.upper()}")
+        current_app.logger.info("=" * 80)
+        current_app.logger.info(f"Event: {event}")
+        current_app.logger.info(f"Event ID: {event_id}")
+        current_app.logger.info(f"Dados: {json.dumps(data, indent=2, ensure_ascii=False)[:500]}")
+        
+        # Extrair informações da nota fiscal
+        nfe_id = data.get('id')
+        nfe_situacao = data.get('situacao')  # 1 = Autorizada, outros valores = outras situações
+        nfe_numero = data.get('numero')
+        nfe_tipo = data.get('tipo')  # 0 = NF-e (Modelo 55), 1 = NFC-e
+        
+        if not nfe_id:
+            current_app.logger.warning(f"Webhook de nota fiscal sem ID. Event: {event}")
+            return jsonify({
+                "status": "ok",
+                "message": "Webhook sem ID da nota fiscal, ignorado"
+            }), 200
+        
+        # Buscar pedido relacionado à nota fiscal
+        from ..services.bling_order_service import get_order_by_nfe_id
+        
+        pedido_info = get_order_by_nfe_id(nfe_id)
+        
+        if not pedido_info:
+            current_app.logger.warning(
+                f"Nota fiscal {nfe_id} não encontrada em nenhum pedido local. "
+                f"Pode ser uma nota criada diretamente no Bling."
+            )
+            return jsonify({
+                "status": "ok",
+                "message": f"Nota fiscal {nfe_id} não encontrada em pedidos locais"
+            }), 200
+        
+        venda_id = pedido_info['venda_id']
+        bling_pedido_id = pedido_info['bling_pedido_id']
+        
+        current_app.logger.info(f"📋 Nota fiscal {nfe_id} relacionada ao pedido {venda_id} (Bling: {bling_pedido_id})")
+        
+        # Processar baseado na ação
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            if action == 'updated':
+                # Verificar se situação mudou para Autorizada (1)
+                if nfe_situacao == 1:
+                    current_app.logger.info(
+                        f"✅ NF-e {nfe_id} AUTORIZADA pelo SEFAZ para pedido {venda_id}"
+                    )
+                    
+                    # Atualizar informações da NF-e no banco
+                    cur.execute("""
+                        UPDATE bling_pedidos
+                        SET bling_nfe_id = %s,
+                            nfe_numero = %s,
+                            nfe_status = 'AUTORIZADA',
+                            updated_at = NOW()
+                        WHERE venda_id = %s
+                    """, (nfe_id, nfe_numero, venda_id))
+                    
+                    # Atualizar status do pedido para nfe_autorizada
+                    cur.execute("""
+                        UPDATE vendas
+                        SET status_pedido = 'nfe_autorizada',
+                            atualizado_em = NOW()
+                        WHERE id = %s
+                    """, (venda_id,))
+                    
+                    conn.commit()
+                    
+                    current_app.logger.info(
+                        f"✅ Status do pedido {venda_id} atualizado para 'nfe_autorizada'"
+                    )
+                    
+                    # Criar etiqueta de frete após aprovação do SEFAZ
+                    # Verificar se já existe etiqueta
+                    cur.execute("""
+                        SELECT id FROM etiquetas_frete ef
+                        INNER JOIN etiquetas_frete_venda_lnk lnk ON ef.id = lnk.etiqueta_frete_id
+                        WHERE lnk.venda_id = %s
+                        LIMIT 1
+                    """, (venda_id,))
+                    etiqueta_existente = cur.fetchone()
+                    
+                    if not etiqueta_existente:
+                        # Criar etiqueta automaticamente após aprovação do SEFAZ
+                        try:
+                            from ..api.labels import create_label_automatically
+                            current_app.logger.info(
+                                f"📦 Criando etiqueta de frete para venda {venda_id} após aprovação do SEFAZ"
+                            )
+                            etiqueta_id = create_label_automatically(venda_id)
+                            if etiqueta_id:
+                                current_app.logger.info(
+                                    f"✅ Etiqueta {etiqueta_id} criada automaticamente para venda {venda_id} "
+                                    f"após aprovação do SEFAZ"
+                                )
+                            else:
+                                current_app.logger.warning(
+                                    f"⚠️ Não foi possível criar etiqueta para venda {venda_id}"
+                                )
+                        except Exception as etiqueta_error:
+                            current_app.logger.error(
+                                f"❌ Erro ao criar etiqueta após aprovação SEFAZ para venda {venda_id}: {etiqueta_error}",
+                                exc_info=True
+                            )
+                            # Não falhar o webhook por erro na etiqueta
+                    else:
+                        current_app.logger.info(
+                            f"ℹ️ Etiqueta já existe para venda {venda_id} (ID: {etiqueta_existente[0]})"
+                        )
+                    
+                    # Mudar situação do pedido no Bling para "Logística"
+                    from ..services.bling_order_service import update_order_situacao_to_logistica
+                    
+                    logistica_result = update_order_situacao_to_logistica(venda_id)
+                    
+                    if logistica_result.get('success'):
+                        current_app.logger.info(
+                            f"✅ Pedido {venda_id} movido para 'Logística' no Bling. "
+                            f"Bling irá automaticamente: decrementar estoque, etc."
+                        )
+                        
+                        # Atualizar status para pronto_envio após mudar para Logística
+                        cur.execute("""
+                            UPDATE vendas
+                            SET status_pedido = 'pronto_envio',
+                                atualizado_em = NOW()
+                            WHERE id = %s
+                        """, (venda_id,))
+                        conn.commit()
+                        
+                        current_app.logger.info(
+                            f"✅ Status do pedido {venda_id} atualizado para 'pronto_envio'"
+                        )
+                    else:
+                        current_app.logger.warning(
+                            f"⚠️ Não foi possível mover pedido {venda_id} para 'Logística' no Bling: "
+                            f"{logistica_result.get('error')}"
+                        )
+                    
+                    return jsonify({
+                        "status": "ok",
+                        "message": f"NF-e {nfe_id} autorizada e pedido {venda_id} atualizado",
+                        "venda_id": venda_id,
+                        "nfe_id": nfe_id,
+                        "nfe_situacao": nfe_situacao,
+                        "logistica_atualizada": logistica_result.get('success', False)
+                    }), 200
+                else:
+                    # Situação mudou mas não é Autorizada
+                    current_app.logger.info(
+                        f"ℹ️ NF-e {nfe_id} atualizada, mas situação não é Autorizada: {nfe_situacao}"
+                    )
+                    
+                    # Atualizar status da NFC-e mesmo assim
+                    situacao_map = {
+                        0: 'PENDENTE',
+                        1: 'AUTORIZADA',
+                        2: 'CANCELADA',
+                        3: 'REJEITADA'
+                    }
+                    nfe_status_str = situacao_map.get(nfe_situacao, f'DESCONHECIDA_{nfe_situacao}')
+                    
+                    cur.execute("""
+                        UPDATE bling_pedidos
+                        SET nfe_status = %s,
+                            updated_at = NOW()
+                        WHERE venda_id = %s
+                    """, (nfe_status_str, venda_id))
+                    
+                    conn.commit()
+                    
+                    return jsonify({
+                        "status": "ok",
+                        "message": f"NF-e {nfe_id} atualizada (situação: {nfe_situacao})"
+                    }), 200
+                    
+            elif action == 'created':
+                # NF-e criada (ainda não autorizada)
+                current_app.logger.info(f"📄 NF-e {nfe_id} criada para pedido {venda_id}")
+                
+                # Atualizar informações da NF-e no banco
+                cur.execute("""
+                    UPDATE bling_pedidos
+                    SET bling_nfe_id = %s,
+                        nfe_numero = %s,
+                        nfe_status = 'PENDENTE',
+                        updated_at = NOW()
+                    WHERE venda_id = %s
+                """, (nfe_id, nfe_numero, venda_id))
+                
+                conn.commit()
+                
+                return jsonify({
+                    "status": "ok",
+                    "message": f"NF-e {nfe_id} criada para pedido {venda_id}"
+                }), 200
+                
+            elif action == 'deleted':
+                # NF-e deletada
+                current_app.logger.info(f"🗑️ NF-e {nfe_id} deletada para pedido {venda_id}")
+                
+                # Atualizar status da NF-e
+                cur.execute("""
+                    UPDATE bling_pedidos
+                    SET nfe_status = 'CANCELADA',
+                        updated_at = NOW()
+                    WHERE venda_id = %s
+                """, (venda_id,))
+                
+                conn.commit()
+                
+                return jsonify({
+                    "status": "ok",
+                    "message": f"NF-e {nfe_id} deletada para pedido {venda_id}"
+                }), 200
+            else:
+                current_app.logger.warning(f"Ação desconhecida no webhook de NF-e: {action}")
+                return jsonify({
+                    "status": "ok",
+                    "message": f"Ação {action} não processada"
+                }), 200
+                
+        except Exception as e:
+            conn.rollback()
+            current_app.logger.error(f"Erro ao processar webhook de NF-e: {e}")
+            import traceback
+            current_app.logger.error(traceback.format_exc())
+            return jsonify({
+                "status": "ok",
+                "message": "Erro ao processar webhook, mas retornando 200 para idempotência"
+            }), 200
+        finally:
+            cur.close()
+            
+    except Exception as e:
+        current_app.logger.error(f"Erro no webhook de NF-e: {e}")
         import traceback
         current_app.logger.error(traceback.format_exc())
         return jsonify({
@@ -1004,18 +1338,21 @@ def bling_webhook():
         event_id = webhook_data.get('eventId', '')
         data = webhook_data.get('data', {})
         
-        # Verificar se é evento de estoque ou pedido
+        # Verificar tipo de evento
         if event.startswith('stock.'):
             # Processar evento de estoque (já implementado abaixo)
             pass
         elif event.startswith('order.'):
             # Processar evento de pedido
             return process_order_webhook(webhook_data, event, event_id, data)
+        elif event.startswith('consumer_invoice.') or event.startswith('nfe.'):
+            # Processar evento de nota fiscal
+            return process_nfe_webhook(webhook_data, event, event_id, data)
         else:
-            current_app.logger.info(f"Evento não é de estoque ou pedido: {event}. Ignorando...")
+            current_app.logger.info(f"Evento não reconhecido: {event}. Ignorando...")
             return jsonify({
                 "status": "ok",
-                "message": f"Evento {event} não é de estoque ou pedido, ignorado"
+                "message": f"Evento {event} não reconhecido, ignorado"
             }), 200
         
         # Determinar ação (created, updated, deleted)

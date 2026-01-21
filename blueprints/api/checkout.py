@@ -188,7 +188,8 @@ def process_checkout():
                 client_ip=client_ip,
                 user_agent=user_agent,
                 fiscal_data=fiscal_data,
-                cupom_id=cupom_id
+                cupom_id=cupom_id,
+                shipping_option=shipping_option
             )
 
             # 7. Preparar dados do cliente

@@ -36,6 +36,19 @@ def get_order_for_bling_sync(venda_id: int) -> Optional[Dict]:
                 v.valor_subtotal,
                 v.status_pedido,
                 v.data_venda,
+                -- Dados da transportadora escolhida no checkout
+                v.transportadora_nome,
+                v.transportadora_cnpj,
+                v.transportadora_ie,
+                v.transportadora_uf,
+                v.transportadora_municipio,
+                v.transportadora_endereco,
+                v.transportadora_numero,
+                v.transportadora_complemento,
+                v.transportadora_bairro,
+                v.transportadora_cep,
+                v.melhor_envio_service_id,
+                v.melhor_envio_service_name,
                 -- Dados de entrega
                 v.nome_recebedor,
                 v.rua_entrega,
@@ -875,6 +888,311 @@ def sync_all_orders_status() -> Dict:
             'total': 0,
             'results': []
         }
+    finally:
+        cur.close()
+
+
+def update_order_situacao_to_verificado(venda_id: int) -> Dict:
+    """
+    Atualiza situação do pedido no Bling para "Verificado"
+    
+    Args:
+        venda_id: ID da venda local
+    
+    Returns:
+        Dict com resultado da atualização
+    """
+    try:
+        # Buscar referência do pedido no Bling
+        bling_order = get_bling_order_by_local_id(venda_id)
+        
+        if not bling_order:
+            return {
+                'success': False,
+                'error': 'Pedido não sincronizado com Bling'
+            }
+        
+        bling_pedido_id = bling_order['bling_pedido_id']
+        
+        # Buscar ID da situação "Verificado" no banco
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            cur.execute("""
+                SELECT bling_situacao_id, nome
+                FROM bling_situacoes
+                WHERE bling_situacao_id = 24 OR LOWER(nome) LIKE '%verificado%'
+                LIMIT 1
+            """)
+            
+            situacao_verificado = cur.fetchone()
+            
+            if not situacao_verificado:
+                return {
+                    'success': False,
+                    'error': "Situação 'Verificado' não encontrada no banco"
+                }
+            
+            situacao_id = situacao_verificado['bling_situacao_id']
+            situacao_nome = situacao_verificado['nome']
+            
+        finally:
+            cur.close()
+        
+        # Buscar pedido atual no Bling
+        response = make_bling_api_request('GET', f'/pedidos/vendas/{bling_pedido_id}')
+        
+        if response.status_code != 200:
+            return {
+                'success': False,
+                'error': f'Erro ao buscar pedido no Bling: HTTP {response.status_code}'
+            }
+        
+        data = response.json()
+        pedido_bling = data.get('data', {})
+        
+        # Preparar dados para atualização
+        situacao_atual = pedido_bling.get('situacao', {})
+        
+        update_data = {}
+        
+        if isinstance(situacao_atual, dict):
+            update_data['situacao'] = {
+                'id': situacao_id
+            }
+        else:
+            update_data['situacao'] = situacao_id
+        
+        # Atualizar pedido no Bling
+        response = make_bling_api_request(
+            'PUT',
+            f'/pedidos/vendas/{bling_pedido_id}',
+            json=update_data
+        )
+        
+        if response.status_code in [200, 201]:
+            current_app.logger.info(
+                f"✅ Situação do pedido {bling_pedido_id} atualizada para 'Verificado' no Bling"
+            )
+            
+            # Atualizar situação no banco local também
+            from .bling_situacao_service import update_pedido_situacao
+            update_pedido_situacao(
+                venda_id=venda_id,
+                bling_situacao_id=situacao_id,
+                bling_situacao_nome=situacao_nome
+            )
+            
+            return {
+                'success': True,
+                'message': 'Situação atualizada para Verificado no Bling',
+                'bling_pedido_id': bling_pedido_id,
+                'situacao_id': situacao_id,
+                'situacao_nome': situacao_nome
+            }
+        else:
+            error_text = response.text
+            current_app.logger.error(
+                f"❌ Erro ao atualizar situação do pedido {bling_pedido_id} para Verificado: "
+                f"HTTP {response.status_code} - {error_text}"
+            )
+            
+            return {
+                'success': False,
+                'error': f'Erro HTTP {response.status_code}',
+                'details': error_text
+            }
+            
+    except Exception as e:
+        current_app.logger.error(f"❌ Erro ao atualizar situação para Verificado: {e}", exc_info=True)
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def update_order_situacao_to_logistica(venda_id: int) -> Dict:
+    """
+    Atualiza situação do pedido no Bling para "Logística"
+    
+    Quando a NFC-e é aprovada, o pedido deve mudar para "Logística" no Bling,
+    o que dispara automaticamente: decremento de estoque, emissão de etiqueta, etc.
+    
+    Args:
+        venda_id: ID da venda local
+    
+    Returns:
+        Dict com resultado da atualização
+    """
+    try:
+        # Buscar referência do pedido no Bling
+        bling_order = get_bling_order_by_local_id(venda_id)
+        
+        if not bling_order:
+            return {
+                'success': False,
+                'error': 'Pedido não sincronizado com Bling'
+            }
+        
+        bling_pedido_id = bling_order['bling_pedido_id']
+        
+        # Buscar ID da situação "Logística" no banco
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            cur.execute("""
+                SELECT bling_situacao_id, nome
+                FROM bling_situacoes
+                WHERE LOWER(nome) LIKE '%logística%' OR LOWER(nome) LIKE '%logistica%'
+                LIMIT 1
+            """)
+            
+            situacao_logistica = cur.fetchone()
+            
+            if not situacao_logistica:
+                current_app.logger.warning(
+                    "Situação 'Logística' não encontrada no banco. "
+                    "Tentando atualizar pedido sem ID de situação específico."
+                )
+                # Tentar atualizar usando o nome diretamente
+                situacao_id = None
+                situacao_nome = "Logística"
+            else:
+                situacao_id = situacao_logistica['bling_situacao_id']
+                situacao_nome = situacao_logistica['nome']
+            
+        finally:
+            cur.close()
+        
+        # Buscar pedido atual no Bling para ver situação atual
+        response = make_bling_api_request('GET', f'/pedidos/vendas/{bling_pedido_id}')
+        
+        if response.status_code != 200:
+            return {
+                'success': False,
+                'error': f'Erro ao buscar pedido no Bling: HTTP {response.status_code}'
+            }
+        
+        data = response.json()
+        pedido_bling = data.get('data', {})
+        
+        # Preparar dados para atualização
+        # O Bling aceita atualização de situação via PUT no pedido
+        update_data = {}
+        
+        # Se temos o ID da situação, usar ele
+        if situacao_id:
+            # Tentar atualizar usando o campo situacao com ID
+            # O formato pode variar, vamos tentar ambos
+            situacao_atual = pedido_bling.get('situacao', {})
+            
+            if isinstance(situacao_atual, dict):
+                update_data['situacao'] = {
+                    'id': situacao_id
+                }
+            else:
+                # Se situação é string ou número, tentar atualizar diretamente
+                update_data['situacao'] = situacao_id
+        
+        # Se não temos ID, tentar atualizar pelo nome (pode não funcionar)
+        if not update_data.get('situacao'):
+            current_app.logger.warning(
+                f"Não foi possível determinar ID da situação 'Logística'. "
+                f"Tentando atualizar pedido {bling_pedido_id} sem mudar situação."
+            )
+            # Retornar sucesso parcial - o pedido já está no Bling
+            return {
+                'success': True,
+                'message': 'Pedido encontrado no Bling, mas situação não atualizada (ID não encontrado)',
+                'bling_pedido_id': bling_pedido_id,
+                'situacao_atual': pedido_bling.get('situacao')
+            }
+        
+        # Atualizar pedido no Bling
+        response = make_bling_api_request(
+            'PUT',
+            f'/pedidos/vendas/{bling_pedido_id}',
+            json=update_data
+        )
+        
+        if response.status_code in [200, 201]:
+            current_app.logger.info(
+                f"✅ Situação do pedido {bling_pedido_id} atualizada para 'Logística' no Bling"
+            )
+            
+            # Atualizar situação no banco local também
+            from .bling_situacao_service import update_pedido_situacao
+            update_pedido_situacao(
+                venda_id=venda_id,
+                bling_situacao_id=situacao_id,
+                bling_situacao_nome=situacao_nome
+            )
+            
+            return {
+                'success': True,
+                'message': 'Situação atualizada para Logística no Bling',
+                'bling_pedido_id': bling_pedido_id,
+                'situacao_id': situacao_id,
+                'situacao_nome': situacao_nome
+            }
+        else:
+            error_text = response.text
+            current_app.logger.error(
+                f"❌ Erro ao atualizar situação do pedido {bling_pedido_id}: "
+                f"HTTP {response.status_code} - {error_text}"
+            )
+            
+            return {
+                'success': False,
+                'error': f'Erro HTTP {response.status_code}',
+                'details': error_text
+            }
+            
+    except Exception as e:
+        current_app.logger.error(f"❌ Erro ao atualizar situação para Logística: {e}", exc_info=True)
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def get_order_by_nfe_id(nfe_id: int) -> Optional[Dict]:
+    """
+    Busca pedido local pelo ID da NFC-e no Bling
+    
+    Args:
+        nfe_id: ID da NFC-e no Bling
+    
+    Returns:
+        Dict com dados do pedido ou None se não encontrado
+    """
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
+    try:
+        cur.execute("""
+            SELECT 
+                bp.id,
+                bp.venda_id,
+                bp.bling_pedido_id,
+                bp.bling_nfe_id,
+                bp.nfe_numero,
+                bp.nfe_chave_acesso,
+                bp.nfe_status,
+                v.codigo_pedido,
+                v.status_pedido
+            FROM bling_pedidos bp
+            JOIN vendas v ON bp.venda_id = v.id
+            WHERE bp.bling_nfe_id = %s
+        """, (nfe_id,))
+        
+        return cur.fetchone()
+        
+    except Exception as e:
+        current_app.logger.error(f"Erro ao buscar pedido por NFC-e ID {nfe_id}: {e}")
+        return None
     finally:
         cur.close()
 

@@ -66,8 +66,8 @@ def save_label_to_db(venda_id: int, codigo_pedido: str, shipment_data: Dict,
 
 def create_label_automatically(venda_id: int) -> Optional[int]:
     """
-    Cria etiqueta automaticamente quando o pedido é aprovado.
-    Esta função é chamada quando o status do pedido muda para 'processando_envio'.
+    Cria etiqueta automaticamente após aprovação do SEFAZ.
+    Esta função é chamada quando a NFC-e é autorizada pelo SEFAZ (webhook de NFC-e).
     
     Args:
         venda_id: ID da venda
@@ -92,13 +92,14 @@ def create_label_automatically(venda_id: int) -> Optional[int]:
             current_app.logger.info(f"Etiqueta já existe para venda {venda_id} (ID: {existing_label[0]})")
             return existing_label[0]
         
-        # Buscar dados da venda
+        # Buscar dados da venda incluindo serviço escolhido no checkout
         cur.execute("""
             SELECT 
                 id, codigo_pedido, valor_total, valor_frete,
                 nome_recebedor, rua_entrega, numero_entrega, complemento_entrega,
                 bairro_entrega, cidade_entrega, estado_entrega, cep_entrega,
-                telefone_entrega, email_entrega
+                telefone_entrega, email_entrega,
+                melhor_envio_service_id, melhor_envio_service_name
             FROM vendas 
             WHERE id = %s
         """, (venda_id,))
@@ -158,17 +159,24 @@ def create_label_automatically(venda_id: int) -> Optional[int]:
             'produtos': []  # Será preenchido se necessário
         }
         
-        # Preparar shipping_option (usar valor_frete e dimensões calculadas)
-        # Para service, usar padrão (1 = PAC) - pode ser ajustado depois
+        # Preparar shipping_option usando o serviço escolhido no checkout
+        # Se não houver serviço escolhido, usar padrão (1 = PAC)
+        melhor_envio_service_id = venda_data.get('melhor_envio_service_id') or 1
+        melhor_envio_service_name = venda_data.get('melhor_envio_service_name') or 'PAC'
+        
         cep_origem = current_app.config.get('MELHOR_ENVIO_CEP_ORIGEM', '').replace('-', '').replace(' ', '')
         shipping_option = {
-            'service': 1,  # PAC padrão - pode ser ajustado no futuro
-            'name': 'PAC',  # Nome padrão
+            'service': melhor_envio_service_id,  # Serviço escolhido no checkout
+            'name': melhor_envio_service_name,  # Nome do serviço escolhido
             'dimensoes': dimensoes,
             'peso_total': peso_total,
             'price': float(venda_data['valor_frete']),
             'cep_origem': cep_origem
         }
+        
+        current_app.logger.info(
+            f"📦 Usando serviço escolhido no checkout: {melhor_envio_service_name} (ID: {melhor_envio_service_id})"
+        )
         
         current_app.logger.info(f"🚀 Criando etiqueta automaticamente para venda {venda_id}")
         current_app.logger.info(f"   Peso: {peso_total}kg, Dimensões: {dimensoes}")

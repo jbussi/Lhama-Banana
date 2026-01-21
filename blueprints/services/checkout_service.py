@@ -33,7 +33,7 @@ from typing import Dict, List, Optional, Tuple
 def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipping_info: Dict, 
                           total_value: float, freight_value: float, discount_value: float, 
                           client_ip: str, user_agent: str, fiscal_data: Optional[Dict] = None, 
-                          cupom_id: Optional[int] = None) -> Tuple[int, str]:
+                          cupom_id: Optional[int] = None, shipping_option: Optional[Dict] = None) -> Tuple[int, str]:
     """
     Cria um pedido e seus itens no banco de dados
     
@@ -111,14 +111,23 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
                 endereco_fiscal.get('cep')
             ]
         
+        # Extrair dados da transportadora do shipping_option
+        transportadora_data = {}
+        if shipping_option and shipping_option.get('transportadora'):
+            transportadora_data = shipping_option.get('transportadora', {})
+        
         # Construir query dinamicamente
         base_columns = """
             codigo_pedido, usuario_id, valor_total, valor_frete, valor_desconto,
             endereco_entrega_id, nome_recebedor, rua_entrega, numero_entrega, complemento_entrega, 
             bairro_entrega, cidade_entrega, estado_entrega, cep_entrega, telefone_entrega, email_entrega,
-            status_pedido, cliente_ip, user_agent"""
+            status_pedido, cliente_ip, user_agent,
+            transportadora_nome, transportadora_cnpj, transportadora_ie, transportadora_uf,
+            transportadora_municipio, transportadora_endereco, transportadora_numero,
+            transportadora_complemento, transportadora_bairro, transportadora_cep,
+            melhor_envio_service_id, melhor_envio_service_name"""
         
-        base_values = "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s"
+        base_values = "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s"
         
         # Adicionar cupom_id se fornecido
         if cupom_id:
@@ -143,7 +152,21 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
                 shipping_info.get('cidade'), shipping_info.get('estado'), shipping_info.get('cep'),
                 shipping_info.get('telefone'), shipping_info.get('email'),
                 'pendente_pagamento',
-                client_ip, user_agent
+                client_ip, user_agent,
+                # Dados da transportadora
+                transportadora_data.get('nome'),
+                transportadora_data.get('cnpj'),
+                transportadora_data.get('ie'),
+                transportadora_data.get('uf'),
+                transportadora_data.get('municipio'),
+                transportadora_data.get('endereco'),
+                transportadora_data.get('numero'),
+                transportadora_data.get('complemento'),
+                transportadora_data.get('bairro'),
+                transportadora_data.get('cep'),
+                # Serviço Melhor Envio
+                shipping_option.get('service') if shipping_option else None,
+                shipping_option.get('name') if shipping_option else None
             ]
             if cupom_id:
                 params_list.append(cupom_id)
@@ -165,7 +188,21 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
                 shipping_info.get('cidade'), shipping_info.get('estado'), shipping_info.get('cep'),
                 shipping_info.get('telefone'), shipping_info.get('email'),
                 'pendente_pagamento',
-                client_ip, user_agent
+                client_ip, user_agent,
+                # Dados da transportadora
+                transportadora_data.get('nome'),
+                transportadora_data.get('cnpj'),
+                transportadora_data.get('ie'),
+                transportadora_data.get('uf'),
+                transportadora_data.get('municipio'),
+                transportadora_data.get('endereco'),
+                transportadora_data.get('numero'),
+                transportadora_data.get('complemento'),
+                transportadora_data.get('bairro'),
+                transportadora_data.get('cep'),
+                # Serviço Melhor Envio
+                shipping_option.get('service') if shipping_option else None,
+                shipping_option.get('name') if shipping_option else None
             ]
             if cupom_id:
                 params_list.append(cupom_id)

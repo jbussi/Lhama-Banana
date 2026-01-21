@@ -1063,7 +1063,9 @@ document.addEventListener('DOMContentLoaded', function() {
 					name: selectedShippingOption.name,
 					price: selectedShippingOption.price,
 					service: selectedShippingOption.service,
-					deadline: selectedShippingOption.delivery_time || selectedShippingOption.deadline
+					deadline: selectedShippingOption.delivery_time || selectedShippingOption.deadline,
+					// Dados completos da transportadora para armazenamento no pedido
+					transportadora: selectedShippingOption.transportadora || {}
 				},
 				freight_value: selectedShippingOption.price,
 				discount_value: discountValue,

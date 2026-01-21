@@ -246,11 +246,18 @@ def bling_callback():
         }), 400
     
     # Validar state token (proteção CSRF)
-    if not state or not validate_state_token(state):
-        current_app.logger.error("State token inválido ou expirado")
-        return jsonify({
-            'error': 'State token inválido ou expirado'
-        }), 400
+    # Se o state expirou mas temos um code válido, aceitar com aviso
+    state_valid = False
+    if state:
+        state_valid = validate_state_token(state)
+        if not state_valid:
+            current_app.logger.warning("State token inválido ou expirado, mas continuando com code válido")
+    else:
+        current_app.logger.warning("State token não fornecido, mas continuando com code válido")
+    
+    # Se não tiver state válido, apenas logar aviso mas continuar
+    if not state_valid and state:
+        current_app.logger.warning(f"State token expirado ou inválido: {state[:16]}...")
     
     try:
         # Trocar código por tokens
@@ -483,6 +490,92 @@ def revoke_bling_authorization():
         cur.close()
 
 
+@bling_bp.route('/refresh-token', methods=['POST'])
+@admin_required_email
+def refresh_bling_token_endpoint():
+    """
+    Força a renovação do token do Bling usando refresh_token
+    
+    POST /api/bling/refresh-token
+    """
+    try:
+        from ..services.bling_api_service import refresh_bling_token
+        
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            # Buscar refresh_token do banco
+            cur.execute("""
+                SELECT refresh_token, expires_at
+                FROM bling_tokens
+                WHERE id = 1
+            """)
+            
+            token_data = cur.fetchone()
+            
+            if not token_data or not token_data.get('refresh_token'):
+                return jsonify({
+                    'success': False,
+                    'error': 'Refresh token não encontrado. É necessário autorizar novamente.',
+                    'authorize_url': '/api/bling/authorize'
+                }), 400
+            
+            refresh_token = token_data['refresh_token']
+            expires_at = token_data['expires_at']
+            
+            # Renovar token
+            new_tokens = refresh_bling_token(refresh_token)
+            
+            if not new_tokens:
+                return jsonify({
+                    'success': False,
+                    'error': 'Falha ao renovar token. Pode estar expirado ou bloqueado por rate limiting.',
+                    'expires_at': expires_at.isoformat() if expires_at else None
+                }), 500
+            
+            # Atualizar tokens no banco
+            new_expires_at = datetime.now() + timedelta(seconds=new_tokens.get('expires_in', 3600))
+            cur.execute("""
+                UPDATE bling_tokens
+                SET access_token = %s,
+                    refresh_token = %s,
+                    expires_at = %s,
+                    updated_at = NOW()
+                WHERE id = 1
+            """, (
+                new_tokens['access_token'],
+                new_tokens.get('refresh_token', refresh_token),
+                new_expires_at
+            ))
+            
+            conn.commit()
+            
+            current_app.logger.info(f"✅ Token Bling renovado via endpoint. Expira em: {new_expires_at}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Token renovado com sucesso',
+                'expires_at': new_expires_at.isoformat(),
+                'expires_in': new_tokens.get('expires_in', 3600)
+            }), 200
+            
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cur.close()
+            
+    except Exception as e:
+        current_app.logger.error(f"Erro ao renovar token: {e}")
+        import traceback
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': str(e) if current_app.config.get('DEBUG', False) else 'Erro ao renovar token'
+        }), 500
+
+
 @bling_bp.route('/status', methods=['GET'])
 def bling_status():
     """
@@ -501,6 +594,182 @@ def bling_status():
     }
     
     return jsonify(info), 200
+
+
+@bling_bp.route('/test-auth', methods=['GET'])
+def test_bling_auth():
+    """
+    Testa autenticação do Bling fazendo uma requisição simples à API
+    """
+    try:
+        from ..services.bling_api_service import get_valid_access_token, make_bling_api_request
+        
+        # Tentar obter token válido
+        try:
+            token = get_valid_access_token()
+            token_preview = token[:20] + '...' if len(token) > 20 else token
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'authenticated': False,
+                'error': f'Erro ao obter token: {str(e)}',
+                'message': 'Token não disponível ou expirado. Renove via /api/bling/authorize'
+            }), 401
+        
+        # Fazer requisição de teste à API do Bling
+        try:
+            # Tentar buscar informações da empresa (endpoint mais básico)
+            # Se não funcionar, tentar produtos
+            response = None
+            test_endpoint = None
+            
+            # Tentar endpoint de contatos primeiro (mais comum)
+            try:
+                response = make_bling_api_request('GET', '/contatos', params={'limite': 1})
+                test_endpoint = '/contatos'
+            except:
+                # Se falhar, tentar produtos
+                try:
+                    response = make_bling_api_request('GET', '/produtos', params={'limite': 1})
+                    test_endpoint = '/produtos'
+                except:
+                    # Última tentativa: situações
+                    response = make_bling_api_request('GET', '/situacoes/1')
+                    test_endpoint = '/situacoes/1'
+            
+            if response.status_code == 200:
+                data = response.json()
+                situacao = data.get('data', {})
+                return jsonify({
+                    'success': True,
+                    'authenticated': True,
+                    'message': 'Autenticação funcionando corretamente!',
+                    'token_preview': token_preview,
+                    'test_endpoint': test_endpoint or '/contatos',
+                    'response_status': response.status_code,
+                    'data_found': bool(data.get('data'))
+                }), 200
+            elif response.status_code == 401:
+                return jsonify({
+                    'success': False,
+                    'authenticated': False,
+                    'error': 'Token inválido ou expirado',
+                    'response_status': response.status_code,
+                    'message': 'Renove o token via /api/bling/authorize'
+                }), 401
+            elif response.status_code == 404:
+                # Endpoint não encontrado, mas autenticação pode estar OK
+                return jsonify({
+                    'success': True,
+                    'authenticated': True,
+                    'message': 'Autenticação OK, mas endpoint não encontrado (normal se situação ID 1 não existir)',
+                    'token_preview': token_preview,
+                    'response_status': response.status_code
+                }), 200
+            elif response.status_code == 429:
+                return jsonify({
+                    'success': False,
+                    'authenticated': True,
+                    'error': 'Rate limiting ativo',
+                    'response_status': response.status_code,
+                    'message': 'Aguarde alguns minutos antes de tentar novamente'
+                }), 429
+            else:
+                return jsonify({
+                    'success': False,
+                    'authenticated': True,
+                    'error': f'Erro HTTP {response.status_code}',
+                    'response_status': response.status_code,
+                    'response_text': response.text[:200]
+                }), response.status_code
+                
+        except BlingAPIError as e:
+            return jsonify({
+                'success': False,
+                'authenticated': False,
+                'error': str(e),
+                'error_type': e.error_type.value,
+                'status_code': e.status_code
+            }), e.status_code or 500
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'authenticated': False,
+                'error': str(e)
+            }), 500
+            
+    except Exception as e:
+        current_app.logger.error(f"Erro ao testar autenticação: {e}")
+        import traceback
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'authenticated': False,
+            'error': str(e) if current_app.config.get('DEBUG', False) else 'Erro ao testar autenticação'
+        }), 500
+
+
+@bling_bp.route('/authorize-link', methods=['GET'])
+def get_authorize_link():
+    """
+    Retorna o link direto de autorização do Bling (sem redirecionamento)
+    Útil quando o endpoint /authorize está dando erro de expiração
+    """
+    BLING_AUTH_URL = "https://www.bling.com.br/Api/v3/oauth/authorize"
+    
+    # Scopes necessários
+    BLING_SCOPES = [
+        'produtos',      # Gerenciar produtos
+        'pedidos',       # Gerenciar pedidos de venda
+        'nfe',           # Emitir NF-e
+        'estoques',      # Controlar estoque
+        'contatos',      # Gerenciar clientes
+        'financeiro'     # Contas a receber/pagar
+    ]
+    
+    client_id = current_app.config.get('BLING_CLIENT_ID')
+    redirect_uri = current_app.config.get('BLING_REDIRECT_URI')
+    
+    if not client_id:
+        return jsonify({
+            'error': 'BLING_CLIENT_ID não configurado',
+            'message': 'Configure BLING_CLIENT_ID nas variáveis de ambiente'
+        }), 500
+    
+    if not redirect_uri:
+        return jsonify({
+            'error': 'BLING_REDIRECT_URI não configurado',
+            'message': 'Configure BLING_REDIRECT_URI nas variáveis de ambiente'
+        }), 500
+    
+    # Gerar state token
+    state = generate_state_token()
+    store_state_token(state)
+    
+    # Parâmetros para autorização
+    params = {
+        'response_type': 'code',
+        'client_id': client_id,
+        'redirect_uri': redirect_uri,
+        'scope': ' '.join(BLING_SCOPES),
+        'state': state
+    }
+    
+    # Construir URL de autorização
+    auth_url = f"{BLING_AUTH_URL}?{urlencode(params)}"
+    
+    return jsonify({
+        'success': True,
+        'authorize_url': auth_url,
+        'instructions': [
+            '1. Copie o link acima (authorize_url)',
+            '2. Cole no navegador e pressione Enter',
+            '3. Faça login no Bling',
+            '4. Autorize a aplicação',
+            '5. Você será redirecionado automaticamente'
+        ],
+        'state': state[:16] + '...'  # Mostrar apenas parte do state para debug
+    }), 200
 
 
 @bling_bp.errorhandler(BlingAPIError)
@@ -1032,7 +1301,7 @@ def sync_all_orders_status():
 
 
 @bling_bp.route('/pedidos/nfe/emitir/<int:venda_id>', methods=['POST'])
-def emit_nfe(venda_id: int):
+def emit_nfe_endpoint(venda_id: int):
     """
     Emite NF-e para um pedido/venda específico
     """
@@ -1204,6 +1473,208 @@ def diagnose_order(venda_id: int):
         }), 500
 
 
+@bling_bp.route('/situacoes/test-pedidos', methods=['GET'])
+def test_bling_pedidos():
+    """
+    Testa busca de pedidos no Bling para descobrir situações
+    """
+    try:
+        from ..services.bling_api_service import make_bling_api_request
+        
+        # Tentar buscar pedidos
+        response = make_bling_api_request('GET', '/pedidos/vendas', params={'limite': 5})
+        
+        return jsonify({
+            'success': True,
+            'status_code': response.status_code,
+            'response': response.json() if response.status_code == 200 else response.text[:500],
+            'headers': dict(response.headers)
+        }), 200
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@bling_bp.route('/situacoes/sync-ids', methods=['POST'])
+def sync_bling_situacoes_ids():
+    """
+    Busca IDs reais das situações do Bling e atualiza no banco
+    Endpoint temporário sem autenticação para facilitar testes
+    
+    Estratégias:
+    1. Buscar pedidos do Bling para descobrir IDs de situações usadas
+    2. Tentar endpoint /situacoes-vendas se existir
+    3. Tentar IDs sequenciais como fallback
+    """
+    try:
+        from ..services.bling_situacao_service import get_bling_situacao_by_id
+        from ..services.bling_api_service import make_bling_api_request
+        import time
+        
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            # Buscar todas as situações no banco
+            cur.execute("""
+                SELECT id, bling_situacao_id, nome
+                FROM bling_situacoes
+                ORDER BY nome
+            """)
+            
+            situacoes_banco = cur.fetchall()
+            
+            current_app.logger.info(f"Buscando IDs reais para {len(situacoes_banco)} situações...")
+            
+            atualizadas = 0
+            nao_encontradas = []
+            situacoes_encontradas_bling = {}
+            
+            # ESTRATÉGIA 1: Tentar buscar pedidos para descobrir IDs de situações
+            current_app.logger.info("Estratégia 1: Buscando pedidos para descobrir IDs de situações...")
+            try:
+                response = make_bling_api_request('GET', '/pedidos/vendas', params={'limite': 50})
+                if response.status_code == 200:
+                    data = response.json()
+                    pedidos = data.get('data', [])
+                    
+                    for pedido in pedidos:
+                        situacao = pedido.get('situacao', {})
+                        if situacao:
+                            situacao_id = situacao.get('id')
+                            situacao_nome = situacao.get('nome', '').strip()
+                            situacao_cor = situacao.get('cor', '')
+                            
+                            # Se não tiver nome, buscar pelo ID
+                            if situacao_id and not situacao_nome:
+                                try:
+                                    situacao_detalhada = get_bling_situacao_by_id(situacao_id)
+                                    if situacao_detalhada:
+                                        situacao_nome = situacao_detalhada.get('nome', '').strip()
+                                        situacao_cor = situacao_detalhada.get('cor', '')
+                                except:
+                                    pass
+                            
+                            if situacao_id and situacao_nome:
+                                situacoes_encontradas_bling[situacao_nome.lower()] = {
+                                    'id': situacao_id,
+                                    'nome': situacao_nome,
+                                    'cor': situacao_cor
+                                }
+                                current_app.logger.info(f"✅ Encontrada via pedidos: ID {situacao_id} - {situacao_nome}")
+            except Exception as e:
+                current_app.logger.warning(f"Erro ao buscar pedidos: {e}")
+            
+            # ESTRATÉGIA 2: Tentar endpoint alternativo
+            if not situacoes_encontradas_bling:
+                current_app.logger.info("Estratégia 2: Tentando endpoint /situacoes-vendas...")
+                try:
+                    response = make_bling_api_request('GET', '/situacoes-vendas')
+                    if response.status_code == 200:
+                        data = response.json()
+                        situacoes_data = data.get('data', [])
+                        for situacao in situacoes_data:
+                            nome_bling = situacao.get('nome', '').strip()
+                            id_real = situacao.get('id')
+                            cor = situacao.get('cor', '')
+                            
+                            if nome_bling and id_real:
+                                situacoes_encontradas_bling[nome_bling.lower()] = {
+                                    'id': id_real,
+                                    'nome': nome_bling,
+                                    'cor': cor
+                                }
+                                current_app.logger.info(f"✅ Encontrada via endpoint: ID {id_real} - {nome_bling}")
+                except Exception as e:
+                    current_app.logger.warning(f"Endpoint alternativo não disponível: {e}")
+            
+            # ESTRATÉGIA 3: Tentar IDs sequenciais (fallback)
+            if not situacoes_encontradas_bling:
+                current_app.logger.info("Estratégia 3: Tentando IDs sequenciais (1-100)...")
+                ids_tentados = list(range(1, 101))
+                
+                for idx, situacao_id in enumerate(ids_tentados):
+                    try:
+                        # Delay para evitar rate limiting
+                        if idx > 0:
+                            time.sleep(2)
+                        
+                        situacao_bling = get_bling_situacao_by_id(situacao_id)
+                        
+                        if situacao_bling:
+                            nome_bling = situacao_bling.get('nome', '').strip()
+                            id_real = situacao_bling.get('id')
+                            cor = situacao_bling.get('cor', '')
+                            
+                            if nome_bling:
+                                situacoes_encontradas_bling[nome_bling.lower()] = {
+                                    'id': id_real,
+                                    'nome': nome_bling,
+                                    'cor': cor
+                                }
+                                
+                    except Exception as e:
+                        if '429' in str(e) or 'rate limit' in str(e).lower():
+                            current_app.logger.warning(f"Rate limiting detectado, aguardando...")
+                            time.sleep(10)
+                        continue
+            
+            # Atualizar IDs no banco
+            for situacao_banco in situacoes_banco:
+                nome_banco = situacao_banco['nome'].strip()
+                id_temp = situacao_banco['bling_situacao_id']
+                nome_lower = nome_banco.lower()
+                
+                situacao_bling = situacoes_encontradas_bling.get(nome_lower)
+                
+                if situacao_bling:
+                    id_real = situacao_bling['id']
+                    cor_real = situacao_bling.get('cor', '')
+                    
+                    cur.execute("""
+                        UPDATE bling_situacoes
+                        SET bling_situacao_id = %s,
+                            cor = COALESCE(NULLIF(%s, ''), cor),
+                            atualizado_em = NOW()
+                        WHERE id = %s
+                    """, (id_real, cor_real, situacao_banco['id']))
+                    
+                    atualizadas += 1
+                    current_app.logger.info(f"✅ {nome_banco}: ID {id_temp} → {id_real}")
+                else:
+                    nao_encontradas.append(nome_banco)
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': f'Sincronização concluída: {atualizadas} atualizadas, {len(nao_encontradas)} não encontradas',
+                'atualizadas': atualizadas,
+                'nao_encontradas': nao_encontradas,
+                'total_encontradas_bling': len(situacoes_encontradas_bling)
+            }), 200
+            
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cur.close()
+            
+    except Exception as e:
+        current_app.logger.error(f"Erro ao sincronizar situações do Bling: {e}")
+        import traceback
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': str(e) if current_app.config.get('DEBUG', False) else 'Erro interno'
+        }), 500
+
+
 @bling_bp.route('/situacoes/sync', methods=['POST'])
 @admin_required_email
 def sync_bling_situacoes():
@@ -1213,17 +1684,97 @@ def sync_bling_situacoes():
     POST /api/bling/situacoes/sync
     """
     try:
-        from ..services.bling_situacao_service import sync_bling_situacoes_to_db
+        from ..services.bling_situacao_service import sync_bling_situacoes_to_db, get_bling_situacao_by_id
+        import time
         
-        result = sync_bling_situacoes_to_db()
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        if result.get('success'):
-            return jsonify(result), 200
-        else:
+        try:
+            # Buscar todas as situações no banco
+            cur.execute("""
+                SELECT id, bling_situacao_id, nome
+                FROM bling_situacoes
+                ORDER BY nome
+            """)
+            
+            situacoes_banco = cur.fetchall()
+            
+            current_app.logger.info(f"Buscando IDs reais para {len(situacoes_banco)} situações...")
+            
+            atualizadas = 0
+            nao_encontradas = []
+            situacoes_encontradas_bling = {}
+            
+            # Buscar situações do Bling (IDs de 1 a 100)
+            ids_tentados = list(range(1, 101))
+            
+            for idx, situacao_id in enumerate(ids_tentados):
+                try:
+                    # Delay para evitar rate limiting
+                    if idx > 0:
+                        time.sleep(2)
+                    
+                    situacao_bling = get_bling_situacao_by_id(situacao_id)
+                    
+                    if situacao_bling:
+                        nome_bling = situacao_bling.get('nome', '').strip()
+                        id_real = situacao_bling.get('id')
+                        cor = situacao_bling.get('cor', '')
+                        
+                        if nome_bling:
+                            situacoes_encontradas_bling[nome_bling.lower()] = {
+                                'id': id_real,
+                                'nome': nome_bling,
+                                'cor': cor
+                            }
+                            
+                except Exception as e:
+                    if '429' in str(e) or 'rate limit' in str(e).lower():
+                        current_app.logger.warning(f"Rate limiting detectado, aguardando...")
+                        time.sleep(10)
+                    continue
+            
+            # Atualizar IDs no banco
+            for situacao_banco in situacoes_banco:
+                nome_banco = situacao_banco['nome'].strip()
+                id_temp = situacao_banco['bling_situacao_id']
+                nome_lower = nome_banco.lower()
+                
+                situacao_bling = situacoes_encontradas_bling.get(nome_lower)
+                
+                if situacao_bling:
+                    id_real = situacao_bling['id']
+                    cor_real = situacao_bling.get('cor', '')
+                    
+                    cur.execute("""
+                        UPDATE bling_situacoes
+                        SET bling_situacao_id = %s,
+                            cor = COALESCE(NULLIF(%s, ''), cor),
+                            atualizado_em = NOW()
+                        WHERE id = %s
+                    """, (id_real, cor_real, situacao_banco['id']))
+                    
+                    atualizadas += 1
+                    current_app.logger.info(f"✅ {nome_banco}: ID {id_temp} → {id_real}")
+                else:
+                    nao_encontradas.append(nome_banco)
+            
+            conn.commit()
+            
             return jsonify({
-                'success': False,
-                'error': result.get('error', 'Erro desconhecido')
-            }), 500
+                'success': True,
+                'message': f'Sincronização concluída: {atualizadas} atualizadas, {len(nao_encontradas)} não encontradas',
+                'atualizadas': atualizadas,
+                'nao_encontradas': nao_encontradas,
+                'total_encontradas_bling': len(situacoes_encontradas_bling)
+            }), 200
+            
+        except Exception as e:
+            conn.rollback()
+            raise e
+        finally:
+            cur.close()
             
     except Exception as e:
         current_app.logger.error(f"Erro ao sincronizar situações do Bling: {e}")

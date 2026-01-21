@@ -1,0 +1,188 @@
+{
+  "transportadoras": [
+    {
+      "nome": "Correios",
+      "codigo": "CORREIOS",
+      "numeroDocumento": "34028316000103",
+      "tipo": "J",
+      "situacao": "A",
+      "fantasia": "Correios",
+      "telefone": "(61) 3213-6000",
+      "email": "ouvidoria@correios.com.br",
+      "emailNotaFiscal": "fiscal@correios.com.br",
+      "indicadorIe": 1,
+      "ie": "ISENTO",
+      "endereco": {
+        "geral": {
+          "endereco": "Setor de Indústrias Gráficas",
+          "numero": "S/N",
+          "complemento": "Edifício Sede dos Correios",
+          "bairro": "SIG",
+          "municipio": "Brasília",
+          "uf": "DF",
+          "cep": "70610900",
+          "pais": "Brasil"
+        }
+      },
+      "observacoes": "Empresa Brasileira de Correios e Telégrafos - ECT. Transportadora nacional de encomendas e correspondências."
+    },
+    {
+      "nome": "Jadlog",
+      "codigo": "JADLOG",
+      "numeroDocumento": "04263361000188",
+      "tipo": "J",
+      "situacao": "A",
+      "fantasia": "Jadlog Transportadora",
+      "telefone": "(11) 4616-3300",
+      "email": "sac@jadlog.com.br",
+      "emailNotaFiscal": "fiscal@jadlog.com.br",
+      "indicadorIe": 1,
+      "ie": "ISENTO",
+      "endereco": {
+        "geral": {
+          "endereco": "Rodovia Régis Bittencourt",
+          "numero": "KM 283",
+          "complemento": "",
+          "bairro": "Distrito Industrial",
+          "municipio": "Mogi das Cruzes",
+          "uf": "SP",
+          "cep": "08773010",
+          "pais": "Brasil"
+        }
+      },
+      "observacoes": "Jadlog Logística e Transporte Ltda. Transportadora rodoviária de cargas."
+    },
+    {
+      "nome": "Loggi Log Transportes",
+      "codigo": "LOGGI",
+      "numeroDocumento": "",
+      "tipo": "J",
+      "situacao": "A",
+      "fantasia": "Loggi",
+      "telefone": "(11) 4020-1460",
+      "celular": "(11) 4020-1460",
+      "email": "contato@loggi.com",
+      "emailNotaFiscal": "fiscal@loggi.com",
+      "indicadorIe": 1,
+      "ie": "",
+      "endereco": {
+        "geral": {
+          "endereco": "",
+          "numero": "",
+          "complemento": "",
+          "bairro": "",
+          "municipio": "São Paulo",
+          "uf": "SP",
+          "cep": "",
+          "pais": "Brasil"
+        }
+      },
+      "observacoes": "Loggi - Log Transportes. Transportadora focada em entregas para e-commerce. CNPJ e endereço completo devem ser confirmados."
+    },
+    {
+      "nome": "Azul Cargo Express",
+      "codigo": "AZUL_CARGO",
+      "numeroDocumento": "15479373000164",
+      "tipo": "J",
+      "situacao": "A",
+      "fantasia": "Azul Cargo Express",
+      "telefone": "(11) 4003-8399",
+      "email": "pto@azulcargo.com.br",
+      "emailNotaFiscal": "fiscal@azulcargo.com.br",
+      "indicadorIe": 1,
+      "ie": "",
+      "endereco": {
+        "geral": {
+          "endereco": "Rua Caramuru",
+          "numero": "1545",
+          "complemento": "Trevo da Guarany",
+          "bairro": "",
+          "municipio": "Pato Branco",
+          "uf": "PR",
+          "cep": "",
+          "pais": "Brasil"
+        }
+      },
+      "observacoes": "Azul Cargo Express Logística. Transporte aéreo de cargas. Possui mais de 352 postos de atendimento."
+    },
+    {
+      "nome": "LATAM Cargo Brasil",
+      "codigo": "LATAM_CARGO",
+      "numeroDocumento": "",
+      "tipo": "J",
+      "situacao": "A",
+      "fantasia": "LATAM Cargo",
+      "telefone": "0300 115 9999",
+      "email": "grp_atendimentonovosnegocios@latam.com",
+      "emailNotaFiscal": "grp_customercarebra.inter@latam.com",
+      "indicadorIe": 1,
+      "ie": "",
+      "endereco": {
+        "geral": {
+          "endereco": "",
+          "numero": "",
+          "complemento": "",
+          "bairro": "",
+          "municipio": "São Paulo",
+          "uf": "SP",
+          "cep": "",
+          "pais": "Brasil"
+        }
+      },
+      "observacoes": "LATAM Cargo Brasil. Transporte aéreo de cargas doméstico e internacional. CNPJ e endereço completo devem ser confirmados."
+    },
+    {
+      "nome": "Buslog Sc Logistica e Transporte",
+      "codigo": "BUSLOG",
+      "numeroDocumento": "12437084000104",
+      "tipo": "J",
+      "situacao": "A",
+      "fantasia": "Buslog",
+      "telefone": "0800-345-1001",
+      "celular": "(11) 2633-8100",
+      "email": "",
+      "emailNotaFiscal": "",
+      "indicadorIe": 1,
+      "ie": "",
+      "endereco": {
+        "geral": {
+          "endereco": "Rua Carlos Seidl",
+          "numero": "950",
+          "complemento": "",
+          "bairro": "Caju",
+          "municipio": "Rio de Janeiro",
+          "uf": "RJ",
+          "cep": "20931003",
+          "pais": "Brasil"
+        }
+      },
+      "observacoes": "Buslog Sc Logistica e Transporte LTDA. Transportadora rodoviária. Mais de 200 cidades nas regiões Sul e Sudeste."
+    },
+    {
+      "nome": "JeT Express",
+      "codigo": "JET",
+      "numeroDocumento": "03900533000118",
+      "tipo": "J",
+      "situacao": "A",
+      "fantasia": "JeT",
+      "telefone": "",
+      "email": "comercial@jaldilogisticaetransportes.com.br",
+      "emailNotaFiscal": "comercial@jaldilogisticaetransportes.com.br",
+      "indicadorIe": 1,
+      "ie": "",
+      "endereco": {
+        "geral": {
+          "endereco": "Rodovia Washington Luís",
+          "numero": "KM 172 S/N",
+          "complemento": "",
+          "bairro": "Jardim Anhanguera",
+          "municipio": "Rio Claro",
+          "uf": "SP",
+          "cep": "13501600",
+          "pais": "Brasil"
+        }
+      },
+      "observacoes": "JeT Express. Transportadora de cargas. CNPJ: 03.900.533/0001-18. Endereço: Rodovia Washington Luís, KM 172, S/N - Jardim Anhanguera, CEP 13501-600 (SP)."
+    }
+  ]
+}

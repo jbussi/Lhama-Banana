@@ -300,15 +300,33 @@ class ShippingService:
                     delivery_time = option.get('delivery_time', 0)
                     
                     if price and delivery_time:
-                        shipping_options.append({
+                        # Extrair dados completos da transportadora (company)
+                        company = option.get('company', {})
+                        
+                        shipping_option_data = {
                             'name': service_name,
                             'service': option.get('id'),
                             'service_name': option.get('name', ''),
                             'price': float(price),
                             'delivery_time': f'{delivery_time} dias úteis',
                             'delivery_time_days': int(delivery_time),
-                            'description': option.get('company', {}).get('name', '') or f'Entrega via {service_name}'
-                        })
+                            'description': company.get('name', '') or f'Entrega via {service_name}',
+                            # Dados completos da transportadora para uso na NFC-e
+                            'transportadora': {
+                                'nome': company.get('name', ''),
+                                'cnpj': company.get('document') or company.get('cnpj'),
+                                'ie': company.get('ie') or company.get('inscricao_estadual'),
+                                'uf': company.get('uf') or company.get('state'),
+                                'municipio': company.get('city') or company.get('municipio'),
+                                'endereco': company.get('address') or company.get('endereco'),
+                                'numero': company.get('number') or company.get('numero'),
+                                'complemento': company.get('complement') or company.get('complemento'),
+                                'bairro': company.get('district') or company.get('bairro'),
+                                'cep': company.get('postal_code') or company.get('cep')
+                            }
+                        }
+                        
+                        shipping_options.append(shipping_option_data)
             
             # Ordenar por preço (mais barato primeiro)
             shipping_options.sort(key=lambda x: x['price'])

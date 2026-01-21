@@ -439,18 +439,8 @@ def update_pedido_status():
             current_app.logger.error(f"❌ Erro ao gerenciar estoque (venda {venda_id}): {stock_error}")
             # Não falhar a atualização de status por erro no estoque
         
-        # Se status mudou para 'processando_envio' e não era esse status antes, criar etiqueta automaticamente
-        if novo_status == 'processando_envio' and status_atual != 'processando_envio':
-            try:
-                from ..api.labels import create_label_automatically
-                etiqueta_id = create_label_automatically(venda_id)
-                if etiqueta_id:
-                    current_app.logger.info(f"✅ Etiqueta {etiqueta_id} criada automaticamente para venda {venda_id} (via admin)")
-                else:
-                    current_app.logger.warning(f"⚠️ Etiqueta não criada para venda {venda_id} (pode já existir ou erro na criação)")
-            except Exception as label_error:
-                current_app.logger.error(f"❌ Erro ao criar etiqueta automaticamente para venda {venda_id}: {label_error}")
-                # Não falhar a atualização de status por erro na criação da etiqueta
+        # REMOVIDO: Criação automática de etiqueta quando status muda para processando_envio
+        # A etiqueta só será criada após aprovação do SEFAZ (no webhook de NFC-e)
         
         return jsonify({
             "success": True,

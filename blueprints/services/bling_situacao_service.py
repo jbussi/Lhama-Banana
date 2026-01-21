@@ -57,54 +57,76 @@ def get_all_bling_situacoes() -> List[Dict]:
     """
     Busca todas as situações disponíveis no Bling
     
+    Como a API do Bling não tem endpoint para listar todas as situações,
+    vamos tentar buscar pelos IDs conhecidos ou usar o endpoint de pedidos
+    para descobrir as situações.
+    
     Returns:
         Lista de dicts com dados das situações
     """
     try:
         situacoes = []
-        page = 1
-        limit = 100
         
-        while True:
-            response = make_bling_api_request(
-                'GET',
-                '/situacoes',
-                params={
-                    'pagina': page,
-                    'limite': limit
-                }
-            )
-            
-            if response.status_code != 200:
-                current_app.logger.warning(
-                    f"⚠️ Erro ao buscar situações do Bling: HTTP {response.status_code}"
-                )
-                break
-            
-            data = response.json()
-            situacoes_page = data.get('data', [])
-            
-            if not situacoes_page:
-                break
-            
-            for situacao in situacoes_page:
-                situacoes.append({
-                    'id': situacao.get('id'),
-                    'nome': situacao.get('nome'),
-                    'cor': situacao.get('cor'),
-                    'id_herdado': situacao.get('idHerdado', 0)
-                })
-            
-            # Verificar se há mais páginas
-            paginacao = data.get('paginacao', {})
-            total_paginas = paginacao.get('totalPaginas', 1)
-            
-            if page >= total_paginas:
-                break
-            
-            page += 1
+        # Tentar buscar via endpoint de pedidos para descobrir situações
+        # Ou tentar IDs comuns (1-20)
+        current_app.logger.info("🔍 Tentando descobrir situações do Bling...")
         
-        current_app.logger.info(f"✅ Total de {len(situacoes)} situações encontradas no Bling")
+        # Estratégia 1: Tentar buscar um pedido e ver qual situação ele tem
+        # Estratégia 2: Tentar IDs sequenciais (1-50)
+        # Estratégia 3: Tentar endpoint alternativo
+        
+        # Tentar IDs de 1 a 50 (situações comuns)
+        # Adicionar delay maior entre requisições para evitar rate limiting
+        import time
+        ids_tentados = list(range(1, 51))
+        
+        for idx, situacao_id in enumerate(ids_tentados):
+            try:
+                # Delay progressivo: 2 segundos entre requisições
+                if idx > 0:
+                    time.sleep(2)
+                
+                situacao = get_bling_situacao_by_id(situacao_id)
+                if situacao:
+                    situacoes.append(situacao)
+                    current_app.logger.info(f"✅ Situação encontrada: ID {situacao_id} - {situacao.get('nome')}")
+            except Exception as e:
+                # Se for rate limiting, aguardar mais tempo
+                if '429' in str(e) or 'rate limit' in str(e).lower():
+                    current_app.logger.warning(f"⚠️ Rate limiting detectado no ID {situacao_id}, aguardando 10 segundos...")
+                    time.sleep(10)
+                # ID não existe ou erro, continuar
+                continue
+        
+        # Se encontrou situações, retornar
+        if situacoes:
+            current_app.logger.info(f"✅ Total de {len(situacoes)} situações encontradas no Bling")
+            return situacoes
+        
+        # Se não encontrou, tentar endpoint alternativo
+        current_app.logger.info("⚠️ Não encontrou situações por ID, tentando endpoint alternativo...")
+        
+        # Tentar endpoint de listagem (pode não existir)
+        try:
+            response = make_bling_api_request('GET', '/situacoes-vendas')
+            if response.status_code == 200:
+                data = response.json()
+                situacoes_data = data.get('data', [])
+                for situacao in situacoes_data:
+                    situacoes.append({
+                        'id': situacao.get('id'),
+                        'nome': situacao.get('nome'),
+                        'cor': situacao.get('cor'),
+                        'id_herdado': situacao.get('idHerdado', 0)
+                    })
+        except Exception as e:
+            current_app.logger.warning(f"Endpoint alternativo também falhou: {e}")
+        
+        if situacoes:
+            current_app.logger.info(f"✅ Total de {len(situacoes)} situações encontradas no Bling")
+        else:
+            current_app.logger.warning("⚠️ Nenhuma situação encontrada. Pode ser necessário configurar manualmente.")
+        
         return situacoes
         
     except Exception as e:
@@ -254,32 +276,48 @@ def map_bling_situacao_id_to_status(bling_situacao_id: int) -> Optional[str]:
     Returns:
         Status do site correspondente ou None se não mapeado
     """
+    current_app.logger.info(f"🔍 [MAP_BLING_SITUACAO] Mapeando situação ID {bling_situacao_id} para status do site")
+    
     mapping = get_situacao_mapping(bling_situacao_id)
     
-    if mapping and mapping.get('status_site'):
-        return mapping['status_site']
+    if not mapping:
+        current_app.logger.warning(f"⚠️ [MAP_BLING_SITUACAO] Nenhum mapeamento encontrado para situação ID {bling_situacao_id}")
+        return None
+    
+    current_app.logger.info(f"📋 [MAP_BLING_SITUACAO] Mapeamento encontrado: {mapping}")
+    
+    # Verificar se tem mapeamento explícito no banco
+    if mapping.get('status_site'):
+        status_site = mapping['status_site']
+        current_app.logger.info(f"✅ [MAP_BLING_SITUACAO] Status encontrado via mapeamento explícito: {status_site}")
+        return status_site
     
     # Se não houver mapeamento explícito, tentar mapear pelo nome
-    if mapping:
-        nome = mapping.get('nome', '').lower()
-        
-        # Mapeamento padrão baseado no nome
-        nome_to_status = {
-            'em aberto': 'sincronizado_bling',
-            'em andamento': 'em_processamento',
-            'atendido': 'entregue',
-            'cancelado': 'cancelado_pelo_vendedor',
-            'venda agenciada': 'em_processamento',
-            'em digitação': 'pendente_pagamento',
-            'verificado': 'em_processamento',
-            'venda atendimento humano': 'em_processamento',
-            'logística': 'pronto_envio'
-        }
-        
-        for key, status in nome_to_status.items():
-            if key in nome:
-                return status
+    nome = mapping.get('nome', '').strip()
+    nome_lower = nome.lower() if nome else ''
     
+    current_app.logger.info(f"🔍 [MAP_BLING_SITUACAO] Tentando mapear pelo nome: '{nome}' (lower: '{nome_lower}')")
+    
+    # Mapeamento padrão baseado no nome
+    nome_to_status = {
+        'em aberto': 'sincronizado_bling',
+        'em andamento': 'em_processamento',
+        'atendido': 'entregue',
+        'cancelado': 'cancelado_pelo_vendedor',
+        'venda agenciada': 'em_processamento',
+        'em digitação': 'pendente_pagamento',
+        'verificado': 'em_processamento',
+        'venda atendimento humano': 'em_processamento',
+        'logística': 'pronto_envio',
+        'logistica': 'pronto_envio'  # Sem acento também
+    }
+    
+    for key, status in nome_to_status.items():
+        if key in nome_lower:
+            current_app.logger.info(f"✅ [MAP_BLING_SITUACAO] Match encontrado: '{key}' em '{nome_lower}' → status: {status}")
+            return status
+    
+    current_app.logger.warning(f"⚠️ [MAP_BLING_SITUACAO] Nenhum match encontrado para nome '{nome}' (lower: '{nome_lower}')")
     return None
 
 
@@ -337,21 +375,54 @@ def update_pedido_situacao(venda_id: int, bling_situacao_id: int,
     Returns:
         True se atualizado com sucesso
     """
+    current_app.logger.info("=" * 80)
+    current_app.logger.info(f"🔄 [UPDATE_PEDIDO_SITUACAO] Iniciando atualização de situação")
+    current_app.logger.info(f"   Venda ID: {venda_id}")
+    current_app.logger.info(f"   Situação Bling ID: {bling_situacao_id}")
+    current_app.logger.info(f"   Situação Bling Nome: {bling_situacao_nome or '(não fornecido)'}")
+    current_app.logger.info("=" * 80)
+    
     conn = get_db()
     cur = conn.cursor()
     
     try:
+        # Buscar situação atual do pedido
+        cur.execute("""
+            SELECT status_pedido, bling_situacao_id, bling_situacao_nome
+            FROM vendas
+            WHERE id = %s
+        """, (venda_id,))
+        
+        pedido_atual = cur.fetchone()
+        if pedido_atual:
+            status_atual = pedido_atual[0]
+            situacao_id_atual = pedido_atual[1]
+            situacao_nome_atual = pedido_atual[2]
+            current_app.logger.info(f"📋 [UPDATE_PEDIDO_SITUACAO] Situação atual do pedido:")
+            current_app.logger.info(f"   Status: {status_atual}")
+            current_app.logger.info(f"   Situação Bling ID: {situacao_id_atual}")
+            current_app.logger.info(f"   Situação Bling Nome: {situacao_nome_atual}")
+        
         # Buscar nome da situação se não fornecido
         if not bling_situacao_nome:
+            current_app.logger.info(f"🔍 [UPDATE_PEDIDO_SITUACAO] Nome não fornecido, buscando no banco...")
             situacao = get_situacao_mapping(bling_situacao_id)
             if situacao:
                 bling_situacao_nome = situacao.get('nome')
+                current_app.logger.info(f"✅ [UPDATE_PEDIDO_SITUACAO] Nome encontrado: '{bling_situacao_nome}'")
+            else:
+                current_app.logger.warning(f"⚠️ [UPDATE_PEDIDO_SITUACAO] Nome não encontrado no banco para ID {bling_situacao_id}")
         
         # Mapear situação para status do site
+        current_app.logger.info(f"🔍 [UPDATE_PEDIDO_SITUACAO] Mapeando situação ID {bling_situacao_id} para status do site...")
         status_site = map_bling_situacao_id_to_status(bling_situacao_id)
+        
+        current_app.logger.info(f"📊 [UPDATE_PEDIDO_SITUACAO] Resultado do mapeamento:")
+        current_app.logger.info(f"   Status site: {status_site or '(sem mapeamento)'}")
         
         # Atualizar pedido
         if status_site:
+            current_app.logger.info(f"✅ [UPDATE_PEDIDO_SITUACAO] Atualizando pedido com status mapeado...")
             cur.execute("""
                 UPDATE vendas
                 SET status_pedido = %s,
@@ -361,6 +432,7 @@ def update_pedido_situacao(venda_id: int, bling_situacao_id: int,
                 WHERE id = %s
             """, (status_site, bling_situacao_id, bling_situacao_nome, venda_id))
         else:
+            current_app.logger.warning(f"⚠️ [UPDATE_PEDIDO_SITUACAO] Sem mapeamento de status, atualizando apenas situação do Bling...")
             # Se não houver mapeamento, apenas atualizar situação do Bling
             cur.execute("""
                 UPDATE vendas
@@ -375,16 +447,22 @@ def update_pedido_situacao(venda_id: int, bling_situacao_id: int,
         updated = cur.rowcount > 0
         
         if updated:
-            current_app.logger.info(
-                f"✅ Pedido {venda_id} atualizado: Situação Bling {bling_situacao_id} "
-                f"({bling_situacao_nome}) → Status site: {status_site or 'sem mapeamento'}"
-            )
+            current_app.logger.info("=" * 80)
+            current_app.logger.info(f"✅ [UPDATE_PEDIDO_SITUACAO] Pedido {venda_id} atualizado com sucesso!")
+            current_app.logger.info(f"   Situação Bling: {situacao_id_atual} → {bling_situacao_id}")
+            current_app.logger.info(f"   Nome Situação: {situacao_nome_atual} → {bling_situacao_nome}")
+            current_app.logger.info(f"   Status Site: {status_atual} → {status_site or '(sem mapeamento)'}")
+            current_app.logger.info("=" * 80)
+        else:
+            current_app.logger.warning(f"⚠️ [UPDATE_PEDIDO_SITUACAO] Nenhuma linha atualizada (pedido {venda_id} pode não existir)")
         
         return updated
         
     except Exception as e:
         conn.rollback()
-        current_app.logger.error(f"❌ Erro ao atualizar situação do pedido {venda_id}: {e}")
+        current_app.logger.error(f"❌ [UPDATE_PEDIDO_SITUACAO] Erro ao atualizar situação do pedido {venda_id}: {e}")
+        import traceback
+        current_app.logger.error(traceback.format_exc())
         return False
     finally:
         cur.close()
