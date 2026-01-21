@@ -260,3 +260,4 @@ Após validar emissão de NF-e:
 - **ETAPA 6 (Pedidos)**: Pedido com CFOP correto é necessário
 - **Bling**: Gerencia emissão real via SEFAZ
 
+

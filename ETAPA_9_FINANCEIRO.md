@@ -261,3 +261,4 @@ Após validar integração financeira:
    - Pagamentos confirmados automaticamente criam contas
    - Reduz trabalho manual de lançamento
 
+

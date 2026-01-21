@@ -249,3 +249,4 @@ Após validar gerenciamento de clientes:
 - **ETAPA 6 (Pedidos)**: Cliente criado automaticamente antes do pedido
 - **ETAPA 7 (NF-e)**: Cliente necessário para emissão de nota fiscal
 
+

@@ -123,7 +123,26 @@ def get_order_by_token(public_token: str) -> Optional[Dict]:
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     
     try:
+        # Verificar se a tabela etiquetas_frete e a tabela de link existem
         cur.execute("""
+            SELECT 
+                EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'etiquetas_frete'
+                ) as tabela_existe,
+                EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'etiquetas_frete_venda_lnk'
+                ) as link_existe
+        """)
+        result_check = cur.fetchone()
+        etiquetas_table_exists = result_check[0] if result_check else False
+        link_table_exists = result_check[1] if result_check else False
+        
+        # Construir a query base
+        base_query = """
             SELECT 
                 o.id,
                 o.venda_id,
@@ -142,7 +161,13 @@ def get_order_by_token(public_token: str) -> Optional[Dict]:
                 p.pagbank_boleto_link,
                 p.pagbank_barcode_data,
                 p.pagbank_boleto_expires_at,
-                p.json_resposta_api,
+                p.json_resposta_api
+        """
+        
+        # Adicionar campos de etiquetas_frete apenas se ambas as tabelas existirem
+        # Nota: etiquetas_frete usa tabela de link (etiquetas_frete_venda_lnk) para relacionar com vendas
+        if etiquetas_table_exists and link_table_exists:
+            base_query += """,
                 e.url_rastreamento,
                 e.codigo_rastreamento,
                 e.transportadora_nome,
@@ -151,17 +176,33 @@ def get_order_by_token(public_token: str) -> Optional[Dict]:
             LEFT JOIN vendas v ON o.venda_id = v.id
             LEFT JOIN pagamentos p ON v.id = p.venda_id
             LEFT JOIN (
-                SELECT DISTINCT ON (venda_id)
-                    venda_id,
-                    url_rastreamento,
-                    codigo_rastreamento,
-                    transportadora_nome,
-                    status_etiqueta
-                FROM etiquetas_frete
-                ORDER BY venda_id, criado_em DESC
+                SELECT DISTINCT ON (lnk.venda_id)
+                    lnk.venda_id,
+                    ef.url_rastreamento,
+                    ef.codigo_rastreamento,
+                    ef.transportadora_nome,
+                    ef.status_etiqueta
+                FROM etiquetas_frete_venda_lnk lnk
+                INNER JOIN etiquetas_frete ef ON lnk.etiqueta_frete_id = ef.id
+                WHERE lnk.venda_id IS NOT NULL
+                ORDER BY lnk.venda_id, ef.created_at DESC NULLS LAST
             ) e ON v.id = e.venda_id
             WHERE o.public_token = %s
-        """, (public_token,))
+            """
+        else:
+            # Se a tabela não existir, usar NULL para os campos de etiqueta
+            base_query += """,
+                NULL as url_rastreamento,
+                NULL as codigo_rastreamento,
+                NULL as transportadora_nome,
+                NULL as status_etiqueta
+            FROM orders o
+            LEFT JOIN vendas v ON o.venda_id = v.id
+            LEFT JOIN pagamentos p ON v.id = p.venda_id
+            WHERE o.public_token = %s
+            """
+        
+        cur.execute(base_query, (public_token,))
         
         result = cur.fetchone()
         
@@ -220,11 +261,11 @@ def get_order_by_token(public_token: str) -> Optional[Dict]:
             'boleto_link': result['pagbank_boleto_link'],
             'boleto_barcode': result['pagbank_barcode_data'],
             'boleto_expires_at': result['pagbank_boleto_expires_at'].isoformat() if result['pagbank_boleto_expires_at'] else None,
-            # Informações de rastreio
-            'url_rastreamento': result['url_rastreamento'],
-            'codigo_rastreamento': result['codigo_rastreamento'],
-            'transportadora_nome': result['transportadora_nome'],
-            'status_etiqueta': result['status_etiqueta']
+            # Informações de rastreio (podem ser NULL se a tabela etiquetas_frete não existir)
+            'url_rastreamento': result.get('url_rastreamento'),
+            'codigo_rastreamento': result.get('codigo_rastreamento'),
+            'transportadora_nome': result.get('transportadora_nome'),
+            'status_etiqueta': result.get('status_etiqueta')
         }
         
         return order_data

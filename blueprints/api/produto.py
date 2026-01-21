@@ -1,6 +1,7 @@
 from . import api_bp
-from flask import jsonify
+from flask import jsonify, current_app
 from ..services import get_db
+import traceback
 
 @api_bp.route('/base_products/<int:nome_produto_id>', methods=['GET'])
 def get_product_details(nome_produto_id):
@@ -9,10 +10,11 @@ def get_product_details(nome_produto_id):
     cur = conn.cursor()
     try:
         # 1. Busca os detalhes do produto base (nome_produto)
+        # Usa LEFT JOIN para permitir produtos sem categoria (categoria_id NULL ou categoria deletada)
         cur.execute("""
-            SELECT np.id, np.nome, np.descricao, c.nome AS categoria_nome
+            SELECT np.id, np.nome, np.descricao, COALESCE(c.nome, 'Sem categoria') AS categoria_nome
             FROM nome_produto np
-            JOIN categorias c ON np.categoria_id = c.id
+            LEFT JOIN categorias c ON np.categoria_id = c.id
             WHERE np.id = %s;
         """, (nome_produto_id,))
         base_product_data = cur.fetchone()
@@ -56,14 +58,32 @@ def get_product_details(nome_produto_id):
         variations_data = cur.fetchall()
 
         # 3. Formata os dados das variações
+        # Índices da tupla: 0=variation_id, 1=estampa_id, 2=estampa_nome, 3=estampa_imagem_url,
+        #                  4=tamanho_id, 5=tamanho_nome, 6=preco_venda, 7=preco_promocional,
+        #                  8=estoque, 9=codigo_sku, 10=images_json
         for var in variations_data:
-            # Pega as imagens agregadas (o elemento var[10] da tupla)
-            images = var[10] if var[10] and var[10][0] is not None else []
-            preco_venda = float(var[6])
+            # Pega as imagens agregadas (índice 10 da tupla)
+            # var[10] é um array PostgreSQL que pode ser None ou um array vazio
+            images = []
+            if var[10] is not None:
+                # Se for um array PostgreSQL, converter para lista Python
+                if isinstance(var[10], list):
+                    images = var[10]
+                elif isinstance(var[10], (tuple, set)):
+                    images = list(var[10])
+                else:
+                    # Se for um tipo desconhecido, tentar converter
+                    try:
+                        images = list(var[10]) if var[10] else []
+                    except:
+                        images = []
+            
+            preco_venda = float(var[6]) if var[6] is not None else 0.0
             preco_promocional = float(var[7]) if var[7] is not None else None
             
-            # Determina o preço final (promocional se existir, senão preço de venda)
-            preco_final = preco_promocional if preco_promocional is not None else preco_venda
+            # Preço final: usa promocional se existir, senão usa venda
+            preco_final = preco_promocional if preco_promocional else preco_venda
+            tem_promocao = preco_promocional is not None and preco_promocional < preco_venda
             
             product_details['variations'].append({
                 'id': var[0], # ID da variação específica de 'produtos'
@@ -72,9 +92,9 @@ def get_product_details(nome_produto_id):
                 'preco': preco_final,
                 'preco_original': preco_venda,
                 'preco_promocional': preco_promocional,
-                'tem_promocao': preco_promocional is not None,
-                'estoque': var[8],
-                'sku': var[9],
+                'tem_promocao': tem_promocao,
+                'estoque': var[8] if var[8] is not None else 0,
+                'sku': var[9] if var[9] is not None else '',
                 'images': images # Array de URLs de todas as imagens para esta variação
             })
         
@@ -82,7 +102,16 @@ def get_product_details(nome_produto_id):
         return jsonify(product_details), 200
 
     except Exception as e:
+        # Log detalhado do erro para debug
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        current_app.logger.error(f"Error fetching product details for nome_produto_id {nome_produto_id}: {error_msg}")
+        current_app.logger.error(f"Traceback: {error_trace}")
         print(f"Error fetching product details: {e}")
-        return jsonify({"erro": "Erro interno do servidor ao carregar detalhes do produto."}), 500
+        print(traceback.format_exc())
+        return jsonify({
+            "erro": "Erro interno do servidor ao carregar detalhes do produto.",
+            "detalhes": error_msg if current_app.config.get('DEBUG') else None
+        }), 500
     finally:
         if cur: cur.close() # Fecha o cursor, a conexão é retornada ao pool pelo teardown

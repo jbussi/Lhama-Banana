@@ -28,18 +28,6 @@
     "ordem_exibicao": {
       "type": "integer",
       "default": 0
-    },
-    "criado_por": {
-      "type": "integer"
-    },
-    "atualizado_por": {
-      "type": "integer"
-    },
-    "estampas": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::estampa.estampa",
-      "mappedBy": "tecido"
     }
   }
 }

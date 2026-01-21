@@ -17,14 +17,61 @@ import requests
 import secrets
 import hashlib
 import base64
+import hmac
 from datetime import datetime, timedelta
 import json
 
 from ..services import get_db
 import psycopg2.extras
 from ..services.bling_api_service import BlingAPIError, BlingErrorType
+from ..admin.decorators import admin_required_email
 
 bling_bp = Blueprint('bling', __name__, url_prefix='/api/bling')
+
+
+def verify_bling_webhook_signature(request_body: bytes, signature_header: str) -> bool:
+    """
+    Verifica a assinatura HMAC do webhook do Bling
+    
+    Args:
+        request_body: Corpo da requisição (bytes)
+        signature_header: Valor do header X-Bling-Signature-256 (formato: sha256=<hash>)
+    
+    Returns:
+        True se a assinatura for válida, False caso contrário
+    """
+    if not signature_header:
+        return False
+    
+    # Extrair o hash do header (formato: sha256=<hash>)
+    if not signature_header.startswith('sha256='):
+        current_app.logger.warning(f"Formato de assinatura inválido: {signature_header[:50]}")
+        return False
+    
+    received_hash = signature_header[7:]  # Remove 'sha256='
+    
+    # Obter client_secret do Bling
+    client_secret = current_app.config.get('BLING_CLIENT_SECRET', '')
+    if not client_secret:
+        current_app.logger.error("BLING_CLIENT_SECRET não configurado")
+        return False
+    
+    # Calcular hash HMAC-SHA256
+    expected_hash = hmac.new(
+        client_secret.encode('utf-8'),
+        request_body,
+        hashlib.sha256
+    ).hexdigest()
+    
+    # Comparação segura (evita timing attacks)
+    is_valid = hmac.compare_digest(expected_hash, received_hash)
+    
+    if not is_valid:
+        current_app.logger.warning(
+            f"Assinatura HMAC inválida. Esperado: {expected_hash[:16]}..., Recebido: {received_hash[:16]}..."
+        )
+    
+    return is_valid
 
 
 def generate_state_token() -> str:
@@ -488,43 +535,9 @@ def handle_bling_api_error(e: BlingAPIError):
     }), http_status
 
 
-@bling_bp.route('/test', methods=['GET'])
-def test_bling_api():
-    """
-    Endpoint de teste - Faz requisição simples à API Bling para verificar conexão
-    """
-    from ..services.bling_api_service import make_bling_api_request
-    
-    try:
-        # Testar listando produtos (endpoint simples)
-        response = make_bling_api_request('GET', '/produtos', params={'limite': 1})
-        
-        # Se chegou aqui, a requisição foi bem-sucedida (make_bling_api_request já tratou erros)
-        data = response.json()
-        return jsonify({
-            'success': True,
-            'message': 'Conexão com API Bling funcionando!',
-            'status_code': response.status_code,
-            'products_count': len(data.get('data', [])),
-            'sample_data': data.get('data', [])[:1] if data.get('data') else None
-        }), 200
-            
-    except ValueError as e:
-        return jsonify({
-            'success': False,
-            'error': 'authentication_required',
-            'message': str(e),
-            'hint': 'Autorize o Bling primeiro em /api/bling/authorize'
-        }), 401
-    except Exception as e:
-        # Outros erros serão tratados pelo errorhandler se forem BlingAPIError
-        current_app.logger.error(f"Erro inesperado no teste da API Bling: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': 'unknown_error',
-            'message': str(e) if current_app.config.get('DEBUG', False) else 'Erro interno'
-        }), 500
+# Test endpoints removidos - não essenciais para o escopo atual
 
+# Debug endpoints removidos - não essenciais para o escopo atual
 
 @bling_bp.route('/produtos/sync/<int:produto_id>', methods=['POST'])
 def sync_product(produto_id: int):
@@ -532,21 +545,77 @@ def sync_product(produto_id: int):
     Sincroniza um produto específico com Bling
     """
     from ..services.bling_product_service import sync_product_to_bling
+    import traceback
     
     try:
+        current_app.logger.info(f"[ENDPOINT] Iniciando sincronização do produto {produto_id}")
+        
+        # Validar se produto_id é válido
+        if not produto_id or produto_id <= 0:
+            return jsonify({
+                'success': False,
+                'error': 'ID do produto inválido',
+                'produto_id': produto_id
+            }), 400
+        
         result = sync_product_to_bling(produto_id)
         
+        current_app.logger.info(f"[ENDPOINT] Resultado da sincronização: success={result.get('success')}, error={result.get('error', 'N/A')}")
+        
+        # Garantir que result é um dict válido
+        if not isinstance(result, dict):
+            current_app.logger.error(f"[ENDPOINT] Resultado não é um dict: {type(result)}")
+            result = {
+                'success': False,
+                'error': 'Resultado inválido do serviço',
+                'produto_id': produto_id
+            }
+        
         if result.get('success'):
-            return jsonify(result), 200
+            response = jsonify(result)
+            current_app.logger.info(f"[ENDPOINT] Retornando sucesso: {response.get_data(as_text=True)}")
+            return response, 200
         else:
-            return jsonify(result), 400
+            # Garantir que sempre retorna um corpo de resposta válido
+            error_response = {
+                'success': False,
+                'error': result.get('error', 'Erro desconhecido'),
+                'details': result.get('details', []),
+                'produto_id': produto_id
+            }
+            
+            # Se details for uma lista, converter para string se necessário para JSON
+            if isinstance(error_response['details'], list) and len(error_response['details']) > 0:
+                # Manter como lista, JSON pode serializar
+                pass
+            
+            current_app.logger.warning(f"[ENDPOINT] Falha ao sincronizar produto {produto_id}: {error_response}")
+            response = jsonify(error_response)
+            current_app.logger.info(f"[ENDPOINT] Retornando erro 400: {response.get_data(as_text=True)}")
+            return response, 400
             
     except Exception as e:
-        current_app.logger.error(f"Erro ao sincronizar produto {produto_id}: {e}", exc_info=True)
-        return jsonify({
+        error_msg = str(e)
+        error_traceback = traceback.format_exc()
+        current_app.logger.error(f"[ENDPOINT] Exceção ao sincronizar produto {produto_id}: {error_msg}\n{error_traceback}", exc_info=True)
+        
+        error_response = {
             'success': False,
-            'error': str(e)
-        }), 500
+            'error': error_msg,
+            'produto_id': produto_id,
+            'type': type(e).__name__
+        }
+        
+        try:
+            response = jsonify(error_response)
+            return response, 500
+        except Exception as json_error:
+            current_app.logger.error(f"[ENDPOINT] Erro ao serializar JSON: {json_error}")
+            return jsonify({
+                'success': False,
+                'error': 'Erro interno do servidor',
+                'produto_id': produto_id
+            }), 500
 
 
 @bling_bp.route('/produtos/sync-all', methods=['POST'])
@@ -614,31 +683,105 @@ def get_product_sync_status(produto_id: int):
 # Endpoints de sincronização acima usam essas funções via import
 
 
-@bling_bp.route('/produtos/import', methods=['POST'])
-def import_products_from_bling():
+# Sincronização de preços do Bling removida - preços são gerenciados localmente
+
+@bling_bp.route('/categorias', methods=['GET'])
+def list_bling_categories():
     """
-    Importa produtos do Bling para o banco local
+    Lista categorias do Bling (sem sincronizar)
     """
-    from flask import request
-    from ..services.bling_product_service import sync_products_from_bling
+    from ..services.bling_product_service import fetch_categories_from_bling
     
     try:
-        limit = request.json.get('limit', 50) if request.is_json else 50
+        result = fetch_categories_from_bling()
         
-        result = sync_products_from_bling(limit=limit)
-        
-        return jsonify({
-            'success': True,
-            'message': 'Importação concluída',
-            **result
-        }), 200
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                **result
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro ao buscar categorias'),
+                **result
+            }), 400
         
     except Exception as e:
-        current_app.logger.error(f"Erro ao importar produtos: {e}", exc_info=True)
+        current_app.logger.error(f"Erro ao listar categorias do Bling: {e}", exc_info=True)
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
+
+
+@bling_bp.route('/produtos/debug', methods=['GET'])
+def debug_bling_products():
+    """
+    Endpoint de debug para ver a estrutura dos produtos do Bling
+    Retorna um produto bruto para análise, incluindo campos customizados extraídos
+    """
+    from flask import request
+    from ..services.bling_product_service import fetch_products_from_bling, extract_custom_fields_from_bling_product
+    
+    try:
+        limit = request.args.get('limit', 5, type=int)
+        result = fetch_products_from_bling(limit=limit)
+        
+        if result.get('success') and result.get('products'):
+            # Retornar primeiro produto para debug
+            primeiro_produto = result['products'][0]
+            
+            # Extrair campos customizados para mostrar no debug
+            campos_customizados = extract_custom_fields_from_bling_product(primeiro_produto)
+            
+            return jsonify({
+                'success': True,
+                'total_products': result.get('total', 0),
+                'sample_product': primeiro_produto,
+                'product_keys': list(primeiro_produto.keys()) if isinstance(primeiro_produto, dict) else [],
+                'custom_fields_extracted': campos_customizados,
+                'custom_fields_raw': (
+                    primeiro_produto.get('camposCustomizados') or
+                    primeiro_produto.get('campos_customizados') or
+                    primeiro_produto.get('customFields') or
+                    'Nenhum campo customizado encontrado'
+                )
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Nenhum produto encontrado no Bling',
+                'error': result.get('error'),
+                'total': result.get('total', 0)
+            }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Erro ao buscar produtos para debug: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@bling_bp.route('/produtos/import', methods=['POST'])
+@bling_bp.route('/produtos/import-from-bling', methods=['POST'])
+def import_products_from_bling():
+    """
+    ⚠️ DESABILITADO: Esta funcionalidade não está mais disponível.
+    
+    Segundo a nova arquitetura:
+    - Produtos são criados APENAS no sistema local (Strapi/admin)
+    - O Bling recebe produtos já criados (via POST /api/bling/produtos/sync/<produto_id>)
+    - O Bling NÃO cria nem altera estrutura de produtos
+    
+    Use: POST /api/bling/produtos/sync/<produto_id> para enviar produto local para o Bling
+    """
+    return jsonify({
+        'success': False,
+        'error': 'Importação de produtos do Bling foi desabilitada. Produtos devem ser criados localmente e enviados para o Bling.',
+        'message': 'Use POST /api/bling/produtos/sync/<produto_id> para enviar produto para o Bling'
+    }), 410  # 410 Gone - recurso não está mais disponível
 
 
 @bling_bp.route('/estoque/sync-from-bling', methods=['POST'])
@@ -654,11 +797,25 @@ def sync_stock_from_bling_endpoint():
         
         result = sync_stock_from_bling(produto_id=produto_id)
         
-        return jsonify({
-            'success': True,
-            'message': 'Sincronização de estoque concluída',
-            **result
-        }), 200
+        # Normalizar retorno: success é booleano, success_count é número
+        if isinstance(result.get('success'), bool) and not result.get('success'):
+            # Erro na execução
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro desconhecido'),
+                'total': result.get('total', 0),
+                'results': result.get('results', [])
+            }), 400
+        else:
+            # Sucesso: normalizar success_count
+            return jsonify({
+                'success': True,
+                'message': 'Sincronização de estoque concluída',
+                'total': result.get('total', 0),
+                'success_count': result.get('success', 0) if isinstance(result.get('success'), int) else len([r for r in result.get('results', []) if r.get('success')]),
+                'errors': result.get('errors', 0),
+                'results': result.get('results', [])
+            }), 200
         
     except Exception as e:
         current_app.logger.error(f"Erro ao sincronizar estoque do Bling: {e}", exc_info=True)
@@ -681,11 +838,25 @@ def sync_stock_to_bling_endpoint():
         
         result = sync_stock_to_bling(produto_id=produto_id)
         
-        return jsonify({
-            'success': True,
-            'message': 'Sincronização de estoque concluída',
-            **result
-        }), 200
+        # Normalizar retorno: success é booleano, success_count é número
+        if isinstance(result.get('success'), bool) and not result.get('success'):
+            # Erro na execução
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro desconhecido'),
+                'total': result.get('total', 0),
+                'results': result.get('results', [])
+            }), 400
+        else:
+            # Sucesso: normalizar success_count
+            return jsonify({
+                'success': True,
+                'message': 'Sincronização de estoque concluída',
+                'total': result.get('total', 0),
+                'success_count': result.get('success', 0) if isinstance(result.get('success'), int) else len([r for r in result.get('results', []) if r.get('success')]),
+                'errors': result.get('errors', 0),
+                'results': result.get('results', [])
+            }), 200
         
     except Exception as e:
         current_app.logger.error(f"Erro ao sincronizar estoque para Bling: {e}", exc_info=True)
@@ -695,32 +866,7 @@ def sync_stock_to_bling_endpoint():
         }), 500
 
 
-@bling_bp.route('/estoque/consistency', methods=['POST'])
-def ensure_stock_consistency_endpoint():
-    """
-    Garante consistência de estoque entre LhamaBanana e Bling
-    """
-    from flask import request
-    from ..services.bling_stock_service import ensure_stock_consistency
-    
-    try:
-        produto_id = request.json.get('produto_id') if request.is_json else None
-        
-        result = ensure_stock_consistency(produto_id=produto_id)
-        
-        return jsonify({
-            'success': True,
-            'message': 'Verificação de consistência concluída',
-            **result
-        }), 200
-        
-    except Exception as e:
-        current_app.logger.error(f"Erro ao verificar consistência de estoque: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
+# Endpoint de consistência de estoque removido - não essencial para o escopo atual
 
 @bling_bp.route('/estoque/sync/<int:produto_id>', methods=['POST'])
 def sync_stock_product(produto_id: int):
@@ -734,18 +880,42 @@ def sync_stock_product(produto_id: int):
         direction = request.json.get('direction', 'both') if request.is_json else 'both'
         
         results = {}
+        estoque_local = None
+        estoque_bling = None
         
         if direction in ['both', 'from']:
             # Sincronizar do Bling para banco
-            results['from_bling'] = sync_stock_from_bling(produto_id=produto_id)
+            from_result = sync_stock_from_bling(produto_id=produto_id)
+            results['from_bling'] = from_result
+            if from_result.get('results') and len(from_result.get('results', [])) > 0:
+                estoque_local = from_result['results'][0].get('estoque_novo')
         
         if direction in ['both', 'to']:
             # Sincronizar do banco para Bling
-            results['to_bling'] = sync_stock_to_bling(produto_id=produto_id)
+            to_result = sync_stock_to_bling(produto_id=produto_id)
+            results['to_bling'] = to_result
+            if to_result.get('results') and len(to_result.get('results', [])) > 0:
+                estoque_bling = to_result['results'][0].get('estoque_enviado')
+        
+        # Se não temos estoque ainda, buscar do banco
+        if estoque_local is None:
+            from ..services import get_db
+            import psycopg2.extras
+            conn = get_db()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            try:
+                cur.execute("SELECT estoque FROM produtos WHERE id = %s", (produto_id,))
+                row = cur.fetchone()
+                if row:
+                    estoque_local = row['estoque']
+            finally:
+                cur.close()
         
         return jsonify({
             'success': True,
             'message': 'Sincronização de estoque concluída',
+            'estoque_local': estoque_local,
+            'estoque_bling': estoque_bling or estoque_local,
             **results
         }), 200
         
@@ -778,6 +948,36 @@ def sync_order(venda_id: int):
             
     except Exception as e:
         current_app.logger.error(f"Erro ao sincronizar pedido {venda_id}: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@bling_bp.route('/pedidos/sync-all', methods=['POST'])
+def sync_all_orders():
+    """
+    Sincroniza todos os pedidos para o Bling
+    
+    Aceita parâmetro opcional no body:
+    - only_pending: Se true, sincroniza apenas pedidos que ainda não foram sincronizados
+    """
+    from flask import request
+    from ..services.bling_order_service import sync_all_orders_to_bling
+    
+    try:
+        only_pending = request.json.get('only_pending', False) if request.is_json else False
+        
+        result = sync_all_orders_to_bling(only_pending=only_pending)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Sincronização de pedidos concluída',
+            **result
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Erro ao sincronizar pedidos: {e}", exc_info=True)
         return jsonify({
             'success': False,
             'error': str(e)
@@ -883,114 +1083,9 @@ def get_nfe_status(venda_id: int):
         }), 500
 
 
-@bling_bp.route('/financeiro/conta-receber/<int:venda_id>', methods=['POST'])
-def create_account_receivable(venda_id: int):
-    """
-    Cria conta a receber no Bling para uma venda
-    """
-    from ..services.bling_financial_service import create_account_receivable_for_order
-    
-    try:
-        result = create_account_receivable_for_order(venda_id)
-        
-        if result.get('success'):
-            return jsonify(result), 200
-        else:
-            return jsonify(result), 400
-            
-    except Exception as e:
-        current_app.logger.error(f"Erro ao criar conta a receber para venda {venda_id}: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+# Financial endpoint removido - não essencial para o escopo atual
 
-
-@bling_bp.route('/analytics/dashboard', methods=['GET'])
-def get_dashboard():
-    """
-    Dashboard financeiro com métricas do Bling
-    """
-    from ..services.bling_analytics_service import get_financial_dashboard
-    
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    
-    try:
-        result = get_financial_dashboard(start_date, end_date)
-        return jsonify(result), 200 if result.get('success') else 400
-    except Exception as e:
-        current_app.logger.error(f"Erro ao buscar dashboard: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@bling_bp.route('/analytics/vendas/periodo', methods=['GET'])
-def get_sales_by_period():
-    """
-    Vendas agrupadas por período (dia/semana/mês)
-    """
-    from ..services.bling_analytics_service import get_sales_by_period
-    
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    group_by = request.args.get('group_by', 'day')  # day, week, month
-    
-    try:
-        result = get_sales_by_period(start_date, end_date, group_by)
-        return jsonify(result), 200 if result.get('success') else 400
-    except Exception as e:
-        current_app.logger.error(f"Erro ao buscar vendas por período: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@bling_bp.route('/analytics/produtos/top', methods=['GET'])
-def get_top_products():
-    """
-    Produtos mais vendidos
-    """
-    from ..services.bling_analytics_service import get_top_products
-    
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    limit = int(request.args.get('limit', 10))
-    
-    try:
-        result = get_top_products(start_date, end_date, limit)
-        return jsonify(result), 200 if result.get('success') else 400
-    except Exception as e:
-        current_app.logger.error(f"Erro ao buscar produtos mais vendidos: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@bling_bp.route('/analytics/comparacao', methods=['GET'])
-def get_comparison():
-    """
-    Comparação entre dados locais e Bling
-    """
-    from ..services.bling_analytics_service import get_local_vs_bling_comparison
-    
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    
-    try:
-        result = get_local_vs_bling_comparison(start_date, end_date)
-        return jsonify(result), 200 if result.get('success') else 400
-    except Exception as e:
-        current_app.logger.error(f"Erro ao comparar dados: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
+# Analytics endpoints removidos - não essenciais para o escopo atual
 
 @bling_bp.route('/pedidos/info/<int:venda_id>', methods=['GET'])
 def get_order_sync_status(venda_id: int):
@@ -1020,6 +1115,235 @@ def get_order_sync_status(venda_id: int):
     except Exception as e:
         current_app.logger.error(f"Erro ao verificar status: {e}")
         return jsonify({
+            'error': str(e)
+        }), 500
+
+
+@bling_bp.route('/pedidos/diagnostico/<int:venda_id>', methods=['GET'])
+def diagnose_order(venda_id: int):
+    """
+    Diagnóstico de problemas na sincronização de um pedido
+    """
+    from ..services.bling_order_service import get_order_for_bling_sync
+    from ..services.bling_product_service import get_bling_product_by_local_id
+    
+    try:
+        # Buscar dados da venda
+        venda = get_order_for_bling_sync(venda_id)
+        
+        if not venda:
+            return jsonify({
+                'success': False,
+                'error': f'Pedido {venda_id} não encontrado'
+            }), 404
+        
+        problemas = []
+        avisos = []
+        
+        # Verificar CPF/CNPJ
+        fiscal_cpf_cnpj = venda.get('fiscal_cpf_cnpj')
+        if not fiscal_cpf_cnpj:
+            problemas.append('CPF/CNPJ fiscal ausente')
+        else:
+            cpf_cnpj_limpo = str(fiscal_cpf_cnpj).replace('.', '').replace('-', '').replace('/', '')
+            if len(cpf_cnpj_limpo) not in [11, 14]:
+                problemas.append(f'CPF/CNPJ inválido: {fiscal_cpf_cnpj}')
+        
+        # Verificar CEP
+        cep = venda.get('cep_entrega')
+        if not cep:
+            problemas.append('CEP de entrega ausente')
+        
+        # Verificar endereço completo
+        if not venda.get('rua_entrega'):
+            problemas.append('Rua de entrega ausente')
+        if not venda.get('numero_entrega'):
+            problemas.append('Número de entrega ausente')
+        if not venda.get('cidade_entrega'):
+            problemas.append('Cidade de entrega ausente')
+        if not venda.get('estado_entrega'):
+            problemas.append('Estado de entrega ausente')
+        
+        # Verificar produtos sincronizados
+        itens = venda.get('itens', [])
+        produtos_nao_sincronizados = []
+        for item in itens:
+            produto_id = item.get('produto_id')
+            if produto_id:
+                bling_produto = get_bling_product_by_local_id(produto_id)
+                if not bling_produto:
+                    produtos_nao_sincronizados.append({
+                        'produto_id': produto_id,
+                        'nome': item.get('nome_produto_snapshot', 'Produto desconhecido')
+                    })
+        
+        if produtos_nao_sincronizados:
+            problemas.append(f'{len(produtos_nao_sincronizados)} produto(s) não sincronizado(s) no Bling')
+            avisos.extend([f"Produto ID {p['produto_id']}: {p['nome']}" for p in produtos_nao_sincronizados])
+        
+        return jsonify({
+            'success': True,
+            'venda_id': venda_id,
+            'codigo_pedido': venda.get('codigo_pedido'),
+            'problemas': problemas,
+            'avisos': avisos,
+            'status': 'ok' if not problemas else 'com_problemas',
+            'dados': {
+                'fiscal_cpf_cnpj': fiscal_cpf_cnpj,
+                'cep_entrega': cep,
+                'total_itens': len(itens),
+                'produtos_nao_sincronizados': len(produtos_nao_sincronizados)
+            }
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Erro ao diagnosticar pedido {venda_id}: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@bling_bp.route('/situacoes/sync', methods=['POST'])
+@admin_required_email
+def sync_bling_situacoes():
+    """
+    Sincroniza todas as situações do Bling para o banco de dados local
+    
+    POST /api/bling/situacoes/sync
+    """
+    try:
+        from ..services.bling_situacao_service import sync_bling_situacoes_to_db
+        
+        result = sync_bling_situacoes_to_db()
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro desconhecido')
+            }), 500
+            
+    except Exception as e:
+        current_app.logger.error(f"Erro ao sincronizar situações do Bling: {e}")
+        import traceback
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': str(e) if current_app.config.get('DEBUG', False) else 'Erro interno'
+        }), 500
+
+
+@bling_bp.route('/situacoes', methods=['GET'])
+@admin_required_email
+def list_bling_situacoes():
+    """
+    Lista todas as situações do Bling sincronizadas no banco
+    
+    GET /api/bling/situacoes
+    """
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            cur.execute("""
+                SELECT 
+                    bling_situacao_id,
+                    nome,
+                    cor,
+                    status_site,
+                    ativo,
+                    criado_em,
+                    atualizado_em
+                FROM bling_situacoes
+                ORDER BY nome
+            """)
+            
+            situacoes = cur.fetchall()
+            
+            return jsonify({
+                'success': True,
+                'total': len(situacoes),
+                'situacoes': [dict(s) for s in situacoes]
+            }), 200
+            
+        finally:
+            cur.close()
+            
+    except Exception as e:
+        current_app.logger.error(f"Erro ao listar situações do Bling: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e) if current_app.config.get('DEBUG', False) else 'Erro interno'
+        }), 500
+
+
+@bling_bp.route('/situacoes/<int:situacao_id>/map', methods=['POST'])
+@admin_required_email
+def update_situacao_mapping(situacao_id: int):
+    """
+    Atualiza o mapeamento de uma situação do Bling para status do site
+    
+    POST /api/bling/situacoes/<situacao_id>/map
+    Body: {"status_site": "em_processamento"}
+    """
+    try:
+        data = request.get_json()
+        status_site = data.get('status_site')
+        
+        if not status_site:
+            return jsonify({
+                'success': False,
+                'error': 'status_site é obrigatório'
+            }), 400
+        
+        from ..services.bling_situacao_service import update_situacao_mapping
+        
+        updated = update_situacao_mapping(situacao_id, status_site)
+        
+        if updated:
+            return jsonify({
+                'success': True,
+                'message': f'Mapeamento atualizado: Situação {situacao_id} → {status_site}'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Situação não encontrada ou erro ao atualizar'
+            }), 404
+            
+    except Exception as e:
+        current_app.logger.error(f"Erro ao atualizar mapeamento de situação: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e) if current_app.config.get('DEBUG', False) else 'Erro interno'
+        }), 500
+
+
+@bling_bp.route('/pedidos/approve/<int:venda_id>', methods=['POST'])
+def approve_order(venda_id: int):
+    """
+    Aprova pedido no Bling, mudando situação para 'E' (Em aberto)
+    
+    Esta operação muda o pedido de 'P' (Pendente) para 'E' (Em aberto),
+    indicando que o pedido foi aprovado e está pronto para processamento/envio.
+    """
+    from ..services.bling_order_service import approve_order_in_bling
+    
+    try:
+        result = approve_order_in_bling(venda_id)
+        
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+            
+    except Exception as e:
+        current_app.logger.error(f"Erro ao aprovar pedido {venda_id}: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
             'error': str(e)
         }), 500
 

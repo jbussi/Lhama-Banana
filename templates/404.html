@@ -9,37 +9,28 @@
 {% block content %}
 <div class="error-404-container">
     <div class="error-404-content">
-        <div class="error-404-icon">
-            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="LhamaBanana" class="error-404-logo">
-            <span class="error-code">404</span>
+        <div class="error-404-mascot">
+            <img src="{{ url_for('static', filename='img/mascoteConfuso.png') }}" alt="Lhama confusa" class="mascot-image" onerror="this.src='{{ url_for('static', filename='img/logo.png') }}'">
         </div>
         
-        <h1 class="error-404-title">Ops! Página não encontrada</h1>
+        <h1 class="error-404-title">Ops… acho que a lhama se perdeu 🦙❓</h1>
+        
+        <p class="error-404-subtitle">Hmm… essa página não existe 🤔</p>
         
         <p class="error-404-message">
-            A página que você está procurando não existe ou foi movida.
+            Nossa lhama procurou direitinho, mas acabou ficando confusa no caminho.
+        </p>
+        
+        <p class="error-404-suggestion">
+            Que tal voltar para um lugar seguro e confortável, como um pijaminha quentinho? 💛
             <br>
-            Que tal voltar para a nossa loja?
+            É só clicar abaixo e continuar sua visita sem stress!
         </p>
         
         <div class="error-404-actions">
             <a href="{{ url_for('main.home') }}" class="btn-primary">
-                <i class="fas fa-home"></i>
-                <span>Voltar para Home</span>
+                <span>👉 Voltar para a página inicial</span>
             </a>
-            <a href="{{ url_for('produtos.produtos_page') }}" class="btn-secondary">
-                <i class="fas fa-store"></i>
-                <span>Ir para Loja</span>
-            </a>
-        </div>
-        
-        <div class="error-404-suggestions">
-            <p>Ou você pode:</p>
-            <ul>
-                <li><a href="{{ url_for('main.sobre_nos') }}">Conhecer mais sobre nós</a></li>
-                <li><a href="{{ url_for('main.contato_page') }}">Entrar em contato</a></li>
-                <li><a href="{{ url_for('main.carrinho') }}">Ver seu carrinho</a></li>
-            </ul>
         </div>
     </div>
 </div>

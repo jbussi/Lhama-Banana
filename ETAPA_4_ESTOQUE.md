@@ -249,3 +249,4 @@ Após validar sincronização de estoque:
 - **ETAPA 6**: Pedidos (criação no Bling com CFOP)
 - **ETAPA 7**: NF-e (emissão automática)
 
+

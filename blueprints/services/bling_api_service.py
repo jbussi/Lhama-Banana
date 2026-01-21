@@ -11,6 +11,7 @@ Camada de abstração para integração com API do Bling, incluindo:
 """
 from flask import current_app
 import requests
+import json
 from .db import get_db
 import psycopg2.extras
 from datetime import datetime, timedelta
@@ -346,12 +347,49 @@ def make_bling_api_request(method: str, endpoint: str, max_retries: int = 3,
             # Erro que não deve ser retried ou já esgotou tentativas
             error_type, error_msg = _classify_bling_error(response)
             
+            error_data = {}
             try:
                 error_data = response.json()
+                current_app.logger.error(f"📋 Response JSON completo: {json.dumps(error_data, indent=2, ensure_ascii=False)}")
+                
                 error_details = error_data.get('error', {})
-            except:
-                error_details = {'raw_response': response.text[:500]}
+                
+                # Tentar extrair erros de validação mais detalhados
+                if 'error' in error_data:
+                    error_obj = error_data['error']
+                    if isinstance(error_obj, dict):
+                        # Bling pode retornar array de erros em 'fields' para validação
+                        if 'fields' in error_obj:
+                            fields_errors = error_obj['fields']
+                            if isinstance(fields_errors, list):
+                                error_details['fields'] = fields_errors
+                                # Extrair mensagens de cada campo com erro
+                                field_messages = []
+                                for field_error in fields_errors:
+                                    if isinstance(field_error, dict):
+                                        field_msg = f"{field_error.get('element', 'unknown')}: {field_error.get('msg', 'Erro desconhecido')}"
+                                        field_messages.append(field_msg)
+                                if field_messages:
+                                    error_msg = f"{error_msg}\n📋 Detalhes: " + "\n".join(field_messages)
+                        
+                        # Extrair descrição mais detalhada se disponível
+                        if 'description' in error_obj:
+                            error_details['description'] = error_obj['description']
+                        if 'message' in error_obj:
+                            error_details['message'] = error_obj['message']
+                
+                # Log completo do erro
+                current_app.logger.error(
+                    f"❌ Bling API Error: {method} {endpoint} - {error_type.value} "
+                    f"({response.status_code}): {error_msg}"
+                )
+                
+            except Exception as parse_error:
+                error_details = {'raw_response': response.text[:2000]}
+                current_app.logger.error(f"❌ Erro ao parsear resposta de erro do Bling: {parse_error}")
+                current_app.logger.error(f"📋 Response text completo ({len(response.text)} chars): {response.text[:2000]}")
             
+            # Sempre logar a resposta completa
             current_app.logger.error(
                 f"❌ Bling API Error: {method} {endpoint} - {error_type.value} "
                 f"({response.status_code}): {error_msg}"

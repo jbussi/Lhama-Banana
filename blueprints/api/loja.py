@@ -160,12 +160,13 @@ def get_base_products():
         preco_max = request.args.get('preco_max', type=float)
         
         # Construir query base
+        # Usa LEFT JOIN para permitir produtos sem categoria (categoria_id NULL ou categoria deletada)
         query = """
             SELECT DISTINCT
                 np.id AS nome_produto_id,
                 np.nome AS nome_produto,
                 np.descricao AS descricao_produto,
-                c.nome AS categoria_nome,
+                COALESCE(c.nome, 'Sem categoria') AS categoria_nome,
                 c.id AS categoria_id,
                 (SELECT ip.url FROM produtos p_var
                  JOIN imagens_produto ip ON p_var.id = ip.produto_id
@@ -174,11 +175,9 @@ def get_base_products():
                  LIMIT 1) AS imagem_representativa_url,
                 (SELECT MIN(COALESCE(p_var.preco_promocional, p_var.preco_venda)) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.ativo = TRUE) AS preco_minimo,
                 (SELECT MIN(p_var.preco_venda) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.ativo = TRUE) AS preco_minimo_original,
-                (SELECT MIN(p_var.preco_promocional) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.preco_promocional IS NOT NULL AND p_var.estoque > 0 AND p_var.ativo = TRUE) AS preco_promocional_minimo,
-                (SELECT COUNT(*) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.estoque > 0 AND p_var.ativo = TRUE) AS variacoes_em_estoque_count,
-                (SELECT COUNT(*) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.preco_promocional IS NOT NULL AND p_var.estoque > 0 AND p_var.ativo = TRUE) AS tem_promocao_count
+                (SELECT COUNT(*) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.estoque > 0 AND p_var.ativo = TRUE) AS variacoes_em_estoque_count
             FROM nome_produto np
-            JOIN categorias c ON np.categoria_id = c.id
+            LEFT JOIN categorias c ON np.categoria_id = c.id
             WHERE np.ativo = TRUE
         """
         
@@ -282,10 +281,12 @@ def get_base_products():
             variation_params.append(sexos)
         
         if preco_min is not None:
+            # Filtrar pelo menor preço (promocional ou venda)
             variation_conditions.append("COALESCE(p.preco_promocional, p.preco_venda) >= %s")
             variation_params.append(preco_min)
         
         if preco_max is not None:
+            # Filtrar pelo menor preço (promocional ou venda)
             variation_conditions.append("COALESCE(p.preco_promocional, p.preco_venda) <= %s")
             variation_params.append(preco_max)
         
@@ -320,29 +321,18 @@ def get_base_products():
         for prod in products_db:
             preco_minimo = float(prod[6]) if prod[6] is not None else None
             preco_minimo_original = float(prod[7]) if prod[7] is not None else None
-            preco_promocional_minimo = float(prod[8]) if prod[8] is not None else None
-            variacoes_em_estoque = prod[9] if prod[9] is not None else 0
-            tem_promocao_count = prod[10] if prod[10] is not None else 0
+            variacoes_em_estoque = prod[8] if prod[8] is not None else 0
             
-            # Só considerar como promoção se:
-            # 1. Existe pelo menos uma variação com preco_promocional
-            # 2. E o menor preço promocional é menor que o menor preço de venda
-            tem_promocao = False
-            preco_original_para_exibir = None
-            
-            if tem_promocao_count > 0 and preco_promocional_minimo is not None and preco_minimo_original is not None:
-                # Se o menor preço promocional é menor que o menor preço de venda, tem promoção
-                if preco_promocional_minimo < preco_minimo_original:
-                    tem_promocao = True
-                    preco_original_para_exibir = preco_minimo_original
-                    # O preco_minimo já considera promoções, então será o preço promocional
+            # Verificar se tem promoção (preço mínimo é menor que original)
+            tem_promocao = preco_minimo is not None and preco_minimo_original is not None and preco_minimo < preco_minimo_original
+            preco_original_para_exibir = preco_minimo_original if preco_minimo_original else preco_minimo
             
             base_products_list.append({
                 'id': prod[0],
                 'nome': prod[1],
                 'descricao': prod[2],
-                'categoria': prod[3],
-                'categoria_id': prod[4],
+                'categoria': prod[3] if prod[3] else 'Sem categoria',
+                'categoria_id': prod[4] if prod[4] else None,
                 'imagem_url': prod[5] if prod[5] else '/static/img/placeholder.jpg',
                 'preco_minimo': preco_minimo,
                 'preco_minimo_original': preco_original_para_exibir,

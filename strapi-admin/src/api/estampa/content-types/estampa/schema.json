@@ -30,23 +30,17 @@
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::categoria.categoria",
-      "inversedBy": "estampas"
+      "required": true
     },
     "tecido": {
       "type": "relation",
       "relation": "manyToOne",
-      "target": "api::tecido.tecido",
-      "inversedBy": "estampas"
+      "target": "api::tecido.tecido"
     },
     "sexo": {
       "type": "enumeration",
       "enum": ["m", "f", "u"],
       "default": "u"
-    },
-    "custo_por_metro": {
-      "type": "decimal",
-      "required": true,
-      "min": 0
     },
     "ativo": {
       "type": "boolean",
@@ -55,18 +49,6 @@
     "ordem_exibicao": {
       "type": "integer",
       "default": 0
-    },
-    "criado_por": {
-      "type": "integer"
-    },
-    "atualizado_por": {
-      "type": "integer"
-    },
-    "produtos": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::produto.produto",
-      "mappedBy": "estampa"
     }
   }
 }

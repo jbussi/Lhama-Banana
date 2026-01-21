@@ -1,0 +1,2 @@
+# BACKUP: Este arquivo contém as funções de sincronização reversa que foram removidas
+# Estas funções não devem ser usadas na arquitetura correta onde Strapi é fonte da verdade

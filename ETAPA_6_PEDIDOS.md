@@ -291,3 +291,4 @@ Após validar criação de pedidos:
 - **ETAPA 5 (Clientes)**: Cliente criado automaticamente
 - **ETAPA 7 (NF-e)**: CFOP será usado na emissão de nota fiscal
 
+

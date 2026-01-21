@@ -72,13 +72,12 @@ CREATE TABLE IF NOT EXISTS categorias (
   id SERIAL PRIMARY KEY,
   nome VARCHAR(50) UNIQUE NOT NULL,
   descricao TEXT,
+  tipo VARCHAR(20) DEFAULT 'produto' CHECK (tipo IN ('produto', 'estampa')), -- Tipo da categoria: produto ou estampa
   ordem_exibicao INTEGER DEFAULT 0, -- Para ordenar categorias no painel
   ativo BOOLEAN DEFAULT TRUE, -- Para ativar/desativar categorias
   imagem_url VARCHAR(2000), -- URL da imagem da categoria
   criado_em TIMESTAMP DEFAULT NOW(),
-  atualizado_em TIMESTAMP DEFAULT NOW(),
-  criado_por INTEGER, -- ID do usuário/admin que criou
-  atualizado_por INTEGER -- ID do usuário/admin que atualizou
+  atualizado_em TIMESTAMP DEFAULT NOW()
 );
 
 -- Tabela para gerenciar tipos de tecidos
@@ -172,7 +171,6 @@ CREATE TABLE IF NOT EXISTS nome_produto (
   descricao TEXT,
   descricao_curta VARCHAR(255), -- Para cards e listagens
   categoria_id INTEGER REFERENCES categorias(id) NOT NULL,
-  tags TEXT[], -- Array de tags para busca
   peso_kg DECIMAL(8, 3) DEFAULT 0, -- Peso padrão do produto
   dimensoes_largura DECIMAL(8, 2) DEFAULT 0, -- em cm
   dimensoes_altura DECIMAL(8, 2) DEFAULT 0, -- em cm
@@ -198,13 +196,10 @@ CREATE TABLE IF NOT EXISTS estampa (
   categoria_id INTEGER REFERENCES categorias(id) NOT NULL,
   tecido_id INTEGER REFERENCES tecidos(id),
   sexo CHAR(1) DEFAULT 'u' CHECK (sexo IN ('m', 'f', 'u')),
-  custo_por_metro DECIMAL(10, 2) NOT NULL,
   ativo BOOLEAN DEFAULT TRUE,
   ordem_exibicao INTEGER DEFAULT 0,
   criado_em TIMESTAMP DEFAULT NOW(),
-  atualizado_em TIMESTAMP DEFAULT NOW(),
-  criado_por INTEGER,
-  atualizado_por INTEGER
+  atualizado_em TIMESTAMP DEFAULT NOW()
 );
 
 -- Tabela para listar os tamanhos disponíveis
@@ -226,10 +221,9 @@ CREATE TABLE IF NOT EXISTS produtos (
   UNIQUE (nome_produto_id, estampa_id, tamanho_id),
   custo DECIMAL(10, 2) NOT NULL,
   preco_venda DECIMAL(10, 2) NOT NULL,
-  preco_promocional DECIMAL(10, 2), -- Preço em promoção
+  preco_promocional DECIMAL(10, 2), -- Preço promocional (gerenciado localmente, não enviado ao Bling)
   estoque INTEGER NOT NULL DEFAULT 0,
   estoque_minimo INTEGER DEFAULT 0, -- Alerta de estoque baixo
-  estoque_reservado INTEGER DEFAULT 0, -- Estoque reservado para pedidos pendentes
   codigo_sku VARCHAR(50) UNIQUE NOT NULL,
   codigo_barras VARCHAR(50), -- Código de barras (EAN)
   ncm VARCHAR(8), -- NCM (Nomenclatura Comum do Mercosul) para nota fiscal

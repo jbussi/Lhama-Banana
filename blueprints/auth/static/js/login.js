@@ -33,7 +33,7 @@ googleProvider.addScope('profile');
  * @param {Function} requestFn - Função que retorna uma Promise com a requisição fetch
  * @param {Object} user - Objeto do usuário Firebase para obter novo token
  * @param {number} maxRetries - Número máximo de tentativas (padrão: 1)
- * @returns {Promise<Response>} Resposta da requisição
+ * @returns {Promise<{response: Response, data: Object}>} Resposta e dados parseados
  */
 async function fetchWithClockSkewRetry(requestFn, user, maxRetries = 1) {
     let retryCount = 0;
@@ -42,21 +42,37 @@ async function fetchWithClockSkewRetry(requestFn, user, maxRetries = 1) {
         try {
             const response = await requestFn();
             
-            // Se sucesso, retornar resposta
+            // Clonar resposta antes de ler o JSON para evitar "body stream already read"
+            const responseClone = response.clone();
+            
+            // Tentar parsear JSON (pode falhar se não for JSON)
+            let data = {};
+            try {
+                data = await responseClone.json();
+            } catch (e) {
+                // Se não for JSON, usar objeto vazio
+                data = {};
+            }
+            
+            // Se sucesso, retornar resposta e dados
             if (response.ok) {
-                return response;
+                return { response, data };
             }
             
             // Verificar se é erro de clock skew
-            const data = await response.json().catch(() => ({}));
             if (data.clock_skew_error && retryCount < maxRetries) {
                 console.log(`[CLOCK_SKEW_RETRY] Erro de clock skew detectado (diferença: ${data.time_diff}s). Fazendo refresh de token e tentando novamente...`);
+                
+                // Aguardar um pouco mais para dar tempo ao servidor sincronizar
+                // O delay aumenta com a diferença de tempo detectada
+                const delay = Math.min((data.time_diff || 2) * 1000 + 1000, 10000); // Máximo 10s
+                await new Promise(resolve => setTimeout(resolve, delay));
                 
                 // Forçar refresh do token
                 const newToken = await user.getIdToken(true);
                 
-                // Aguardar um pouco para o token ficar válido
-                await new Promise(resolve => setTimeout(resolve, 500));
+                // Aguardar mais um pouco para o token ficar válido
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 
                 // Retry com novo token (a função requestFn deve usar o novo token)
                 retryCount++;
@@ -64,7 +80,7 @@ async function fetchWithClockSkewRetry(requestFn, user, maxRetries = 1) {
             }
             
             // Se não for clock skew ou já tentou todas as vezes, retornar resposta original
-            return response;
+            return { response, data };
         } catch (error) {
             // Se for erro de rede ou outro erro, retornar
             if (retryCount >= maxRetries) {
@@ -130,9 +146,9 @@ async function handleLogin(userCredential) {
         }
 
         // Enviar para backend com retry automático em caso de clock skew
-        let response;
+        let response, data;
         try {
-            response = await fetchWithClockSkewRetry(async () => {
+            const result = await fetchWithClockSkewRetry(async () => {
                 // Obter token atualizado a cada tentativa
                 const currentToken = await user.getIdToken(true);
                 return fetch("/api/auth/login", {
@@ -144,18 +160,13 @@ async function handleLogin(userCredential) {
                         id_token: currentToken
                     })
                 });
-            }, user, 1); // 1 retry adicional
+            }, user, 2); // 2 retries adicionais para clock skew grande
+            
+            response = result.response;
+            data = result.data;
         } catch (fetchError) {
             console.error("Erro na requisição:", fetchError);
             throw new Error("Erro ao comunicar com o servidor. Verifique sua conexão.");
-        }
-
-        let data;
-        try {
-            data = await response.json();
-        } catch (jsonError) {
-            console.error("Erro ao parsear resposta:", jsonError);
-            throw new Error("Resposta inválida do servidor. Tente novamente.");
         }
 
     if (!response.ok) {

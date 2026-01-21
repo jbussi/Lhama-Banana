@@ -211,3 +211,4 @@ Após validar integração de logística:
 - **ETAPA 9**: Financeiro (contas a receber, faturamento)
 - **ETAPA 10**: Dashboards e insights
 
+

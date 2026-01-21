@@ -335,3 +335,4 @@ Após validar dashboards:
    - Identificação de gargalos
    - Ajustes estratégicos
 
+

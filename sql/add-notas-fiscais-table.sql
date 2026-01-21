@@ -60,3 +60,4 @@ COMMENT ON COLUMN notas_fiscais.api_response IS 'Resposta completa da API de NFe
 
 
 
+

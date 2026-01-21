@@ -35,8 +35,8 @@ def verify_firebase_token(id_token: str, check_revoked: bool = False) -> Optiona
     Implementa retry inteligente para lidar com clock skew.
     
     Estratégia:
-    - Se clock skew < 2s: retry interno rápido (silencioso)
-    - Se clock skew >= 2s: levanta ClockSkewError para o frontend fazer refresh
+    - Se clock skew < 10s: retry interno com delay proporcional
+    - Se clock skew >= 10s: levanta ClockSkewError para o frontend fazer refresh
     
     Args:
         id_token: Token JWT do Firebase
@@ -46,12 +46,12 @@ def verify_firebase_token(id_token: str, check_revoked: bool = False) -> Optiona
         Dict com dados do token decodificado ou None se inválido
         
     Raises:
-        ClockSkewError: Se o clock skew for >= 2s (requer refresh de token no frontend)
+        ClockSkewError: Se o clock skew for >= 10s (requer refresh de token no frontend)
     """
     import time
     import re
     
-    max_retries = 2
+    max_retries = 5  # Aumentado para dar mais chances
     retry_count = 0
     
     while retry_count < max_retries:
@@ -82,17 +82,18 @@ def verify_firebase_token(id_token: str, check_revoked: bool = False) -> Optiona
                     time_diff = server_time - token_time
                     logger.info(f"[CLOCK_SKEW] Diferença detectada: {time_diff}s (token: {token_time}, server: {server_time})")
                 
-                # Se diferença < 2s: retry interno rápido (silencioso)
-                if time_diff is not None and time_diff < 2:
-                    wait_time = time_diff + 0.5  # Diferença + 0.5s de margem
+                # Se diferença < 10s: retry interno com delay proporcional
+                if time_diff is not None and time_diff < 10:
+                    # Delay proporcional: diferença + margem de segurança
+                    wait_time = time_diff + 1.0  # Margem aumentada para 1s
                     if retry_count < max_retries - 1:
-                        logger.debug(f"[RETRY {retry_count + 1}/{max_retries}] Clock skew pequeno ({time_diff}s). Aguardando {wait_time}s...")
+                        logger.info(f"[RETRY {retry_count + 1}/{max_retries}] Clock skew detectado ({time_diff}s). Aguardando {wait_time}s...")
                         time.sleep(wait_time)
                         retry_count += 1
                         continue
-                # Se diferença >= 2s: requer refresh de token no frontend
-                elif time_diff is not None and time_diff >= 2:
-                    logger.warning(f"[CLOCK_SKEW] Diferença grande ({time_diff}s). Requer refresh de token no frontend.")
+                # Se diferença >= 10s: requer refresh de token no frontend
+                elif time_diff is not None and time_diff >= 10:
+                    logger.warning(f"[CLOCK_SKEW] Diferença muito grande ({time_diff}s). Requer refresh de token no frontend.")
                     raise ClockSkewError(time_diff, f"Clock skew de {time_diff} segundos detectado. Token precisa ser atualizado.")
                 # Se não conseguiu extrair diferença mas é clock skew: retry curto
                 elif retry_count < max_retries - 1:
@@ -104,7 +105,7 @@ def verify_firebase_token(id_token: str, check_revoked: bool = False) -> Optiona
                 else:
                     # Última tentativa falhou - requer refresh
                     logger.warning("[CLOCK_SKEW] Retry interno falhou. Requer refresh de token.")
-                    raise ClockSkewError(2, "Clock skew detectado. Token precisa ser atualizado.")
+                    raise ClockSkewError(10, "Clock skew detectado. Token precisa ser atualizado.")
             else:
                 # Token inválido por outro motivo
                 logger.warning(f"Token Firebase inválido (não é clock skew): {e}")
@@ -138,17 +139,17 @@ def verify_firebase_token(id_token: str, check_revoked: bool = False) -> Optiona
                     server_time = int(time_match.group(2))
                     time_diff = server_time - token_time
                 
-                if time_diff is not None and time_diff < 2:
-                    wait_time = time_diff + 0.5
-                    logger.debug(f"[RETRY {retry_count + 1}/{max_retries}] Clock skew pequeno ({time_diff}s). Aguardando {wait_time}s...")
+                if time_diff is not None and time_diff < 10:
+                    wait_time = time_diff + 1.0
+                    logger.info(f"[RETRY {retry_count + 1}/{max_retries}] Clock skew detectado ({time_diff}s). Aguardando {wait_time}s...")
                     time.sleep(wait_time)
                     retry_count += 1
                     continue
-                elif time_diff is not None and time_diff >= 2:
+                elif time_diff is not None and time_diff >= 10:
                     raise ClockSkewError(time_diff, f"Clock skew de {time_diff} segundos detectado.")
                 else:
-                    wait_time = 0.5
-                    logger.debug(f"[RETRY {retry_count + 1}/{max_retries}] Clock skew detectado. Aguardando {wait_time}s...")
+                    wait_time = 2.0  # Delay padrão aumentado
+                    logger.info(f"[RETRY {retry_count + 1}/{max_retries}] Clock skew detectado (sem timestamp). Aguardando {wait_time}s...")
                     time.sleep(wait_time)
                     retry_count += 1
                     continue

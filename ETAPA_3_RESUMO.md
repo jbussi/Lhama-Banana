@@ -84,3 +84,4 @@ GET /api/bling/produtos/status/{produto_id}
 3. ✅ **SKU duplicado**: Verificação antes de criar (idempotência)
 4. ✅ **Situação obrigatória**: Mapeamento `ativo` → `situacao` implementado
 
+

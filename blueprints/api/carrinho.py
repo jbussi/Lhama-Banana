@@ -85,7 +85,9 @@ def add_to_cart():
         if not product_info:
             return jsonify({"erro": "Variação do produto não encontrada."}), 404
         # Usar preço promocional se existir, senão usar preço de venda
-        current_price = product_info[1] if product_info[1] is not None else product_info[0]
+        preco_venda = product_info[0]
+        preco_promocional = product_info[1]
+        current_price = preco_promocional if preco_promocional else preco_venda
         current_stock = product_info[2]
 
         cur.execute("SELECT id, quantidade FROM carrinho_itens WHERE carrinho_id = %s AND produto_id = %s", (cart_id, product_variation_id))

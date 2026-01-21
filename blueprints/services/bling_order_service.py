@@ -6,6 +6,7 @@ Este módulo implementa a sincronização de vendas do LhamaBanana para o Bling.
 """
 from flask import current_app
 from typing import Dict, Optional, List
+from datetime import datetime
 import time
 import json
 import psycopg2.extras
@@ -71,7 +72,7 @@ def get_order_for_bling_sync(venda_id: int) -> Optional[Dict]:
         if not venda:
             return None
         
-        # Buscar itens da venda
+        # Buscar itens da venda com preço normal do produto para calcular desconto
         cur.execute("""
             SELECT 
                 iv.id,
@@ -83,16 +84,38 @@ def get_order_for_bling_sync(venda_id: int) -> Optional[Dict]:
                 iv.sku_produto_snapshot,
                 -- Buscar referência Bling do produto
                 bp.bling_id as bling_produto_id,
-                bp.bling_codigo as bling_produto_codigo
+                bp.bling_codigo as bling_produto_codigo,
+                -- Buscar preço normal do produto para calcular desconto promocional
+                p.preco_venda as preco_venda_normal
             FROM itens_venda iv
             LEFT JOIN bling_produtos bp ON iv.produto_id = bp.produto_id
+            LEFT JOIN produtos p ON iv.produto_id = p.id
             WHERE iv.venda_id = %s
         """, (venda_id,))
         
         itens = cur.fetchall()
         
+        # Buscar dados de pagamento
+        cur.execute("""
+            SELECT 
+                id,
+                forma_pagamento_tipo,
+                bandeira_cartao,
+                parcelas,
+                valor_parcela,
+                valor_pago,
+                status_pagamento
+            FROM pagamentos
+            WHERE venda_id = %s
+            ORDER BY criado_em DESC
+            LIMIT 1
+        """, (venda_id,))
+        
+        pagamento = cur.fetchone()
+        
         venda_dict = dict(venda)
         venda_dict['itens'] = [dict(item) for item in itens]
+        venda_dict['pagamento'] = dict(pagamento) if pagamento else None
         
         return venda_dict
         
@@ -101,6 +124,59 @@ def get_order_for_bling_sync(venda_id: int) -> Optional[Dict]:
         return None
     finally:
         cur.close()
+
+
+def get_payment_method_id_from_bling(forma_pagamento_tipo: str) -> Optional[int]:
+    """
+    Busca ID da forma de pagamento no Bling baseado no tipo local
+    
+    Args:
+        forma_pagamento_tipo: Tipo de pagamento local (CREDIT_CARD, PIX, BOLETO)
+    
+    Returns:
+        ID da forma de pagamento no Bling ou None se não encontrado
+    """
+    try:
+        # Mapear tipo local para termos de busca no Bling
+        search_terms = {
+            'PIX': ['pix', 'pix instantâneo', 'pix instantaneo'],
+            'CREDIT_CARD': ['cartão', 'cartao', 'credito', 'crédito', 'cartão de crédito'],
+            'BOLETO': ['boleto', 'boleto bancário', 'boleto bancario']
+        }
+        
+        search_term = search_terms.get(forma_pagamento_tipo, [forma_pagamento_tipo.lower()])
+        
+        # Buscar formas de pagamento no Bling
+        response = make_bling_api_request(
+            'GET',
+            '/formas-pagamentos',
+            params={'limite': 100}
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            formas_pagamento = data.get('data', [])
+            
+            # Procurar forma de pagamento que corresponda ao tipo
+            for forma in formas_pagamento:
+                nome = forma.get('nome', '').lower()
+                codigo = forma.get('codigo', '').lower()
+                
+                for term in search_term:
+                    if term in nome or term in codigo:
+                        bling_id = forma.get('id')
+                        current_app.logger.info(f"✅ Forma de pagamento encontrada: {forma_pagamento_tipo} → Bling ID {bling_id} ({forma.get('nome')})")
+                        return bling_id
+            
+            current_app.logger.warning(f"⚠️ Forma de pagamento não encontrada no Bling: {forma_pagamento_tipo}")
+            return None
+        else:
+            current_app.logger.warning(f"⚠️ Erro ao buscar formas de pagamento no Bling: {response.status_code}")
+            return None
+            
+    except Exception as e:
+        current_app.logger.error(f"❌ Erro ao buscar forma de pagamento no Bling: {e}")
+        return None
 
 
 def calculate_cfop(estado_emitente: str, estado_destinatario: str, tipo_operacao: str = 'venda') -> str:
@@ -162,7 +238,8 @@ def map_order_to_bling_format(venda: Dict) -> Dict:
     telefone_cliente = venda.get('telefone_entrega') or ''
     
     # CPF/CNPJ
-    cpf_cnpj = venda.get('fiscal_cpf_cnpj', '').replace('.', '').replace('-', '').replace('/', '')
+    cpf_cnpj_raw = venda.get('fiscal_cpf_cnpj') or ''
+    cpf_cnpj = str(cpf_cnpj_raw).replace('.', '').replace('-', '').replace('/', '') if cpf_cnpj_raw else ''
     tipo_pessoa = 'J' if len(cpf_cnpj) == 14 else 'F'
     
     # Estado do cliente (destinatário)
@@ -192,6 +269,27 @@ def map_order_to_bling_format(venda: Dict) -> Dict:
     for item in venda.get('itens', []):
         bling_produto_id = item.get('bling_produto_id')
         
+        # Preço normal do produto (preco_venda) e preço efetivo vendido (preco_unitario)
+        preco_venda_normal = float(item.get('preco_venda_normal') or item.get('preco_unitario', 0))
+        preco_efetivo_vendido = float(item.get('preco_unitario', 0))
+        quantidade = int(item.get('quantidade', 1))
+        
+        # Calcular desconto promocional por item se houver
+        # Se preco_efetivo < preco_normal, significa que houve promoção
+        if preco_efetivo_vendido < preco_venda_normal:
+            desconto_por_unidade = preco_venda_normal - preco_efetivo_vendido
+            desconto_total_item = desconto_por_unidade * quantidade
+            current_app.logger.info(
+                f"💰 Desconto promocional detectado: Produto {item.get('nome_produto_snapshot')} - "
+                f"Preço normal: R$ {preco_venda_normal:.2f}, Preço vendido: R$ {preco_efetivo_vendido:.2f}, "
+                f"Desconto: R$ {desconto_total_item:.2f}"
+            )
+        else:
+            desconto_total_item = 0.0
+        
+        # Usar preço normal como valor base (Bling calculará o total com desconto)
+        valor_base_item = preco_venda_normal
+        
         if not bling_produto_id:
             current_app.logger.warning(
                 f"Item {item.get('nome_produto_snapshot')} não está sincronizado com Bling. "
@@ -201,22 +299,23 @@ def map_order_to_bling_format(venda: Dict) -> Dict:
             item_bling = {
                 "codigo": item.get('sku_produto_snapshot') or item.get('bling_produto_codigo'),
                 "descricao": item.get('nome_produto_snapshot', 'Produto'),
-                "quantidade": int(item.get('quantidade', 1)),
-                "valor": float(item.get('preco_unitario', 0)),
-                "desconto": 0
+                "quantidade": quantidade,
+                "valor": valor_base_item,  # Preço normal
+                "desconto": desconto_total_item,  # Desconto promocional
+                "unidade": "UN"  # Unidade de medida
             }
         else:
             item_bling = {
-                "idProduto": bling_produto_id,
+                "produto": {
+                    "id": bling_produto_id
+                },
                 "codigo": item.get('bling_produto_codigo') or item.get('sku_produto_snapshot'),
                 "descricao": item.get('nome_produto_snapshot', 'Produto'),
-                "quantidade": int(item.get('quantidade', 1)),
-                "valor": float(item.get('preco_unitario', 0)),
-                "desconto": 0
+                "quantidade": quantidade,
+                "valor": valor_base_item,  # Preço normal
+                "desconto": desconto_total_item,  # Desconto promocional
+                "unidade": "UN"  # Unidade de medida
             }
-        
-        # Adicionar CFOP a cada item (CFOP é atributo do item no pedido)
-        item_bling["cfop"] = cfop
         
         itens_bling.append(item_bling)
     
@@ -224,48 +323,133 @@ def map_order_to_bling_format(venda: Dict) -> Dict:
     status_local = venda.get('status_pedido', 'pendente_pagamento')
     situacao_bling = map_status_to_bling_situacao(status_local)
     
-    # Montar pedido no formato Bling
+    # Buscar ID do cliente no Bling
+    # O pedido deve referenciar o cliente pelo ID, não criar inline
+    bling_client_id = None
+    try:
+        from .bling_client_service import sync_client_for_order
+        client_result = sync_client_for_order(venda.get('id'))
+        if client_result.get('success'):
+            bling_client_id = client_result.get('bling_client_id')
+            current_app.logger.info(f"✅ Cliente sincronizado no Bling: ID {bling_client_id}")
+    except Exception as e:
+        current_app.logger.warning(f"⚠️ Erro ao sincronizar cliente: {e}")
+    
+    if not bling_client_id:
+        current_app.logger.error(f"❌ Cliente não encontrado/criado no Bling para venda {venda.get('id')}")
+        raise ValueError("Cliente não encontrado no Bling. É necessário sincronizar o cliente antes de criar o pedido.")
+    
+    # Preparar data da parcela
+    data_parcela = datetime.now().strftime('%Y-%m-%d')
+    if venda.get('data_venda'):
+        if hasattr(venda.get('data_venda'), 'strftime'):
+            data_parcela = venda.get('data_venda').strftime('%Y-%m-%d')
+        elif isinstance(venda.get('data_venda'), str):
+            data_parcela = venda.get('data_venda')[:10]  # Pegar apenas YYYY-MM-DD se for string
+    
+    current_app.logger.info(f"📅 Data da parcela: {data_parcela}")
+    
+    # Preparar parcelas com informações de pagamento
+    pagamento = venda.get('pagamento')
+    parcelas_bling = []
+    
+    if pagamento:
+        forma_pagamento_tipo = pagamento.get('forma_pagamento_tipo')
+        num_parcelas = pagamento.get('parcelas', 1)
+        valor_total = float(venda.get('valor_total', 0))
+        valor_parcela = float(pagamento.get('valor_parcela', 0) or (valor_total / num_parcelas))
+        
+        # Buscar ID da forma de pagamento no Bling
+        forma_pagamento_id = get_payment_method_id_from_bling(forma_pagamento_tipo)
+        
+        # Criar parcelas baseadas no pagamento
+        if num_parcelas > 1:
+            # Cartão parcelado: criar múltiplas parcelas
+            from datetime import timedelta
+            base_date = venda.get('data_venda') if venda.get('data_venda') else datetime.now()
+            if isinstance(base_date, str):
+                try:
+                    base_date = datetime.strptime(base_date[:10], '%Y-%m-%d')
+                except:
+                    base_date = datetime.now()
+            elif hasattr(base_date, 'date'):
+                base_date = base_date.date()
+                base_date = datetime.combine(base_date, datetime.min.time())
+            
+            for i in range(num_parcelas):
+                vencimento = base_date + timedelta(days=30 * i)
+                if isinstance(vencimento, datetime):
+                    vencimento_str = vencimento.strftime('%Y-%m-%d')
+                elif hasattr(vencimento, 'strftime'):
+                    vencimento_str = vencimento.strftime('%Y-%m-%d')
+                else:
+                    vencimento_str = data_parcela
+                
+                # Última parcela pode ter valor diferente por arredondamento
+                valor_parcela_final = valor_parcela if i < num_parcelas - 1 else (valor_total - (valor_parcela * (num_parcelas - 1)))
+                
+                parcela = {
+                    "dataVencimento": vencimento_str,
+                    "valor": valor_parcela_final,
+                    "observacoes": f"Parcela {i + 1}/{num_parcelas} - {forma_pagamento_tipo}"
+                }
+                
+                if forma_pagamento_id:
+                    parcela["formaPagamento"] = {"id": forma_pagamento_id}
+                
+                parcelas_bling.append(parcela)
+                
+            current_app.logger.info(f"💰 Criando {num_parcelas} parcelas de R$ {valor_parcela:.2f} cada")
+        else:
+            # Pagamento à vista: uma parcela
+            parcela = {
+                "dataVencimento": data_parcela,
+                "valor": valor_total,
+                "observacoes": f"Pagamento {forma_pagamento_tipo}"
+            }
+            
+            if forma_pagamento_id:
+                parcela["formaPagamento"] = {"id": forma_pagamento_id}
+            
+            parcelas_bling.append(parcela)
+            current_app.logger.info(f"💰 Criando 1 parcela de R$ {valor_total:.2f} ({forma_pagamento_tipo})")
+    else:
+        # Sem informações de pagamento: criar parcela padrão
+        parcela = {
+            "dataVencimento": data_parcela,
+            "valor": float(venda.get('valor_total', 0)),
+            "observacoes": ""
+        }
+        parcelas_bling.append(parcela)
+        current_app.logger.warning(f"⚠️ Sem informações de pagamento - criando parcela padrão")
+    
+    # Montar pedido no formato Bling (API v3)
     pedido_bling = {
-        "cliente": {
-            "nome": nome_cliente,
+        "data": data_parcela,  # Data do pedido (obrigatório)
+        "contato": {
+            "id": bling_client_id,
             "tipoPessoa": tipo_pessoa,
-            "cpf_cnpj": cpf_cnpj,
-            "ie": venda.get('fiscal_inscricao_estadual') or "",
-            "endereco": endereco,
-            "numero": venda.get('numero_entrega', ''),
-            "complemento": venda.get('complemento_entrega', ''),
-            "bairro": venda.get('bairro_entrega', ''),
-            "cidade": venda.get('cidade_entrega', ''),
-            "uf": venda.get('estado_entrega', ''),
-            "cep": venda.get('cep_entrega', '').replace('-', ''),
-            "email": email_cliente,
-            "celular": telefone_cliente
+            "numeroDocumento": cpf_cnpj
         },
         "itens": itens_bling,
-        "parcelas": [
-            {
-                "dias": 0,  # Pagamento à vista
-                "data": venda.get('data_venda').strftime('%Y-%m-%d') if venda.get('data_venda') else None,
-                "valor": float(venda.get('valor_total', 0)),
-                "observacoes": ""
-            }
-        ],
-        "situacao": situacao_bling,
+        "parcelas": parcelas_bling,
         "observacoes": f"Pedido originado do site LhamaBanana. Código: {venda.get('codigo_pedido')}"
     }
     
     # Adicionar desconto se houver
     desconto = float(venda.get('valor_desconto', 0))
     if desconto > 0:
-        pedido_bling["desconto"] = desconto
-        pedido_bling["descontoUnidade"] = "REAL"
+        pedido_bling["desconto"] = {
+            "valor": desconto,
+            "unidade": "REAL"
+        }
     
     # Adicionar frete
     frete = float(venda.get('valor_frete', 0))
     if frete > 0:
         pedido_bling["transporte"] = {
             "frete": frete,
-            "fretePorConta": "E"  # Emitente (loja)
+            "fretePorConta": 0  # 0 = Emitente (loja)
         }
     
     return pedido_bling
@@ -332,11 +516,24 @@ def sync_order_to_bling(venda_id: int) -> Dict:
         client_result = sync_client_for_order(venda_id)
         
         if not client_result.get('success'):
-            current_app.logger.warning(
-                f"⚠️ Falha ao sincronizar cliente para venda {venda_id}: {client_result.get('error')}. "
-                f"Tentando criar pedido mesmo assim..."
+            error_msg = client_result.get('error', 'Erro desconhecido')
+            error_details = client_result.get('details', {})
+            
+            current_app.logger.error(
+                f"❌ Falha ao sincronizar cliente para venda {venda_id}: {error_msg}"
             )
-            # Não bloquear criação do pedido se falhar cliente, mas logar aviso
+            if error_details:
+                current_app.logger.error(f"Detalhes do erro do cliente: {json.dumps(error_details, indent=2, ensure_ascii=False)}")
+            
+            # Bloquear criação do pedido se o cliente não foi criado
+            # O Bling requer que o cliente exista antes de criar o pedido
+            return {
+                'success': False,
+                'error': f'Cliente não pôde ser sincronizado no Bling',
+                'client_error': error_msg,
+                'client_error_details': error_details,
+                'message': 'Não é possível criar pedido no Bling sem cliente válido. Verifique os dados fiscais do cliente.'
+            }
         
         # 2. Buscar venda do banco
         venda = get_order_for_bling_sync(venda_id)
@@ -413,21 +610,47 @@ def sync_order_to_bling(venda_id: int) -> Dict:
             }
         else:
             error_msg = response.text
+            error_data = {}
+            
+            # Tentar extrair detalhes do erro JSON
+            try:
+                error_json = response.json()
+                error_data = error_json
+                
+                # Extrair mensagens de erro mais específicas
+                if 'error' in error_json:
+                    error_msg = error_json['error']
+                elif 'message' in error_json:
+                    error_msg = error_json['message']
+                elif 'errors' in error_json:
+                    # Bling pode retornar lista de erros
+                    errors = error_json['errors']
+                    if isinstance(errors, list) and len(errors) > 0:
+                        error_msg = '; '.join([str(e) for e in errors])
+                        error_data['validation_errors'] = errors
+            except:
+                pass  # Manter error_msg original se não for JSON
+            
             current_app.logger.error(
                 f"❌ Erro ao sincronizar pedido {venda_id}: {response.status_code} - {error_msg}"
             )
+            current_app.logger.error(f"Detalhes completos do erro: {json.dumps(error_data, indent=2, ensure_ascii=False)}")
+            current_app.logger.error(f"Response text completo: {response.text[:1000]}")
             
             # Registrar log de erro
             from .bling_product_service import log_sync
             log_sync('pedido', venda_id, action, {
                 'status': 'error',
-                'error': f'HTTP {response.status_code}: {error_msg}'
+                'error': f'HTTP {response.status_code}: {error_msg}',
+                'error_details': error_data,
+                'response_text': response.text[:500]
             })
             
             return {
                 'success': False,
                 'error': f'Erro HTTP {response.status_code}',
-                'details': error_msg
+                'message': error_msg,
+                'details': error_data if error_data else error_msg
             }
             
     except Exception as e:
@@ -646,6 +869,212 @@ def sync_all_orders_status() -> Dict:
         
     except Exception as e:
         current_app.logger.error(f"Erro ao sincronizar status dos pedidos: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'total': 0,
+            'results': []
+        }
+    finally:
+        cur.close()
+
+
+def approve_order_in_bling(venda_id: int) -> Dict:
+    """
+    Aprova pedido no Bling mudando situação para 'E' (Em aberto)
+    
+    Esta função permite que a loja aprove manualmente um pedido que foi pago
+    e precisa de aprovação antes de processar/envio.
+    
+    Args:
+        venda_id: ID da venda local
+    
+    Returns:
+        Dict com resultado da aprovação
+    """
+    try:
+        # Buscar referência do pedido no Bling
+        bling_order = get_bling_order_by_local_id(venda_id)
+        
+        if not bling_order:
+            return {
+                'success': False,
+                'error': 'Pedido não sincronizado com Bling. Sincronize o pedido primeiro.'
+            }
+        
+        bling_pedido_id = bling_order['bling_pedido_id']
+        
+        # Buscar pedido atual no Bling
+        response = make_bling_api_request('GET', f'/pedidos/vendas/{bling_pedido_id}')
+        
+        if response.status_code != 200:
+            return {
+                'success': False,
+                'error': f'Erro ao buscar pedido no Bling: HTTP {response.status_code}'
+            }
+        
+        data = response.json()
+        pedido_bling = data.get('data', {})
+        
+        # Verificar situação atual
+        situacao_atual = pedido_bling.get('situacao', 'P')
+        
+        if situacao_atual == 'E':
+            # Já está aprovado
+            return {
+                'success': True,
+                'message': 'Pedido já está aprovado no Bling',
+                'situacao': 'E',
+                'bling_pedido_id': bling_pedido_id
+            }
+        
+        if situacao_atual == 'B' or situacao_atual == 'F':
+            return {
+                'success': False,
+                'error': f'Não é possível aprovar pedido na situação atual: {situacao_atual}'
+            }
+        
+        # Atualizar pedido para situação 'E' (Em aberto = Aprovado)
+        # Precisamos enviar o pedido completo, apenas mudando a situação
+        pedido_atualizado = {
+            **pedido_bling,
+            'situacao': 'E'  # Em aberto = Aprovado
+        }
+        
+        # Remover campos que não devem ser enviados no PUT
+        campos_para_remover = ['id', 'numero', 'numeroLoja', 'data', 'dataSaida', 'dataPrevista']
+        for campo in campos_para_remover:
+            pedido_atualizado.pop(campo, None)
+        
+        response = make_bling_api_request(
+            'PUT',
+            f'/pedidos/vendas/{bling_pedido_id}',
+            json=pedido_atualizado
+        )
+        
+        if response.status_code in [200, 201]:
+            # Atualizar status local para refletir aprovação
+            conn = get_db()
+            cur = conn.cursor()
+            
+            try:
+                cur.execute("""
+                    UPDATE vendas 
+                    SET status_pedido = 'processando_envio',
+                        updated_at = NOW()
+                    WHERE id = %s
+                """, (venda_id,))
+                conn.commit()
+                
+                current_app.logger.info(
+                    f"✅ Pedido {venda_id} aprovado no Bling (ID: {bling_pedido_id})"
+                )
+                
+                return {
+                    'success': True,
+                    'message': 'Pedido aprovado com sucesso no Bling',
+                    'bling_pedido_id': bling_pedido_id,
+                    'situacao_anterior': situacao_atual,
+                    'situacao_nova': 'E',
+                    'status_local_atualizado': 'processando_envio'
+                }
+            finally:
+                cur.close()
+        else:
+            error_text = response.text
+            current_app.logger.error(
+                f"❌ Erro ao aprovar pedido {venda_id} no Bling: {response.status_code} - {error_text}"
+            )
+            
+            return {
+                'success': False,
+                'error': f'Erro HTTP {response.status_code}',
+                'details': error_text
+            }
+            
+    except Exception as e:
+        current_app.logger.error(f"Erro ao aprovar pedido {venda_id}: {e}", exc_info=True)
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def sync_all_orders_to_bling(only_pending: bool = False) -> Dict:
+    """
+    Sincroniza todos os pedidos para o Bling
+    
+    Args:
+        only_pending: Se True, sincroniza apenas pedidos que ainda não foram sincronizados
+    
+    Returns:
+        Dict com resultado da sincronização
+    """
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
+    try:
+        if only_pending:
+            # Buscar apenas pedidos que não foram sincronizados
+            cur.execute("""
+                SELECT v.id
+                FROM vendas v
+                LEFT JOIN bling_pedidos bp ON v.id = bp.venda_id
+                WHERE bp.venda_id IS NULL
+                ORDER BY v.id DESC
+            """)
+        else:
+            # Buscar todos os pedidos
+            cur.execute("""
+                SELECT v.id
+                FROM vendas v
+                ORDER BY v.id DESC
+            """)
+        
+        venda_ids = [row['id'] for row in cur.fetchall()]
+        results = []
+        
+        current_app.logger.info(f"Iniciando sincronização de {len(venda_ids)} pedidos para o Bling...")
+        
+        for venda_id in venda_ids:
+            try:
+                result = sync_order_to_bling(venda_id)
+                results.append({
+                    'venda_id': venda_id,
+                    'success': result.get('success'),
+                    'bling_pedido_id': result.get('bling_pedido_id'),
+                    'action': result.get('action'),
+                    'error': result.get('error'),
+                    'message': result.get('message')
+                })
+                
+                # Rate limiting - aguardar 0.5s entre requisições
+                time.sleep(0.5)
+                
+            except Exception as e:
+                current_app.logger.error(f"Erro ao sincronizar pedido {venda_id}: {e}")
+                results.append({
+                    'venda_id': venda_id,
+                    'success': False,
+                    'error': str(e)
+                })
+        
+        success_count = sum(1 for r in results if r.get('success'))
+        error_count = len(results) - success_count
+        
+        current_app.logger.info(
+            f"✅ Sincronização concluída: {success_count} sucessos, {error_count} erros de {len(venda_ids)} pedidos"
+        )
+        
+        return {
+            'total': len(venda_ids),
+            'success': success_count,
+            'errors': error_count,
+            'results': results
+        }
+        
+    except Exception as e:
+        current_app.logger.error(f"Erro ao sincronizar pedidos: {e}", exc_info=True)
         return {
             'success': False,
             'error': str(e),

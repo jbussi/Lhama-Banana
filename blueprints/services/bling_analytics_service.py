@@ -458,3 +458,4 @@ def get_local_vs_bling_comparison(start_date: str = None, end_date: str = None) 
             'error': str(e)
         }
 
+

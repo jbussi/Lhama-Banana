@@ -15,20 +15,17 @@
     "nome_produto": {
       "type": "relation",
       "relation": "manyToOne",
-      "target": "api::nome-produto.nome-produto",
-      "inversedBy": "produtos"
+      "target": "api::nome-produto.nome-produto"
     },
     "estampa": {
       "type": "relation",
       "relation": "manyToOne",
-      "target": "api::estampa.estampa",
-      "inversedBy": "produtos"
+      "target": "api::estampa.estampa"
     },
     "tamanho": {
       "type": "relation",
       "relation": "manyToOne",
-      "target": "api::tamanho.tamanho",
-      "inversedBy": "produtos"
+      "target": "api::tamanho.tamanho"
     },
     "custo": {
       "type": "decimal",

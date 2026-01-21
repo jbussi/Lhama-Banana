@@ -1,4 +1,4 @@
-/* Página 404 - Estilo consistente com o site */
+/* Página 404 - Estilo personalizado com mascote */
 
 .error-404-container {
     min-height: calc(100vh - 200px);
@@ -11,46 +11,50 @@
 
 .error-404-content {
     text-align: center;
-    max-width: 600px;
+    max-width: 700px;
     width: 100%;
     animation: fadeInUp 0.6s ease-out;
 }
 
-.error-404-icon {
-    position: relative;
-    margin-bottom: 30px;
+.error-404-mascot {
+    margin-bottom: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-direction: column;
 }
 
-.error-404-logo {
-    width: 150px;
-    height: 150px;
-    margin-bottom: 20px;
-    animation: float 3s ease-in-out infinite;
+.mascot-image {
+    width: 500px;
+    height: auto;
+    max-width: 100%;
     filter: drop-shadow(0 4px 12px rgba(64, 224, 208, 0.2));
 }
 
-.error-code {
-    font-size: 6rem;
-    font-weight: 900;
-    color: var(--cor-principal-turquesa, #40e0d0);
-    font-family: 'Fredoka', sans-serif;
-    text-shadow: 0 4px 12px rgba(64, 224, 208, 0.3);
-    line-height: 1;
-}
-
 .error-404-title {
-    font-size: 2.5rem;
+    font-size: 2.2rem;
     color: var(--cor-texto-preto, #000);
     margin-bottom: 20px;
     font-family: 'Fredoka', sans-serif;
     font-weight: 700;
+    line-height: 1.3;
+}
+
+.error-404-subtitle {
+    font-size: 1.5rem;
+    color: var(--cor-texto-preto, #000);
+    margin-bottom: 25px;
+    font-family: 'Fredoka', sans-serif;
+    font-weight: 600;
 }
 
 .error-404-message {
+    font-size: 1.15rem;
+    color: var(--cor-texto-cinza, #666);
+    line-height: 1.8;
+    margin-bottom: 20px;
+}
+
+.error-404-suggestion {
     font-size: 1.1rem;
     color: var(--cor-texto-cinza, #666);
     line-height: 1.8;
@@ -62,98 +66,30 @@
     gap: 20px;
     justify-content: center;
     flex-wrap: wrap;
-    margin-bottom: 50px;
-}
-
-.error-404-actions .btn-primary,
-.error-404-actions .btn-secondary {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 28px;
-    font-size: 1rem;
-    font-weight: 600;
-    text-decoration: none;
-    border-radius: 8px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-top: 30px;
 }
 
 .error-404-actions .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 32px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 12px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     background: linear-gradient(135deg, var(--cor-principal-turquesa, #40e0d0), #36d1c4);
     color: white;
     box-shadow: 0 4px 12px rgba(64, 224, 208, 0.3);
+    border: none;
+    cursor: pointer;
 }
 
 .error-404-actions .btn-primary:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(64, 224, 208, 0.4);
-}
-
-.error-404-actions .btn-secondary {
-    background: white;
-    color: var(--cor-principal-turquesa, #40e0d0);
-    border: 2px solid var(--cor-principal-turquesa, #40e0d0);
-}
-
-.error-404-actions .btn-secondary:hover {
-    background: var(--cor-principal-turquesa, #40e0d0);
-    color: white;
-    transform: translateY(-2px);
-}
-
-.error-404-suggestions {
-    margin-top: 40px;
-    padding-top: 40px;
-    border-top: 2px solid #f0f0f0;
-}
-
-.error-404-suggestions p {
-    color: var(--cor-texto-cinza, #666);
-    font-size: 1rem;
-    margin-bottom: 15px;
-}
-
-.error-404-suggestions ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    gap: 30px;
-    justify-content: center;
-    flex-wrap: wrap;
-}
-
-.error-404-suggestions ul li {
-    margin: 0;
-}
-
-.error-404-suggestions ul li a {
-    color: var(--cor-principal-turquesa, #40e0d0);
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 1rem;
-    transition: all 0.3s ease;
-    position: relative;
-    padding-bottom: 5px;
-}
-
-.error-404-suggestions ul li a::after {
-    content: '';
-    position: absolute;
-    width: 0;
-    height: 2px;
-    bottom: 0;
-    left: 0;
-    background-color: var(--cor-principal-turquesa, #40e0d0);
-    transition: width 0.3s ease;
-}
-
-.error-404-suggestions ul li a:hover::after {
-    width: 100%;
-}
-
-.error-404-suggestions ul li a:hover {
-    color: #36d1c4;
+    background: linear-gradient(135deg, #36d1c4, #2eb8a8);
 }
 
 @keyframes float {
@@ -182,20 +118,23 @@
         padding: 30px 15px;
     }
 
-    .error-404-logo {
-        width: 120px;
-        height: 120px;
-    }
-
-    .error-code {
-        font-size: 4.5rem;
+    .mascot-image {
+        width: 300px;
     }
 
     .error-404-title {
-        font-size: 2rem;
+        font-size: 1.8rem;
+    }
+
+    .error-404-subtitle {
+        font-size: 1.3rem;
     }
 
     .error-404-message {
+        font-size: 1rem;
+    }
+
+    .error-404-suggestion {
         font-size: 1rem;
     }
 
@@ -204,30 +143,28 @@
         align-items: stretch;
     }
 
-    .error-404-actions .btn-primary,
-    .error-404-actions .btn-secondary {
+    .error-404-actions .btn-primary {
         width: 100%;
         justify-content: center;
-    }
-
-    .error-404-suggestions ul {
-        flex-direction: column;
-        gap: 15px;
     }
 }
 
 @media (max-width: 480px) {
-    .error-404-logo {
-        width: 100px;
-        height: 100px;
-    }
-
-    .error-code {
-        font-size: 3.5rem;
+    .mascot-image {
+        width: 350px;
     }
 
     .error-404-title {
-        font-size: 1.75rem;
+        font-size: 1.5rem;
+    }
+
+    .error-404-subtitle {
+        font-size: 1.1rem;
+    }
+
+    .error-404-message,
+    .error-404-suggestion {
+        font-size: 0.95rem;
     }
 }
 

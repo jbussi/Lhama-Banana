@@ -6,7 +6,7 @@ Este arquivo contém todas as configurações do sistema.
 As configurações podem ser sobrescritas via variáveis de ambiente no arquivo .env
 
 Ambientes suportados:
-- development: Desenvolvimento local
+- development: Desenvolvimento locala
 - production: Produção
 - testing: Testes
 """
@@ -95,6 +95,8 @@ class Config:
     BLING_REDIRECT_URI = os.environ.get('BLING_REDIRECT_URI', '')
     # URL base para webhooks e callbacks (usado com ngrok em desenvolvimento)
     NGROK_URL = os.environ.get('NGROK_URL', 'https://efractory-burdenless-kathlene.ngrok-free.dev')
+    # URL do webhook do Bling (para receber notificações de estoque, produtos, etc.)
+    BLING_WEBHOOK_URL = os.environ.get('BLING_WEBHOOK_URL', f'{NGROK_URL}/api/webhook/bling')
     
     # Estado da loja (emitente) para cálculo de CFOP
     # Use a UF do estado onde sua loja está registrada (ex: 'SP', 'RJ', 'MG')

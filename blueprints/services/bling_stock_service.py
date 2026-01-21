@@ -394,3 +394,4 @@ def ensure_stock_consistency(produto_id: Optional[int] = None) -> Dict:
     
     return result
 
+

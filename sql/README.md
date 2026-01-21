@@ -61,6 +61,30 @@ docker compose exec -T postgres psql -U postgres -d sistema_usuarios < sql/tabel
 
 ---
 
+### `limpar-registros-orfaos.sql`
+**Propósito**: Limpar registros órfãos que aparecem no admin do Strapi mas não existem no banco de dados.
+
+**Quando usar**: 
+- Quando você vê registros no admin do Strapi que não podem ser deletados
+- Erro: "You're trying to delete a document without an id"
+- Registros específicos: categorias 31, 32 e nome_produto 9
+
+**Como executar**:
+```bash
+# Windows PowerShell
+docker compose exec -T postgres psql -U postgres -d sistema_usuarios < sql/limpar-registros-orfaos.sql
+
+# Linux/Mac
+docker compose exec -T postgres psql -U postgres -d sistema_usuarios < sql/limpar-registros-orfaos.sql
+```
+
+**⚠️ Importante**: 
+- Este script limpa referências e deleta os registros se existirem
+- Execute apenas se tiver certeza de que esses registros não devem existir
+- Após executar, limpe o cache do Strapi (veja scripts abaixo)
+
+---
+
 ## ⚠️ Importante
 
 - **Sempre faça backup** antes de executar scripts de migração

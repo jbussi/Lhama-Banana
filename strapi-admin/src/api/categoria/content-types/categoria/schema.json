@@ -21,6 +21,12 @@
     "descricao": {
       "type": "text"
     },
+    "tipo": {
+      "type": "enumeration",
+      "enum": ["produto", "estampa"],
+      "default": "produto",
+      "required": true
+    },
     "ordem_exibicao": {
       "type": "integer",
       "default": 0
@@ -32,24 +38,6 @@
     "imagem_url": {
       "type": "string",
       "maxLength": 2000
-    },
-    "criado_por": {
-      "type": "integer"
-    },
-    "atualizado_por": {
-      "type": "integer"
-    },
-    "nome_produtos": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::nome-produto.nome-produto",
-      "mappedBy": "categoria"
-    },
-    "estampas": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::estampa.estampa",
-      "mappedBy": "categoria"
     }
   }
 }

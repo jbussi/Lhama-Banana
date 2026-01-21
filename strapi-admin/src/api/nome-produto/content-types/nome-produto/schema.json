@@ -28,8 +28,7 @@
     "categoria": {
       "type": "relation",
       "relation": "manyToOne",
-      "target": "api::categoria.categoria",
-      "inversedBy": "nome_produtos"
+      "target": "api::categoria.categoria"
     },
     "peso_kg": {
       "type": "decimal",
@@ -74,18 +73,6 @@
       "type": "string",
       "unique": true,
       "maxLength": 255
-    },
-    "criado_por": {
-      "type": "integer"
-    },
-    "atualizado_por": {
-      "type": "integer"
-    },
-    "produtos": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::produto.produto",
-      "mappedBy": "nome_produto"
     }
   }
 }

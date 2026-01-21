@@ -232,3 +232,4 @@ Após validar sincronização de produtos:
 - **ETAPA 6**: Pedidos (com CFOP no momento da criação)
 - **ETAPA 7**: NF-e (com CFOP baseado na natureza da operação)
 
+
