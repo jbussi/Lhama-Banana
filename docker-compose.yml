@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # =====================================================
   # PostgreSQL Database
@@ -13,9 +11,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-far111111}
       POSTGRES_DB: ${DB_NAME:-sistema_usuarios}
       PGDATA: /var/lib/postgresql/data/pgdata
-    # Porta exposta para acesso local (desenvolvimento)
-    ports:
-      - "${DB_PORT:-5432}:5432"
+    # Porta NÃO exposta em produção (acesso apenas via rede Docker)
+    # ports:
+    #   - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
@@ -48,7 +46,7 @@ services:
       # Flask
       FLASK_ENV: ${FLASK_ENV:-production}
       FLASK_DEBUG: ${FLASK_DEBUG:-0}
-      SECRET_KEY: ${SECRET_KEY:-asdf#FGSgvasgf$5$WGT}
+      SECRET_KEY: ${SECRET_KEY}
       
       # Gunicorn
       USE_GUNICORN: ${USE_GUNICORN:-true}
@@ -68,7 +66,7 @@ services:
       # PagBank
       PAGBANK_API_TOKEN: ${PAGBANK_API_TOKEN:-}
       PAGBANK_ENVIRONMENT: ${PAGBANK_ENVIRONMENT:-sandbox}
-      PAGBANK_NOTIFICATION_URL: ${PAGBANK_NOTIFICATION_URL:-https://efractory-burdenless-kathlene.ngrok-free.dev/api/webhook/pagbank}
+      PAGBANK_NOTIFICATION_URL: ${PAGBANK_NOTIFICATION_URL}
       PAGBANK_SIMULATION_MODE: ${PAGBANK_SIMULATION_MODE:-true}
       
       # Melhor Envio
@@ -76,13 +74,13 @@ services:
       MELHOR_ENVIO_CEP_ORIGEM: ${MELHOR_ENVIO_CEP_ORIGEM:-13219-052}
       
       # Admin
-      ADMIN_EMAILS: ${ADMIN_EMAILS:-joao.paulo.bussi1@gmail.com}
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
       
       # Bling
       BLING_CLIENT_ID: ${BLING_CLIENT_ID:-}
       BLING_CLIENT_SECRET: ${BLING_CLIENT_SECRET:-}
       BLING_REDIRECT_URI: ${BLING_REDIRECT_URI:-}
-      NGROK_URL: ${NGROK_URL:-https://efractory-burdenless-kathlene.ngrok-free.dev}
+      NGROK_URL: ${NGROK_URL}
       BLING_WEBHOOK_URL: ${BLING_WEBHOOK_URL:-}
       
       # Strapi
@@ -92,7 +90,8 @@ services:
     # ports:
     #   - "${FLASK_PORT:-5000}:5000"
     volumes:
-      - .:/app
+      # Código já está copiado no Dockerfile - não precisa de bind mount em produção
+      # - .:/app  # Removido para produção (melhor performance e segurança)
       - flask_logs:/app/logs
       # Montar key.json da raiz do workspace
       # IMPORTANTE: Se houver um diretório key.json em Lhama-Banana/, remova-o primeiro
@@ -152,7 +151,7 @@ services:
       - lhama_banana_network
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
     environment:
-      - CERTBOT_EMAIL=${CERTBOT_EMAIL:-joao.paulo.bussi1@gmail.com}
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL}
       - CERTBOT_DOMAIN=${CERTBOT_DOMAIN:-}
 
   # =====================================================
@@ -193,9 +192,9 @@ services:
       FLAG_PROMOTE_EE: ${FLAG_PROMOTE_EE:-false}
       FLAG_PROMOTE_TRIAL: ${FLAG_PROMOTE_TRIAL:-false}
       FLAG_SHOW_TRIAL: ${FLAG_SHOW_TRIAL:-false}
-    # Porta exposta para acesso local (desenvolvimento)
-    ports:
-      - "${STRAPI_PORT:-1337}:1337"
+    # Porta NÃO exposta em produção (acesso apenas via NGINX proxy)
+    # ports:
+    #   - "${STRAPI_PORT:-1337}:1337"
     volumes:
       - strapi_data:/app/.tmp
       - strapi_uploads:/app/public/uploads
@@ -218,11 +217,8 @@ services:
 # =====================================================
 volumes:
   postgres_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./db/docker/postgres/data
+    # Volume nomeado - Docker gerencia automaticamente
+    # Dados ficam em: /var/lib/docker/volumes/lhama-banana_postgres_data/_data
   flask_logs:
     driver: local
   nginx_logs:
