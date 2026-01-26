@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('main.static', filename='css/politica-privacidade.css') }}">
+{% endblock %}
+
+{% block title %}Todos os Direitos Reservados - LhamaBanana™{% endblock %}
+
+{% block content %}
+
+<div class="container politica-container">
+    <h1 class="page-title">{{ direitos.titulo if direitos and direitos.titulo else 'Todos os Direitos Reservados' }}</h1>
+    
+    {% if direitos and direitos.ultima_atualizacao %}
+    <p class="ultima-atualizacao">
+        <i class="fas fa-calendar-alt"></i>
+        Última atualização: {{ direitos.ultima_atualizacao.strftime('%d/%m/%Y') if direitos.ultima_atualizacao else '' }}
+    </p>
+    {% endif %}
+    
+    {% if direitos and direitos.conteudo %}
+    <div class="introducao">
+        {{ direitos.conteudo|replace('\n', '<br>')|safe }}
+    </div>
+    {% endif %}
+    
+    {% if direitos and direitos.secoes %}
+    <div class="secoes">
+        {% for secao in direitos.secoes %}
+        <section class="secao">
+            <h2>{{ secao.titulo }}</h2>
+            <div class="secao-conteudo">
+                {{ secao.conteudo|replace('\n', '<br>')|safe }}
+            </div>
+        </section>
+        {% endfor %}
+    </div>
+    {% else %}
+    <!-- Conteúdo padrão caso não haja dados -->
+    <div class="secoes">
+        <section class="secao">
+            <h2>1. Propriedade Intelectual</h2>
+            <div class="secao-conteudo">
+                <p>Todo o conteúdo deste site é propriedade da LhamaBanana™ e está protegido pelas leis de direitos autorais.</p>
+            </div>
+        </section>
+    </div>
+    {% endif %}
+    
+    <div class="contato-politica">
+        <p>
+            <strong>Dúvidas sobre direitos reservados?</strong><br>
+            Entre em contato conosco através do nosso <a href="{{ url_for('main.contato_page') }}">formulário de contato</a>.
+        </p>
+    </div>
+</div>
+
+{% endblock %}

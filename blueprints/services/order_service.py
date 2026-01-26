@@ -5,12 +5,77 @@ ARQUITETURA:
 ===========
 O webhook do PagBank é a ÚNICA fonte de verdade do status do pagamento.
 Status inicial SEMPRE deve ser PENDENTE no checkout.
+
+IMPORTANTE: A tabela vendas.status_pedido é a fonte de verdade do status.
+A tabela orders.status é sincronizada automaticamente quando buscar o pedido.
 """
 import uuid
 import psycopg2.extras
 from typing import Optional, Dict
 from flask import g, current_app
 from .db import get_db
+
+
+def map_venda_status_to_order_status(venda_status: str, status_pagamento: Optional[str] = None) -> str:
+    """
+    Mapeia o status da tabela vendas (status_pedido) para o status da tabela orders.
+    
+    A tabela vendas tem status mais detalhados, enquanto orders tem status simplificados.
+    
+    Args:
+        venda_status: Status da tabela vendas (status_pedido)
+        status_pagamento: Status do pagamento (PAID, PENDING, etc.)
+    
+    Returns:
+        Status mapeado para a tabela orders
+    """
+    # Mapeamento de status_pedido para status da tabela orders
+    status_map = {
+        # Status de pagamento
+        'pendente': 'PENDENTE',
+        'pendente_pagamento': 'PENDENTE',
+        
+        # Status de processamento
+        'pagamento_aprovado': 'PAGO',
+        'sincronizado_bling': 'PAGO',  # "Em aberto" no Bling - ainda não está em processamento
+        'em_processamento': 'APROVADO',  # "Em andamento" no Bling - APROVADO só aqui
+        'processando_envio': 'APROVADO',
+        
+        # Status de NF-e
+        'nfe_aguardando_aprovacao': 'APROVADO',
+        'nfe_autorizada': 'APROVADO',
+        'nfe_enviada_email': 'APROVADO',
+        
+        # Status de envio
+        'estoque_baixado': 'APROVADO',
+        'etiqueta_solicitada': 'APROVADO',
+        'etiqueta_gerada': 'NA TRANSPORTADORA',
+        'rastreamento_atualizado': 'NA TRANSPORTADORA',
+        'pronto_envio': 'NA TRANSPORTADORA',
+        'enviado': 'NA TRANSPORTADORA',
+        
+        # Status final
+        'entregue': 'ENTREGUE',
+        
+        # Status de cancelamento
+        'cancelado_pelo_cliente': 'CANCELADO',
+        'cancelado_pelo_vendedor': 'CANCELADO',
+        'devolvido': 'CANCELADO',
+        'reembolsado': 'CANCELADO',
+        
+        # Status de erro (tratar como APROVADO para não bloquear visualização)
+        'erro_nfe_timeout': 'APROVADO',
+        'erro_processamento': 'APROVADO',
+        'erro_etiqueta': 'APROVADO',
+        'erro_estoque': 'APROVADO'
+    }
+    
+    # Se status_pagamento for PAID, garantir que não fique como PENDENTE
+    if status_pagamento == 'PAID' and venda_status in ['pendente', 'pendente_pagamento']:
+        return 'PAGO'
+    
+    # Retornar status mapeado ou PENDENTE como fallback
+    return status_map.get(venda_status, 'PENDENTE')
 
 
 def create_order(venda_id: int, valor: float, status: str = 'PENDENTE') -> Dict:
@@ -241,19 +306,44 @@ def get_order_by_token(public_token: str) -> Optional[Dict]:
                         if qr_codes_in_charge and len(qr_codes_in_charge) > 0:
                             pix_qr_code_text = qr_codes_in_charge[0].get('text')
         
+        # IMPORTANTE: A fonte de verdade do status é a tabela vendas (status_pedido)
+        # Mapear status_pedido da tabela vendas para o formato da tabela orders
+        venda_status = result['venda_status'] or 'PENDENTE'
+        status_pagamento = result['status_pagamento']
+        
+        # Mapear status_pedido para status da tabela orders
+        status_mapped = map_venda_status_to_order_status(venda_status, status_pagamento)
+        
+        # Se o status na tabela orders estiver desatualizado, sincronizar
+        if result['status'] != status_mapped:
+            current_app.logger.info(
+                f"🔄 Sincronizando status do order {result['public_token']}: "
+                f"{result['status']} -> {status_mapped} (venda_status: {venda_status})"
+            )
+            try:
+                cur.execute("""
+                    UPDATE orders
+                    SET status = %s, atualizado_em = NOW()
+                    WHERE public_token = %s
+                """, (status_mapped, public_token))
+                conn.commit()
+            except Exception as sync_error:
+                current_app.logger.warning(f"Erro ao sincronizar status: {sync_error}")
+                conn.rollback()
+        
         # Converter para dicionário
         order_data = {
             'id': str(result['id']),
             'venda_id': result['venda_id'],
             'public_token': str(result['public_token']),
-            'status': result['status'],
+            'status': status_mapped,  # Usar status mapeado (sincronizado)
             'valor': float(result['valor']),
             'criado_em': result['criado_em'].isoformat() if result['criado_em'] else None,
             'atualizado_em': result['atualizado_em'].isoformat() if result['atualizado_em'] else None,
             'codigo_pedido': result['codigo_pedido'],
             'data_venda': result['data_venda'].isoformat() if result['data_venda'] else None,
-            'venda_status': result['venda_status'],
-            'status_pagamento': result['status_pagamento'],
+            'venda_status': venda_status,  # Status original da tabela vendas
+            'status_pagamento': status_pagamento,
             'forma_pagamento': result['forma_pagamento_tipo'],
             'pix_qr_code_link': result['pagbank_qrcode_link'],
             'pix_qr_code_image': result['pagbank_qrcode_image'],
@@ -354,6 +444,81 @@ def delete_order_token(public_token: str) -> bool:
         conn.rollback()
         current_app.logger.error(f"Erro ao remover token do order: {e}")
         raise e
+    finally:
+        cur.close()
+
+
+def sync_order_status_from_venda(venda_id: int) -> bool:
+    """
+    Sincroniza o status da tabela orders com o status da tabela vendas.
+    Deve ser chamado sempre que o status_pedido da tabela vendas mudar.
+    
+    Args:
+        venda_id: ID da venda
+    
+    Returns:
+        True se sincronizado com sucesso, False caso contrário
+    """
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
+    try:
+        # Buscar status atual da venda e status do pagamento
+        cur.execute("""
+            SELECT 
+                v.status_pedido,
+                p.status_pagamento
+            FROM vendas v
+            LEFT JOIN pagamentos p ON v.id = p.venda_id
+            WHERE v.id = %s
+            ORDER BY p.criado_em DESC
+            LIMIT 1
+        """, (venda_id,))
+        
+        result = cur.fetchone()
+        if not result:
+            return False
+        
+        venda_status = result['status_pedido'] or 'pendente_pagamento'
+        status_pagamento = result['status_pagamento']
+        
+        # Mapear para status da tabela orders
+        status_mapped = map_venda_status_to_order_status(venda_status, status_pagamento)
+        
+        # Buscar order relacionado
+        cur.execute("""
+            SELECT public_token, status
+            FROM orders
+            WHERE venda_id = %s
+            ORDER BY criado_em DESC
+            LIMIT 1
+        """, (venda_id,))
+        
+        order_result = cur.fetchone()
+        if not order_result:
+            # Não há order relacionado, não precisa sincronizar
+            return True
+        
+        # Se o status estiver diferente, atualizar
+        if order_result['status'] != status_mapped:
+            cur.execute("""
+                UPDATE orders
+                SET status = %s, atualizado_em = NOW()
+                WHERE public_token = %s
+            """, (status_mapped, order_result['public_token']))
+            conn.commit()
+            current_app.logger.info(
+                f"🔄 Status do order sincronizado: venda {venda_id}, "
+                f"status {order_result['status']} -> {status_mapped} "
+                f"(venda_status: {venda_status})"
+            )
+        
+        return True
+        
+    except Exception as e:
+        conn.rollback()
+        current_app.logger.error(f"Erro ao sincronizar status do order: {e}")
+        return False
     finally:
         cur.close()
 

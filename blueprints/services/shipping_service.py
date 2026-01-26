@@ -56,17 +56,6 @@ class ShippingService:
                     cep_destino, peso_total, valor_total, dimensoes
                 )
                 if melhor_envio_options:
-                    # Adicionar opção de frete grátis se aplicável
-                    if valor_total >= 150.00:
-                        free_shipping = {
-                            'name': 'Frete Grátis',
-                            'service': 'free',
-                            'price': 0.00,
-                            'delivery_time': '5-7 dias úteis',
-                            'delivery_time_days': 6,
-                            'description': 'Frete grátis para compras acima de R$ 150,00'
-                        }
-                        melhor_envio_options.append(free_shipping)
                     return melhor_envio_options
             
             # Fallback para cálculo simulado se Melhor Envio não estiver configurado
@@ -81,18 +70,6 @@ class ShippingService:
             sedex_option = self._calculate_sedex(cep_destino, peso_total, valor_total, dimensoes)
             if sedex_option:
                 shipping_options.append(sedex_option)
-                
-            # Opção 3: Frete Grátis (se valor >= R$ 150)
-            if valor_total >= 150.00:
-                free_shipping = {
-                    'name': 'Frete Grátis',
-                    'service': 'free',
-                    'price': 0.00,
-                    'delivery_time': '5-7 dias úteis',
-                    'delivery_time_days': 6,
-                    'description': 'Frete grátis para compras acima de R$ 150,00'
-                }
-                shipping_options.append(free_shipping)
                 
             return shipping_options
             
@@ -256,7 +233,7 @@ class ShippingService:
                         "quantity": 1
                     }
                 ],
-                "services": "1,2,3,4,17"  # IDs dos serviços: Correios PAC, Correios SEDEX, Jadlog, Azul, etc.
+                "services": "1,2,3,4,15,16,17"  # IDs dos serviços: Correios PAC/SEDEX, Jadlog, Azul (15/16), etc.
             }
             
             headers = {
@@ -286,34 +263,94 @@ class ShippingService:
             
             if isinstance(data, list):
                 for option in data:
-                    # Mapear nomes dos serviços
-                    service_names = {
-                        '1': 'PAC',
-                        '2': 'SEDEX',
-                        '3': 'Jadlog',
-                        '4': 'Azul Cargo',
-                        '17': 'Correios PAC Mini'
-                    }
+                    # Extrair dados da transportadora primeiro (precisa para determinar o serviço)
+                    company = option.get('company', {})
+                    company_name = company.get('name', '').strip()
                     
-                    service_name = service_names.get(str(option.get('id')), option.get('name', 'Frete'))
+                    # Obter nome do serviço da API
+                    api_service_name = option.get('name', 'Frete').strip()
+                    service_id = str(option.get('id', ''))
+                    
+                    # Mapear nomes dos serviços do Melhor Envio
+                    # IDs conhecidos: 
+                    # 1=PAC, 2=SEDEX, 3=Jadlog Package, 4=Jadlog .Com, 
+                    # 15=Azul Expresso, 16=Azul e-commerce, 17=PAC Mini
+                    # Para serviços que têm nomes específicos na API, usar o nome da API
+                    service_name = None
+                    
+                    # Para Correios (IDs 1, 2, 17), usar mapeamento fixo
+                    if service_id == '1':
+                        service_name = 'PAC'
+                    elif service_id == '2':
+                        service_name = 'SEDEX'
+                    elif service_id == '17':
+                        service_name = 'Correios PAC Mini'
+                    # Para Jadlog (IDs 3, 4, 27), usar o nome do serviço da API
+                    elif service_id in ['3', '4', '27']:
+                        # Usar nome da API, mas limpar se necessário
+                        service_name = api_service_name.split(' - ')[0].strip()
+                        if not service_name or service_name.lower() == 'jadlog':
+                            service_name = api_service_name
+                    # Para Azul Cargo Express (IDs 15, 16)
+                    elif service_id in ['15', '16']:
+                        # Azul Cargo Express - usar nome da API
+                        if 'azul' in api_service_name.lower() or 'expresso' in api_service_name.lower() or 'e-commerce' in api_service_name.lower():
+                            service_name = api_service_name.split(' - ')[0].strip()
+                        else:
+                            # Usar nome baseado no ID
+                            if service_id == '15':
+                                service_name = 'Expresso'
+                            elif service_id == '16':
+                                service_name = 'e-commerce'
+                    else:
+                        # Para outros serviços, limpar nome da API
+                        service_name = api_service_name.split(' - ')[0].split(' ')[0].strip()
+                        if not service_name or service_name == 'Frete':
+                            service_name = api_service_name
+                    
                     price = option.get('price', 0)
                     delivery_time = option.get('delivery_time', 0)
                     
                     if price and delivery_time:
-                        # Extrair dados completos da transportadora (company)
-                        company = option.get('company', {})
+                        # Garantir que a transportadora seja extraída corretamente
+                        # Priorizar inferência pelo service_id para evitar dados incorretos da API
+                        transportadora_nome = None
+                        
+                        # Inferir transportadora pelo ID do serviço (mais confiável)
+                        if service_id in ['1', '2', '17']:
+                            transportadora_nome = 'Correios'
+                        elif service_id in ['3', '4', '27']:
+                            transportadora_nome = 'Jadlog'
+                        elif service_id in ['15', '16']:
+                            transportadora_nome = 'Azul Cargo Express'
+                        elif service_id == '12':
+                            transportadora_nome = 'LATAM Cargo'
+                        elif service_id == '22':
+                            transportadora_nome = 'Buslog'
+                        elif service_id in ['31', '32', '34']:
+                            transportadora_nome = 'Loggi'
+                        elif service_id == '33':
+                            transportadora_nome = 'JeT'
+                        
+                        # Se não conseguiu inferir pelo ID, usar nome da company
+                        if not transportadora_nome:
+                            transportadora_nome = company_name
+                            
+                        # Se ainda não tiver, usar fallback
+                        if not transportadora_nome:
+                            transportadora_nome = 'Transportadora'
                         
                         shipping_option_data = {
                             'name': service_name,
                             'service': option.get('id'),
-                            'service_name': option.get('name', ''),
+                            'service_name': api_service_name,
                             'price': float(price),
                             'delivery_time': f'{delivery_time} dias úteis',
                             'delivery_time_days': int(delivery_time),
-                            'description': company.get('name', '') or f'Entrega via {service_name}',
+                            'description': transportadora_nome,
                             # Dados completos da transportadora para uso na NFC-e
                             'transportadora': {
-                                'nome': company.get('name', ''),
+                                'nome': transportadora_nome,
                                 'cnpj': company.get('document') or company.get('cnpj'),
                                 'ie': company.get('ie') or company.get('inscricao_estadual'),
                                 'uf': company.get('uf') or company.get('state'),

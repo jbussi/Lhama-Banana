@@ -1,0 +1,55 @@
+{
+  "kind": "singleType",
+  "collectionName": "conteudo_home",
+  "info": {
+    "singularName": "conteudo-home",
+    "pluralName": "conteudo-homes",
+    "displayName": "Conteúdo Home",
+    "description": "Conteúdo da página inicial (hero, carrosséis, depoimentos)"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "hero_titulo": {
+      "type": "string",
+      "required": false
+    },
+    "hero_subtitulo": {
+      "type": "text"
+    },
+    "hero_imagem": {
+      "type": "media",
+      "multiple": false,
+      "required": false,
+      "allowedTypes": ["images"]
+    },
+    "hero_texto_botao": {
+      "type": "string",
+      "default": "Comprar Agora"
+    },
+    "carrosseis": {
+      "type": "json"
+    },
+    "depoimentos": {
+      "type": "json"
+    },
+    "estatisticas_clientes": {
+      "type": "integer",
+      "default": 5000
+    },
+    "estatisticas_pecas": {
+      "type": "integer",
+      "default": 10000
+    },
+    "estatisticas_anos": {
+      "type": "integer",
+      "default": 5
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

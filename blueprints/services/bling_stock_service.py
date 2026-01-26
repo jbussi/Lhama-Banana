@@ -16,18 +16,28 @@ import psycopg2.extras
 
 def update_stock_after_sale(venda_id: int, sync_to_bling: bool = True) -> Dict:
     """
-    Atualiza estoque no Bling após venda confirmada
+    DEPRECATED: Esta função não é mais usada.
     
-    Quando uma venda é confirmada (pagamento aprovado), o estoque já foi
-    decrementado localmente. Esta função sincroniza o estoque com o Bling.
+    O estoque é gerenciado exclusivamente pelo Bling:
+    - O Bling abate estoque automaticamente quando o pedido é criado
+    - O webhook do Bling (stock.updated) atualiza o estoque do site automaticamente
     
     Args:
         venda_id: ID da venda
-        sync_to_bling: Se True, sincroniza estoque para Bling
+        sync_to_bling: Se True, sincroniza estoque para Bling (não usado mais)
         
     Returns:
         Dict com resultado da operação
     """
+    current_app.logger.info(
+        f"ℹ️ update_stock_after_sale chamado para venda {venda_id}, mas estoque é gerenciado pelo Bling. "
+        f"O webhook do Bling atualizará o estoque automaticamente."
+    )
+    return {
+        'success': True,
+        'venda_id': venda_id,
+        'message': 'Estoque gerenciado pelo Bling - webhook atualizará automaticamente'
+    }
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     
@@ -156,18 +166,28 @@ def update_stock_after_sale(venda_id: int, sync_to_bling: bool = True) -> Dict:
 
 def revert_stock_on_cancellation(venda_id: int, sync_to_bling: bool = True) -> Dict:
     """
-    Reverte estoque quando pedido é cancelado/devolvido/reembolsado
+    DEPRECATED: Esta função não é mais usada.
     
-    Quando um pedido é cancelado, o estoque deve ser revertido (incrementado)
-    tanto localmente quanto no Bling.
+    O estoque é gerenciado exclusivamente pelo Bling:
+    - Quando um pedido é cancelado no Bling, o Bling reverte o estoque automaticamente
+    - O webhook do Bling (stock.updated) atualiza o estoque do site automaticamente
     
     Args:
         venda_id: ID da venda cancelada
-        sync_to_bling: Se True, sincroniza estoque para Bling após reverter
+        sync_to_bling: Se True, sincroniza estoque para Bling (não usado mais)
         
     Returns:
         Dict com resultado da operação
     """
+    current_app.logger.info(
+        f"ℹ️ revert_stock_on_cancellation chamado para venda {venda_id}, mas estoque é gerenciado pelo Bling. "
+        f"O webhook do Bling atualizará o estoque automaticamente quando o pedido for cancelado no Bling."
+    )
+    return {
+        'success': True,
+        'venda_id': venda_id,
+        'message': 'Estoque gerenciado pelo Bling - webhook atualizará automaticamente'
+    }
     conn = get_db()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     
@@ -304,12 +324,12 @@ def revert_stock_on_cancellation(venda_id: int, sync_to_bling: bool = True) -> D
 
 def handle_order_status_change(venda_id: int, old_status: str, new_status: str) -> Dict:
     """
-    Gerencia mudança de status do pedido e atualiza estoque conforme necessário
+    Gerencia mudança de status do pedido
     
-    Regras:
-    - Se mudou para 'processando_envio' (pagamento confirmado): estoque já foi decrementado, apenas sincronizar Bling
-    - Se mudou para cancelado/devolvido/reembolsado: reverter estoque
-    - Outros status: não afetam estoque
+    IMPORTANTE: Estoque é gerenciado exclusivamente pelo Bling.
+    O webhook do Bling (stock.updated) atualiza o estoque do site automaticamente.
+    
+    Esta função apenas registra a mudança de status.
     
     Args:
         venda_id: ID da venda
@@ -319,39 +339,10 @@ def handle_order_status_change(venda_id: int, old_status: str, new_status: str) 
     Returns:
         Dict com resultado da operação
     """
-    # Status que requerem sincronização de estoque (já decrementado)
-    sync_stock_statuses = ['processando_envio', 'enviado', 'entregue']
-    
-    # Status que requerem reversão de estoque
-    revert_stock_statuses = [
-        'cancelado_pelo_cliente',
-        'cancelado_pelo_vendedor',
-        'devolvido',
-        'reembolsado'
-    ]
-    
-    # Se mudou para status que requer sincronização (estoque já foi decrementado na criação)
-    if new_status in sync_stock_statuses and old_status not in sync_stock_statuses:
-        current_app.logger.info(
-            f"📦 Pedido {venda_id} mudou para {new_status}. "
-            f"Sincronizando estoque com Bling..."
-        )
-        return update_stock_after_sale(venda_id, sync_to_bling=True)
-    
-    # Se mudou para status de cancelamento (reverter estoque)
-    elif new_status in revert_stock_statuses and old_status not in revert_stock_statuses:
-        current_app.logger.info(
-            f"🔄 Pedido {venda_id} mudou para {new_status}. "
-            f"Revertendo estoque..."
-        )
-        return revert_stock_on_cancellation(venda_id, sync_to_bling=True)
-    
-    # Outros status não afetam estoque
-    else:
-        current_app.logger.debug(
-            f"ℹ️ Mudança de status do pedido {venda_id} "
-            f"({old_status} → {new_status}) não requer alteração de estoque"
-        )
+    current_app.logger.info(
+        f"ℹ️ Mudança de status do pedido {venda_id} ({old_status} → {new_status}). "
+        f"Estoque é gerenciado pelo Bling e será atualizado automaticamente via webhook."
+    )
         return {
             'success': True,
             'venda_id': venda_id,

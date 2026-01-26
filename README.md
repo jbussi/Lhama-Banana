@@ -140,7 +140,7 @@ cp env.example .env
 
 O arquivo `.env` já vem pré-configurado com valores funcionais. Você pode ajustar se necessário.
 
-**📚 Para mais informações sobre configuração de ambientes, consulte [CONFIGURACAO_AMBIENTES.md](CONFIGURACAO_AMBIENTES.md)**
+**📚 Para mais informações sobre configuração, consulte [CONFIGURACAO.md](CONFIGURACAO.md)**
 
 #### 2. Subir Todos os Serviços
 
@@ -169,7 +169,7 @@ docker compose logs -f
 docker compose logs -f flask
 ```
 
-**📚 Para mais informações sobre Docker, consulte [DOCKER.md](DOCKER.md)**
+**📚 Para mais informações sobre Docker e deploy, consulte [DEPLOY.md](DEPLOY.md)**
 
 ### Modo de Desenvolvimento (Sem Docker)
 
@@ -209,9 +209,11 @@ Lhama-Banana/
 ├── Dockerfile                      # Dockerfile para Flask
 ├── docker-compose.yml              # Configuração Docker (PostgreSQL, Flask, Strapi)
 ├── env.example                     # Exemplo de variáveis de ambiente
-├── DOCKER.md                       # Guia completo do Docker
 ├── README.md                       # Este arquivo
-├── CONFIGURACAO_PAGBANK.md         # Guia de configuração do PagBank
+├── CONFIGURACAO.md                 # Guia completo de configuração
+├── DEPLOY.md                       # Guia de deploy e Docker
+├── INTEGRACAO_BLING.md             # Documentação da integração Bling
+├── GUIA_PREENCHIMENTO_STRAPI.md     # Como preencher conteúdo no Strapi
 ├── blueprints/                     # Módulos da aplicação
 │   ├── api/                        # APIs REST
 │   │   ├── checkout.py             # API de checkout
@@ -313,10 +315,13 @@ PAGBANK_ENVIRONMENT=production
 PAGBANK_SIMULATION_MODE=false
 ```
 
-## 📚 Documentação Adicional
+## 📚 Documentação
 
-- **`CONFIGURACAO_PAGBANK.md`**: Guia completo de configuração do PagBank
-- **`VERIFICACAO_RAPIDA.md`**: Checklist de verificação do sistema
+- **`README.md`**: Este arquivo - visão geral e instalação
+- **`CONFIGURACAO.md`**: Guia completo de configuração (Firebase, PagBank, Bling, Melhor Envio, Strapi, Banco de Dados)
+- **`DEPLOY.md`**: Guia de deploy (Docker, Nginx, Gunicorn, SSL, Banco de Dados, Scripts SQL)
+- **`INTEGRACAO_BLING.md`**: Documentação completa da integração com Bling
+- **`GUIA_PREENCHIMENTO_STRAPI.md`**: Guia completo do Strapi (configuração, Content Types, preenchimento de conteúdo)
 
 ## 🧪 Testes
 

@@ -1,36 +1,72 @@
 from .db import get_db
 from functools import wraps
 from flask import session, redirect, url_for, flash, g
+import psycopg2
+import logging
 
-def get_user_by_firebase_uid(firebase_uid):
-    """Busca os dados principais de um usuário pelo seu Firebase UID."""
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, firebase_uid, nome, email, cpf, data_nascimento, criado_em, telefone, role, 
-               mfa_enabled, mfa_secret
-        FROM usuarios WHERE firebase_uid = %s
-    """, (firebase_uid,))
-    user_data = cur.fetchone()
-    cur.close()
+logger = logging.getLogger(__name__)
 
-    if user_data:
-        # Retorna um dicionário para facilitar o acesso por nome da coluna
-        # Adapte os índices conforme a ordem das colunas no seu SELECT
-        return {
-            'id': user_data[0],
-            'firebase_uid': user_data[1],
-            'nome': user_data[2],
-            'email': user_data[3],
-            'cpf': user_data[4],
-            'data_nascimento': str(user_data[5]) if user_data[5] else None,
-            'criado_em': str(user_data[6]),
-            'telefone': user_data[7],
-            'role': user_data[8] if len(user_data) > 8 else 'user',  # role do usuário
-            'mfa_enabled': user_data[9] if len(user_data) > 9 else False,
-            'mfa_secret': user_data[10] if len(user_data) > 10 else None,
-        }
-    return None
+def get_user_by_firebase_uid(firebase_uid, max_retries=2):
+    """
+    Busca os dados principais de um usuário pelo seu Firebase UID.
+    Implementa retry automático em caso de erro de conexão.
+    """
+    for attempt in range(max_retries + 1):
+        conn = None
+        cur = None
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, firebase_uid, nome, email, cpf, data_nascimento, criado_em, telefone, role, 
+                       mfa_enabled, mfa_secret
+                FROM usuarios WHERE firebase_uid = %s
+            """, (firebase_uid,))
+            user_data = cur.fetchone()
+
+            if user_data:
+                # Retorna um dicionário para facilitar o acesso por nome da coluna
+                # Adapte os índices conforme a ordem das colunas no seu SELECT
+                return {
+                    'id': user_data[0],
+                    'firebase_uid': user_data[1],
+                    'nome': user_data[2],
+                    'email': user_data[3],
+                    'cpf': user_data[4],
+                    'data_nascimento': str(user_data[5]) if user_data[5] else None,
+                    'criado_em': str(user_data[6]),
+                    'telefone': user_data[7],
+                    'role': user_data[8] if len(user_data) > 8 else 'user',  # role do usuário
+                    'mfa_enabled': user_data[9] if len(user_data) > 9 else False,
+                    'mfa_secret': user_data[10] if len(user_data) > 10 else None,
+                }
+            return None
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            logger.warning(f"Erro de conexão ao buscar usuário (tentativa {attempt + 1}/{max_retries + 1}): {e}")
+            if attempt < max_retries:
+                # Limpar conexão inválida do g para forçar nova conexão
+                if 'db' in g:
+                    try:
+                        g.pop('db').close()
+                    except Exception:
+                        pass
+                # Aguardar um pouco antes de tentar novamente
+                import time
+                time.sleep(0.1 * (attempt + 1))  # Backoff exponencial simples
+                continue
+            else:
+                # Última tentativa falhou, relançar erro
+                logger.error(f"Falha ao buscar usuário após {max_retries + 1} tentativas")
+                raise
+        except Exception as e:
+            logger.error(f"Erro inesperado ao buscar usuário: {e}")
+            raise
+        finally:
+            if cur:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
 
 def insert_new_user(firebase_uid, nome, email):
     """Insere um novo usuário na tabela 'usuarios'."""

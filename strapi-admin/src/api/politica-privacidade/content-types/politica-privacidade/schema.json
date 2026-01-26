@@ -1,0 +1,33 @@
+{
+  "kind": "singleType",
+  "collectionName": "politica_privacidade",
+  "info": {
+    "singularName": "politica-privacidade",
+    "pluralName": "politica-privacidades",
+    "displayName": "Política de Privacidade",
+    "description": "Conteúdo da página de política de privacidade"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "titulo": {
+      "type": "string",
+      "default": "Política de Privacidade"
+    },
+    "ultima_atualizacao": {
+      "type": "date"
+    },
+    "conteudo": {
+      "type": "richtext"
+    },
+    "secoes": {
+      "type": "json"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

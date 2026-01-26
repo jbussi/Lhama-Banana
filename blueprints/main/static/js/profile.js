@@ -957,7 +957,6 @@ async function loadFiscalData() {
                 fiscalForm.style.display = 'none';
                 fiscalEmptyState.style.display = 'block';
                 document.getElementById('fiscal-form').reset();
-                updateFiscalFormLabels('CPF');
             }
         } else {
             console.error("Erro ao carregar dados fiscais:", response.status);
@@ -978,12 +977,10 @@ function renderFiscalDataDisplay(data) {
     // Nome/Razão Social
     document.getElementById('display-fiscal-nome-razao-social').textContent = data.nome_razao_social || '-';
     
-    // Tipo e CPF/CNPJ
-    document.getElementById('display-fiscal-tipo').textContent = data.tipo || 'CPF';
-    const cpfCnpjFormatted = data.tipo === 'CNPJ' 
-        ? formatCNPJ(data.cpf_cnpj) 
-        : formatCPF(data.cpf_cnpj);
-    document.getElementById('display-fiscal-cpf-cnpj').textContent = cpfCnpjFormatted || '-';
+    // Tipo e CPF (sempre CPF)
+    document.getElementById('display-fiscal-tipo').textContent = 'CPF';
+    const cpfFormatted = formatCPF(data.cpf_cnpj || '');
+    document.getElementById('display-fiscal-cpf-cnpj').textContent = cpfFormatted || '-';
     
     // Endereço completo - verificar se endereco é um objeto ou se os campos estão no nível raiz
     const endereco = data.endereco || {};
@@ -1010,43 +1007,16 @@ function renderFiscalDataDisplay(data) {
     }
     document.getElementById('display-fiscal-endereco-completo').innerHTML = enderecoCompleto.replace(/\n/g, '<br>');
     
-    // Inscrições (apenas para CNPJ)
-    if (data.tipo === 'CNPJ') {
-        const inscricoes = [];
-        if (data.inscricao_estadual) {
-            inscricoes.push(`IE: ${data.inscricao_estadual}`);
-        }
-        if (data.inscricao_municipal) {
-            inscricoes.push(`IM: ${data.inscricao_municipal}`);
-        }
-        if (inscricoes.length > 0) {
-            document.getElementById('display-fiscal-inscricoes-value').textContent = inscricoes.join(' • ');
-            document.getElementById('display-fiscal-inscricoes').style.display = 'block';
-        } else {
-            document.getElementById('display-fiscal-inscricoes').style.display = 'none';
-        }
-    } else {
-        document.getElementById('display-fiscal-inscricoes').style.display = 'none';
-    }
+    // Inscrições removidas (só para CNPJ)
+    document.getElementById('display-fiscal-inscricoes').style.display = 'none';
 }
 
 // Função para preencher formulário com dados fiscais
 function populateFiscalForm(data) {
-    document.getElementById('fiscal-tipo-' + data.tipo.toLowerCase()).checked = true;
-    updateFiscalFormLabels(data.tipo);
-    
-    document.getElementById('fiscal-cpf-cnpj').value = data.cpf_cnpj ? (data.tipo === 'CNPJ' ? formatCNPJ(data.cpf_cnpj) : formatCPF(data.cpf_cnpj)) : '';
+    // Sempre usar CPF (removido suporte a CNPJ)
+    const cpfCnpj = data.cpf_cnpj || '';
+    document.getElementById('fiscal-cpf-cnpj').value = formatCPF(cpfCnpj);
     document.getElementById('fiscal-nome').value = data.nome_razao_social || '';
-    
-    if (data.tipo === 'CNPJ') {
-        document.getElementById('fiscal-inscricao-estadual').value = data.inscricao_estadual || '';
-        document.getElementById('fiscal-inscricao-municipal').value = data.inscricao_municipal || '';
-        document.getElementById('fiscal-inscricao-estadual-group').style.display = 'block';
-        document.getElementById('fiscal-inscricao-municipal-group').style.display = 'block';
-    } else {
-        document.getElementById('fiscal-inscricao-estadual-group').style.display = 'none';
-        document.getElementById('fiscal-inscricao-municipal-group').style.display = 'none';
-    }
     
     // Verificar se endereco é um objeto ou se os campos estão no nível raiz
     const endereco = data.endereco || {};
@@ -1058,28 +1028,6 @@ function populateFiscalForm(data) {
     document.getElementById('fiscal-estado').value = endereco.estado || data.estado || '';
     const cep = endereco.cep || data.cep || '';
     document.getElementById('fiscal-cep').value = cep ? formatCEP(cep) : '';
-}
-
-// Função para atualizar labels do formulário baseado no tipo
-function updateFiscalFormLabels(tipo) {
-    const cpfCnpjLabel = document.getElementById('fiscal-cpf-cnpj-label');
-    const nomeLabel = document.getElementById('fiscal-nome-label');
-    const cpfCnpjInput = document.getElementById('fiscal-cpf-cnpj');
-    const nomeInput = document.getElementById('fiscal-nome');
-    
-    if (tipo === 'CNPJ') {
-        cpfCnpjLabel.textContent = 'CNPJ *';
-        cpfCnpjInput.placeholder = '00.000.000/0000-00';
-        cpfCnpjInput.maxLength = 18;
-        nomeLabel.textContent = 'Razão Social *';
-        nomeInput.placeholder = 'Razão social da empresa';
-    } else {
-        cpfCnpjLabel.textContent = 'CPF *';
-        cpfCnpjInput.placeholder = '000.000.000-00';
-        cpfCnpjInput.maxLength = 14;
-        nomeLabel.textContent = 'Nome Completo *';
-        nomeInput.placeholder = 'Seu nome completo';
-    }
 }
 
 // Função para salvar dados fiscais
@@ -1095,14 +1043,15 @@ async function saveFiscalData(event) {
         const idToken = await currentUser.getIdToken();
         
         // Coletar dados do formulário
-        const tipo = document.querySelector('input[name="fiscal-tipo"]:checked').value;
         const cpfCnpj = document.getElementById('fiscal-cpf-cnpj').value.replace(/\D/g, '');
         const nomeRazaoSocial = document.getElementById('fiscal-nome').value.trim();
         
         const fiscalData = {
-            tipo: tipo,
+            tipo: 'CPF', // Sempre CPF (removido suporte a CNPJ)
             cpf_cnpj: cpfCnpj,
             nome_razao_social: nomeRazaoSocial,
+            inscricao_estadual: null, // Removido (só para CNPJ)
+            inscricao_municipal: null, // Removido (só para CNPJ)
             endereco: {
                 rua: document.getElementById('fiscal-rua').value.trim(),
                 numero: document.getElementById('fiscal-numero').value.trim(),
@@ -1113,11 +1062,6 @@ async function saveFiscalData(event) {
                 cep: document.getElementById('fiscal-cep').value.replace(/\D/g, '')
             }
         };
-        
-        if (tipo === 'CNPJ') {
-            fiscalData.inscricao_estadual = document.getElementById('fiscal-inscricao-estadual').value.trim() || null;
-            fiscalData.inscricao_municipal = document.getElementById('fiscal-inscricao-municipal').value.trim() || null;
-        }
         
         let loadingState = null;
         if (window.LoadingHelper && window.LoadingHelper.setButtonLoading) {
@@ -1455,7 +1399,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Limpar formulário
                 document.getElementById('fiscal-form').reset();
-                updateFiscalFormLabels('CPF');
             });
         }
     
@@ -1503,34 +1446,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Toggle CPF/CNPJ
-    const fiscalTipoInputs = document.querySelectorAll('input[name="fiscal-tipo"]');
-    fiscalTipoInputs.forEach(input => {
-        input.addEventListener('change', function() {
-            updateFiscalFormLabels(this.value);
-            const cpfCnpjInput = document.getElementById('fiscal-cpf-cnpj');
-            cpfCnpjInput.value = '';
-            
-            if (this.value === 'CNPJ') {
-                document.getElementById('fiscal-inscricao-estadual-group').style.display = 'block';
-                document.getElementById('fiscal-inscricao-municipal-group').style.display = 'block';
-            } else {
-                document.getElementById('fiscal-inscricao-estadual-group').style.display = 'none';
-                document.getElementById('fiscal-inscricao-municipal-group').style.display = 'none';
-            }
-        });
-    });
-    
-    // Máscaras de input
+    // Máscara de input fiscal (apenas CPF)
     const fiscalCpfCnpjInput = document.getElementById('fiscal-cpf-cnpj');
     if (fiscalCpfCnpjInput) {
         fiscalCpfCnpjInput.addEventListener('input', function() {
-            const tipo = document.querySelector('input[name="fiscal-tipo"]:checked').value;
-            if (tipo === 'CPF') {
-                this.value = formatCPF(this.value);
-            } else {
-                this.value = formatCNPJ(this.value);
-            }
+            this.value = formatCPF(this.value);
         });
     }
     

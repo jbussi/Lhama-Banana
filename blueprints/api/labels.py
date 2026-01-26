@@ -81,9 +81,10 @@ def create_label_automatically(venda_id: int) -> Optional[int]:
     try:
         # Verificar se já existe etiqueta para esta venda
         cur.execute("""
-            SELECT id FROM etiquetas_frete 
-            WHERE venda_id = %s 
-            ORDER BY criado_em DESC 
+            SELECT ef.id FROM etiquetas_frete ef
+            INNER JOIN etiquetas_frete_venda_lnk lnk ON ef.id = lnk.etiqueta_frete_id
+            WHERE lnk.venda_id = %s 
+            ORDER BY ef.id DESC 
             LIMIT 1
         """, (venda_id,))
         existing_label = cur.fetchone()
@@ -93,13 +94,15 @@ def create_label_automatically(venda_id: int) -> Optional[int]:
             return existing_label[0]
         
         # Buscar dados da venda incluindo serviço escolhido no checkout
+        # IMPORTANTE: Buscar também transportadora_nome para distinguir ID 4 (Jadlog vs Azul)
         cur.execute("""
             SELECT 
                 id, codigo_pedido, valor_total, valor_frete,
                 nome_recebedor, rua_entrega, numero_entrega, complemento_entrega,
                 bairro_entrega, cidade_entrega, estado_entrega, cep_entrega,
                 telefone_entrega, email_entrega,
-                melhor_envio_service_id, melhor_envio_service_name
+                melhor_envio_service_id, melhor_envio_service_name,
+                transportadora_nome
             FROM vendas 
             WHERE id = %s
         """, (venda_id,))
@@ -111,37 +114,61 @@ def create_label_automatically(venda_id: int) -> Optional[int]:
         
         venda_data = dict(venda_row)
         
-        # Buscar itens da venda para calcular peso e dimensões
+        # Buscar itens da venda com peso e dimensões dos produtos
         cur.execute("""
             SELECT 
                 iv.quantidade, 
                 iv.nome_produto_snapshot,
-                iv.produto_id
+                iv.produto_id,
+                p.peso_kg,
+                p.dimensoes_largura,
+                p.dimensoes_altura,
+                p.dimensoes_comprimento
             FROM itens_venda iv
+            JOIN produtos p ON iv.produto_id = p.id
             WHERE iv.venda_id = %s
         """, (venda_id,))
         
         itens = cur.fetchall()
         
-        # Calcular peso total (usar padrão: 500g por item)
-        peso_total = 0.5  # Padrão: 500g por item
-        if itens:
-            quantidade_total = sum(item['quantidade'] for item in itens)
-            peso_total = max(quantidade_total * 0.5, 0.3)  # Mínimo de 300g
+        # Calcular peso total somando peso de cada item
+        peso_total = 0.0
+        max_altura = 0.0
+        max_largura = 0.0
+        soma_comprimento = 0.0
         
-        # Usar dimensões padrão (pode ser ajustado depois com campos de produtos)
+        if itens:
+            for item in itens:
+                quantidade = item['quantidade']
+                peso_item = float(item['peso_kg'] or 0)
+                peso_total += peso_item * quantidade
+                
+                # Para dimensões, usar a maior altura e largura, e somar comprimentos
+                altura_item = float(item['dimensoes_altura'] or 0)
+                largura_item = float(item['dimensoes_largura'] or 0)
+                comprimento_item = float(item['dimensoes_comprimento'] or 0)
+                
+                if altura_item > max_altura:
+                    max_altura = altura_item
+                if largura_item > max_largura:
+                    max_largura = largura_item
+                soma_comprimento += comprimento_item * quantidade
+        
+        # Se não houver dimensões, usar valores padrão mínimos
+        if peso_total == 0:
+            peso_total = 0.3  # Mínimo de 300g
+        if max_altura == 0:
+            max_altura = 10
+        if max_largura == 0:
+            max_largura = 20
+        if soma_comprimento == 0:
+            soma_comprimento = 30
+        
         dimensoes = {
-            'altura': 10,
-            'largura': 20,
-            'comprimento': 30
+            'altura': max_altura,
+            'largura': max_largura,
+            'comprimento': soma_comprimento
         }
-        
-        # Ajustar dimensões baseado na quantidade de itens
-        if itens:
-            quantidade_total = sum(item['quantidade'] for item in itens)
-            if quantidade_total > 1:
-                # Para múltiplos itens, aumentar comprimento proporcionalmente
-                dimensoes['comprimento'] = max(30, quantidade_total * 15)
         
         # Preparar dados para o Melhor Envio
         order_data = {
@@ -283,11 +310,15 @@ def get_label_from_db(venda_id: Optional[int] = None,
             """, (etiqueta_id,))
         elif venda_id:
             cur.execute("""
-                SELECT * FROM etiquetas_frete WHERE venda_id = %s ORDER BY criado_em DESC LIMIT 1
+                SELECT ef.* FROM etiquetas_frete ef
+                INNER JOIN etiquetas_frete_venda_lnk lnk ON ef.id = lnk.etiqueta_frete_id
+                WHERE lnk.venda_id = %s 
+                ORDER BY ef.id DESC 
+                LIMIT 1
             """, (venda_id,))
         elif codigo_pedido:
             cur.execute("""
-                SELECT * FROM etiquetas_frete WHERE codigo_pedido = %s ORDER BY criado_em DESC LIMIT 1
+                SELECT * FROM etiquetas_frete WHERE codigo_pedido = %s ORDER BY id DESC LIMIT 1
             """, (codigo_pedido,))
         else:
             return None
@@ -342,18 +373,57 @@ def create_label(venda_id: int):
                            'bairro_entrega', 'cidade_entrega', 'estado_entrega', 'cep_entrega']
             venda_data = dict(zip(venda_columns, venda_row))
             
-            # Buscar itens da venda para calcular peso e dimensões
+            # Buscar itens da venda com peso e dimensões dos produtos
             cur.execute("""
                 SELECT 
-                    iv.quantidade, iv.nome_produto_snapshot,
-                    p.estoque, p.preco_venda
+                    iv.quantidade, 
+                    iv.nome_produto_snapshot,
+                    p.estoque, 
+                    p.preco_venda,
+                    p.peso_kg,
+                    p.dimensoes_largura,
+                    p.dimensoes_altura,
+                    p.dimensoes_comprimento
                 FROM itens_venda iv
                 LEFT JOIN produtos p ON iv.produto_id = p.id
                 WHERE iv.venda_id = %s
             """, (venda_id,))
             
             itens = cur.fetchall()
-            peso_total = len(itens) * 0.5  # Simulado: 500g por item
+            
+            # Calcular peso total somando peso de cada item
+            peso_total = 0.0
+            max_altura = 0.0
+            max_largura = 0.0
+            soma_comprimento = 0.0
+            
+            if itens:
+                for item in itens:
+                    quantidade = item['quantidade']
+                    peso_item = float(item['peso_kg'] or 0)
+                    peso_total += peso_item * quantidade
+                    
+                    # Para dimensões, usar a maior altura e largura, e somar comprimentos
+                    altura_item = float(item['dimensoes_altura'] or 0)
+                    largura_item = float(item['dimensoes_largura'] or 0)
+                    comprimento_item = float(item['dimensoes_comprimento'] or 0)
+                    
+                    if altura_item > max_altura:
+                        max_altura = altura_item
+                    if largura_item > max_largura:
+                        max_largura = largura_item
+                    soma_comprimento += comprimento_item * quantidade
+            
+            # Se não houver dimensões, usar valores padrão mínimos
+            if peso_total == 0:
+                peso_total = 0.3  # Mínimo de 300g
+            if max_altura == 0:
+                max_altura = 10
+            if max_largura == 0:
+                max_largura = 20
+            if soma_comprimento == 0:
+                soma_comprimento = 30
+            
             valor_total = float(venda_data['valor_total'])
             
             # Preparar dados para o Melhor Envio
@@ -370,13 +440,15 @@ def create_label(venda_id: int):
                 'produtos': []  # Será preenchido conforme necessário
             }
             
+            dimensoes = {
+                'altura': max_altura,
+                'largura': max_largura,
+                'comprimento': soma_comprimento
+            }
+            
             shipping_option = data.get('shipping_option', {
                 'service': 1,  # PAC padrão
-                'dimensoes': {
-                    'altura': 10,
-                    'largura': 20,
-                    'comprimento': 30
-                },
+                'dimensoes': dimensoes,
                 'peso_total': peso_total,
                 'price': float(venda_data['valor_frete'])
             })
@@ -636,7 +708,7 @@ def list_labels():
                 query += " AND e.venda_id = %s"
                 params.append(venda_id)
             
-            query += " ORDER BY e.criado_em DESC LIMIT 100"
+            query += " ORDER BY e.id DESC LIMIT 100"
             
             cur.execute(query, params)
             rows = cur.fetchall()

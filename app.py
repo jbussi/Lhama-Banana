@@ -6,6 +6,23 @@ Aplicação Flask - LhamaBanana E-commerce
 import os
 import sys
 import time
+
+# Carregar variáveis de ambiente do arquivo .env
+try:
+    from dotenv import load_dotenv
+    # Carregar .env da raiz do projeto (Lhama-Banana/)
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    if os.path.exists(env_path):
+        load_dotenv(env_path, override=True)
+    else:
+        # Tentar carregar do diretório pai (workspace root)
+        parent_env = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+        if os.path.exists(parent_env):
+            load_dotenv(parent_env, override=True)
+except ImportError:
+    # python-dotenv não instalado, usar variáveis de ambiente do sistema
+    pass
+
 from blueprints import auth_bp, produtos_bp, api_bp, main_bp, checkout_api_bp, shipping_api_bp
 from blueprints.api.labels import labels_api_bp
 from blueprints.api.webhook import webhook_api_bp
@@ -135,8 +152,12 @@ def create_app(config_class=None):
 
 app = create_app()
 
+# Expor app para Gunicorn
+# Gunicorn procura por uma variável 'app' ou 'application'
+application = app
 
 if __name__ == '__main__':
+    # Apenas executar se não estiver usando Gunicorn
     port = int(os.environ.get('FLASK_PORT', 5000))
     debug = app.config.get('DEBUG', False)
     app.run(host='0.0.0.0', port=port, debug=debug)

@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from ..services.shipping_service import shipping_service
 from ..services import get_db, get_cart_owner_info, get_or_create_cart
 import json
+import psycopg2.extras
 
 shipping_api_bp = Blueprint('shipping_api', __name__)
 
@@ -25,19 +26,24 @@ def calculate_shipping():
             return error_response
             
         conn = get_db()
-        cur = conn.cursor()
-        
+        cur = None
         try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            
             # Obter o ID do carrinho
             cart_id = get_or_create_cart(user_id=user_id, session_id=session_id)
             if not cart_id:
                 return jsonify({"erro": "Não foi possível identificar o carrinho"}), 500
                 
-            # Buscar itens do carrinho para calcular peso total
+            # Buscar itens do carrinho com peso e dimensões dos produtos
             cur.execute("""
                 SELECT 
                     ci.quantidade,
                     p.codigo_sku,
+                    p.peso_kg,
+                    p.dimensoes_largura,
+                    p.dimensoes_altura,
+                    p.dimensoes_comprimento,
                     np.nome AS product_name
                 FROM carrinho_itens ci
                 JOIN produtos p ON ci.produto_id = p.id
@@ -49,9 +55,44 @@ def calculate_shipping():
             
             if not cart_items:
                 return jsonify({"erro": "Carrinho vazio"}), 400
+            
+            # Calcular peso total somando peso de cada item
+            peso_total = 0.0
+            max_altura = 0.0
+            max_largura = 0.0
+            soma_comprimento = 0.0
+            
+            for item in cart_items:
+                quantidade = item['quantidade']
+                peso_item = float(item['peso_kg'] or 0)
+                peso_total += peso_item * quantidade
                 
-            # Calcular peso total (simulado - em produção usar peso real dos produtos)
-            peso_total = len(cart_items) * 0.5  # 500g por item (simulado)
+                # Para dimensões, usar a maior altura e largura, e somar comprimentos
+                altura_item = float(item['dimensoes_altura'] or 0)
+                largura_item = float(item['dimensoes_largura'] or 0)
+                comprimento_item = float(item['dimensoes_comprimento'] or 0)
+                
+                if altura_item > max_altura:
+                    max_altura = altura_item
+                if largura_item > max_largura:
+                    max_largura = largura_item
+                soma_comprimento += comprimento_item * quantidade
+            
+            # Se não houver dimensões, usar valores padrão mínimos
+            if peso_total == 0:
+                peso_total = 0.3  # Mínimo de 300g
+            if max_altura == 0:
+                max_altura = 10
+            if max_largura == 0:
+                max_largura = 20
+            if soma_comprimento == 0:
+                soma_comprimento = 30
+            
+            dimensoes = {
+                'altura': max_altura,
+                'largura': max_largura,
+                'comprimento': soma_comprimento
+            }
             
             # Calcular valor total
             cur.execute("""
@@ -61,13 +102,6 @@ def calculate_shipping():
             """, (cart_id,))
             
             valor_total = cur.fetchone()[0] or 0.0
-            
-            # Dimensões padrão (em produção, usar dimensões reais dos produtos)
-            dimensoes = {
-                'altura': 10,  # cm
-                'largura': 20,  # cm
-                'comprimento': 30  # cm
-            }
             
             # Calcular opções de frete
             shipping_options = shipping_service.calculate_shipping(
@@ -90,6 +124,8 @@ def calculate_shipping():
             
         except Exception as e:
             current_app.logger.error(f"Erro ao calcular frete: {e}")
+            import traceback
+            traceback.print_exc()
             return jsonify({"erro": "Erro interno ao calcular frete"}), 500
         finally:
             if cur:

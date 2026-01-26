@@ -13,10 +13,12 @@ from flask import current_app
 from typing import Dict, Optional
 from .db import get_db
 from .bling_api_service import make_bling_api_request, BlingAPIError, BlingErrorType
-from .bling_order_service import get_bling_order_by_local_id, get_order_for_bling_sync, get_payment_method_id_from_bling
+from .bling_order_service import get_bling_order_by_local_id, get_order_for_bling_sync
+from .bling_payment_service import map_checkout_payment_to_bling
 import psycopg2.extras
 from datetime import datetime, timedelta
-import json
+import json as json_module
+import time
 
 
 def emit_nfe_via_bling(venda_id: int, pedido_bling_id: int) -> Dict:
@@ -184,18 +186,50 @@ def save_nfe_info(venda_id: int, pedido_bling_id: int, nfe_id: Optional[int],
     
     try:
         # Mapear situação do Bling para status local
+        # Conforme documentação: 1=Pendente, 2=Cancelada, 3=Aguardando recibo,
+        # 4=Rejeitada, 5=Autorizada, 6=Emitida DANFE, 7=Registrada,
+        # 8=Aguardando protocolo, 9=Denegada, 10=Consulta situação, 11=Bloqueada
+        # Converter nfe_situacao para string se for inteiro
+        if isinstance(nfe_situacao, int):
+            # Mapear código numérico para string
+            situacao_map = {
+                0: 'PENDENTE',
+                1: 'AUTORIZADA',
+                2: 'CANCELADA',
+                3: 'AGUARDANDO_RECIBO',
+                4: 'REJEITADA',
+                5: 'AUTORIZADA',  # AUTORIZADA (situação mais comum)
+                6: 'EMITIDA_DANFE',
+                7: 'REGISTRADA',
+                8: 'AGUARDANDO_PROTOCOLO',
+                9: 'DENEGADA',
+                10: 'CONSULTA_SITUACAO',
+                11: 'BLOQUEADA'
+            }
+            nfe_situacao = situacao_map.get(nfe_situacao, 'PENDENTE')
+        
+        # Garantir que é string
+        nfe_situacao_str = str(nfe_situacao).upper()
+        
         status_map = {
             'EMITIDA': 'emitida',
             'AUTORIZADA': 'emitida',
             'AUTORIZADO': 'emitida',
-            'PENDENTE': 'processando',
+            'EMITIDA_DANFE': 'emitida',  # Situação 6
+            'REGISTRADA': 'emitida',  # Situação 7
+            'PENDENTE': 'processando',  # Situação 0 ou 1
+            'AGUARDANDO_RECIBO': 'processando',  # Situação 3
+            'AGUARDANDO_PROTOCOLO': 'processando',  # Situação 8
+            'CONSULTA_SITUACAO': 'processando',  # Situação 10
             'PROCESSANDO': 'processando',
-            'CANCELADA': 'cancelada',
+            'CANCELADA': 'cancelada',  # Situação 2
             'CANCELADO': 'cancelada',
-            'ERRO': 'erro',
-            'REJEITADA': 'erro'
+            'REJEITADA': 'erro',  # Situação 4
+            'DENEGADA': 'erro',  # Situação 9
+            'BLOQUEADA': 'erro',  # Situação 11
+            'ERRO': 'erro'
         }
-        status_emissao = status_map.get(nfe_situacao.upper(), 'processando')
+        status_emissao = status_map.get(nfe_situacao_str, 'processando')
         
         # 1. Atualizar bling_pedidos
         cur.execute("""
@@ -233,7 +267,7 @@ def save_nfe_info(venda_id: int, pedido_bling_id: int, nfe_id: Optional[int],
                 str(nfe_numero) if nfe_numero else None,
                 nfe_chave_acesso,
                 status_emissao,
-                json.dumps(api_response) if api_response else None,
+                json_module.dumps(api_response) if api_response else None,
                 data_emissao,
                 existing['id']
             ))
@@ -254,7 +288,7 @@ def save_nfe_info(venda_id: int, pedido_bling_id: int, nfe_id: Optional[int],
                 str(nfe_numero) if nfe_numero else None,
                 nfe_chave_acesso,
                 status_emissao,
-                json.dumps(api_response) if api_response else None,
+                json_module.dumps(api_response) if api_response else None,
                 data_emissao,
                 venda_id
             ))
@@ -320,6 +354,9 @@ def emit_nfe(venda_id: int) -> Dict:
     Esta função cria uma NF-e diretamente usando a API do Bling quando o pedido
     muda para "Em andamento". A NF-e é emitida como nota fiscal eletrônica (tipo 0 = NF-e modelo 55).
     
+    IMPORTANTE: Se o pedido já existe no Bling, a NF-e será criada com todos os dados
+    (transportadora, etc.) e depois associada ao pedido.
+    
     Args:
         venda_id: ID da venda local
     
@@ -327,6 +364,19 @@ def emit_nfe(venda_id: int) -> Dict:
         Dict com resultado da emissão
     """
     try:
+        # Verificar se o pedido já existe no Bling
+        bling_pedido = get_bling_order_by_local_id(venda_id)
+        pedido_bling_id = bling_pedido.get('bling_pedido_id') if bling_pedido else None
+        
+        # Se o pedido existe no Bling, usar emit_nfe_via_bling() que associa automaticamente
+        # Mas primeiro vamos criar a NF-e com todos os dados customizados
+        # e depois associá-la ao pedido
+        if pedido_bling_id:
+            current_app.logger.info(
+                f"📄 Pedido {venda_id} já existe no Bling (ID: {pedido_bling_id}). "
+                f"Criando NF-e com dados customizados e associando ao pedido..."
+            )
+        
         # Buscar dados completos do pedido
         venda_data = get_order_for_bling_sync(venda_id)
         if not venda_data:
@@ -455,8 +505,8 @@ def emit_nfe(venda_id: int) -> Dict:
             # Usar valor total da nota (produtos - desconto + frete)
             valor_parcela = float(pagamento.get('valor_parcela', 0) or (valor_total_nota / num_parcelas))
             
-            # Buscar ID da forma de pagamento no Bling
-            forma_pagamento_id = get_payment_method_id_from_bling(forma_pagamento_tipo)
+            # Buscar ID da forma de pagamento no Bling (passar número de parcelas para melhor mapeamento)
+            forma_pagamento_id = map_checkout_payment_to_bling(forma_pagamento_tipo, num_parcelas)
             
             # Data base para parcelas
             data_base = venda_data.get('data_venda') or datetime.now()
@@ -478,12 +528,23 @@ def emit_nfe(venda_id: int) -> Dict:
                 
                 parcela = {
                     "data": vencimento_str,
-                    "valor": valor_parcela_final,
-                    "observacoes": f"Parcela {i + 1}/{num_parcelas} - {forma_pagamento_tipo}"
+                    "valor": valor_parcela_final
                 }
                 
+                # Sempre adicionar forma de pagamento se tiver ID
                 if forma_pagamento_id:
                     parcela["formaPagamento"] = {"id": forma_pagamento_id}
+                    # Adicionar observações apenas se necessário
+                    if num_parcelas > 1:
+                        parcela["observacoes"] = f"Parcela {i + 1}/{num_parcelas}"
+                else:
+                    # Se não encontrou ID, logar erro mas não colocar nas observações
+                    current_app.logger.error(
+                        f"❌ Forma de pagamento '{forma_pagamento_tipo}' não encontrada no Bling. "
+                        f"Parcela NF-e será criada sem forma de pagamento."
+                    )
+                    # Adicionar observações com informação do pagamento
+                    parcela["observacoes"] = f"Parcela {i + 1}/{num_parcelas} - {forma_pagamento_tipo} (ID não encontrado)"
                 
                 parcelas.append(parcela)
         else:
@@ -499,9 +560,21 @@ def emit_nfe(venda_id: int) -> Dict:
             
             parcela = {
                 "data": data_venda.strftime('%Y-%m-%d'),
-                "valor": valor_total_nota,
-                "observacoes": "Pagamento à vista"
+                "valor": valor_total_nota
             }
+            
+            # Sempre adicionar forma de pagamento se tiver ID
+            if forma_pagamento_id:
+                parcela["formaPagamento"] = {"id": forma_pagamento_id}
+            else:
+                # Se não encontrou ID, logar erro
+                current_app.logger.error(
+                    f"❌ Forma de pagamento '{forma_pagamento_tipo}' não encontrada no Bling. "
+                    f"Parcela NF-e será criada sem forma de pagamento."
+                )
+                # Adicionar observações com informação do pagamento
+                parcela["observacoes"] = f"Pagamento {forma_pagamento_tipo} (ID não encontrado)"
+            
             parcelas.append(parcela)
         
         # Buscar dados da transportadora escolhida no checkout
@@ -513,6 +586,7 @@ def emit_nfe(venda_id: int) -> Dict:
         # Dados da transportadora escolhida no checkout (da tabela vendas)
         transportadora_nome = venda_data.get('transportadora_nome')
         transportadora_cnpj = venda_data.get('transportadora_cnpj')
+        
         transportadora_ie = venda_data.get('transportadora_ie')
         transportadora_uf = venda_data.get('transportadora_uf')
         transportadora_municipio = venda_data.get('transportadora_municipio')
@@ -524,100 +598,58 @@ def emit_nfe(venda_id: int) -> Dict:
         melhor_envio_service_id = venda_data.get('melhor_envio_service_id')
         melhor_envio_service_name = venda_data.get('melhor_envio_service_name')
         
-        # Buscar contato completo da transportadora no Bling usando CNPJ
-        transportadora_bling = None
-        if transportadora_cnpj:
-            try:
-                from .bling_contact_service import find_contact_in_bling
-                transportadora_bling = find_contact_in_bling(transportadora_cnpj)
-                if transportadora_bling:
-                    current_app.logger.info(
-                        f"✅ Contato da transportadora encontrado no Bling: {transportadora_bling.get('nome')} "
-                        f"(ID: {transportadora_bling.get('id')})"
-                    )
-                    # Usar dados completos do Bling
-                    transportadora_nome = transportadora_bling.get('nome') or transportadora_nome
-                    transportadora_cnpj = transportadora_bling.get('numeroDocumento') or transportadora_cnpj
-                    transportadora_ie = transportadora_bling.get('ie') or transportadora_ie
-                    
-                    # Endereço do Bling
-                    # A API do Bling pode retornar endereço em diferentes formatos
-                    endereco_bling = transportadora_bling.get('endereco', {})
-                    if endereco_bling:
-                        # Tentar formato com 'geral' e 'cobranca'
-                        geral = endereco_bling.get('geral') or endereco_bling.get('cobranca') or {}
-                        # Se não tiver 'geral'/'cobranca', pode estar direto no objeto
-                        if not geral and isinstance(endereco_bling, dict):
-                            # Verificar se os campos estão diretamente no endereco_bling
-                            if endereco_bling.get('endereco'):
-                                geral = endereco_bling
-                        
-                        if geral:
-                            transportadora_endereco = geral.get('endereco') or transportadora_endereco
-                            transportadora_numero = str(geral.get('numero', '')).strip() or transportadora_numero
-                            transportadora_complemento = geral.get('complemento') or transportadora_complemento
-                            transportadora_bairro = geral.get('bairro') or transportadora_bairro
-                            transportadora_municipio = geral.get('municipio') or transportadora_municipio
-                            transportadora_uf = geral.get('uf') or transportadora_uf
-                            # CEP pode vir com ou sem formatação
-                            cep_bling = geral.get('cep') or ''
-                            if cep_bling:
-                                transportadora_cep = cep_bling.replace('-', '').replace(' ', '')
-                else:
-                    current_app.logger.warning(
-                        f"⚠️ Transportadora não encontrada no Bling (CNPJ: {transportadora_cnpj}). "
-                        f"Usando dados da tabela vendas."
-                    )
-            except Exception as e:
-                current_app.logger.warning(
-                    f"⚠️ Erro ao buscar transportadora no Bling: {e}. Usando dados da tabela vendas."
-                )
+        # Log dos dados da transportadora para debug (APÓS ler todos os dados)
+        current_app.logger.info(
+            f"🚚 Dados da transportadora do pedido {venda_id}: "
+            f"Nome={transportadora_nome or 'N/A'}, "
+            f"CNPJ={transportadora_cnpj or 'N/A'}, "
+            f"IE={transportadora_ie or 'N/A'}, "
+            f"UF={transportadora_uf or 'N/A'}, "
+            f"Município={transportadora_municipio or 'N/A'}, "
+            f"Endereço={transportadora_endereco or 'N/A'}, "
+            f"Frete=R$ {valor_frete:.2f}, "
+            f"Serviço ME ID={melhor_envio_service_id or 'N/A'}, "
+            f"Serviço ME Nome={melhor_envio_service_name or 'N/A'}"
+        )
+        
+        # Verificar se tem dados suficientes para incluir transportadora
+        tem_dados_minimos = bool(transportadora_nome and (transportadora_cnpj or transportadora_municipio))
+        if not tem_dados_minimos:
+            current_app.logger.warning(
+                f"⚠️ Dados insuficientes da transportadora para NF-e: "
+                f"Nome={transportadora_nome or 'N/A'}, "
+                f"CNPJ={transportadora_cnpj or 'N/A'}, "
+                f"Município={transportadora_municipio or 'N/A'}"
+            )
+        
+        # REMOVIDO: Lógica de descoberta de transportadora por CNPJ
+        # Agora usamos apenas os dados que já vêm do checkout (ID do transporte)
+        # Os dados da transportadora já estão completos na tabela vendas
         
         # Buscar ID do serviço no Bling baseado no código do Melhor Envio escolhido no checkout
+        # IMPORTANTE: Passar transportadora_nome para distinguir ID 4 (Jadlog vs Azul)
         if melhor_envio_service_id:
             try:
-                # Buscar serviços do Melhor Envio no Bling
-                response = make_bling_api_request(
-                    'GET',
-                    '/logisticas/servicos',
-                    params={
-                        'tipoIntegracao': 'MelhorEnvio',
-                        'limite': 100
-                    }
+                from .bling_logistics_service import get_or_create_logistics_service
+                servico_data = get_or_create_logistics_service(
+                    melhor_envio_service_id,
+                    melhor_envio_service_name or 'Frete',
+                    transportadora_nome  # Passar transportadora para distinguir ID 4
                 )
-                
-                if response.status_code == 200:
-                    servicos_data = response.json().get('data', [])
-                    
-                    # Procurar serviço com código correspondente ao melhor_envio_service_id
-                    # Preferir serviços da loja (LhamaBanana) se existirem
-                    servico_bling = None
-                    
-                    # Primeiro, tentar encontrar serviço específico da loja
-                    for servico in servicos_data:
-                        if (servico.get('codigo') == str(melhor_envio_service_id) and 
-                            'LhamaBanana' in servico.get('descricao', '')):
-                            servico_bling = servico
-                            break
-                    
-                    # Se não encontrou específico, usar qualquer serviço com o código
-                    if not servico_bling:
-                        for servico in servicos_data:
-                            if servico.get('codigo') == str(melhor_envio_service_id):
-                                servico_bling = servico
-                                break
-                    
-                    if servico_bling:
-                        servico_postagem_id = servico_bling.get('id')
-                        servico_postagem_nome = melhor_envio_service_name or servico_bling.get('descricao')
-                        current_app.logger.info(
-                            f"📦 Serviço de postagem encontrado: {servico_postagem_nome} "
-                            f"(Melhor Envio ID: {melhor_envio_service_id}, Bling ID: {servico_postagem_id})"
-                        )
-                    else:
-                        current_app.logger.warning(
-                            f"⚠️ Serviço Melhor Envio {melhor_envio_service_id} não encontrado no Bling"
-                        )
+                if servico_data:
+                    servico_postagem_id = servico_data.get('id')
+                    servico_postagem_nome = melhor_envio_service_name or servico_data.get('descricao')
+                    current_app.logger.info(
+                        f"📦 Serviço de postagem encontrado: {servico_postagem_nome} "
+                        f"(Transportadora: {transportadora_nome or 'N/A'}, "
+                        f"Melhor Envio ID: {melhor_envio_service_id}, Bling ID: {servico_postagem_id})"
+                    )
+                else:
+                    current_app.logger.warning(
+                        f"⚠️ Serviço Melhor Envio {melhor_envio_service_id} "
+                        f"(Transportadora: {transportadora_nome or 'N/A'}) "
+                        f"não encontrado no mapeamento nem no Bling"
+                    )
             except Exception as e:
                 current_app.logger.warning(f"⚠️ Erro ao buscar serviço no Bling: {e}")
         
@@ -644,60 +676,87 @@ def emit_nfe(venda_id: int) -> Dict:
                 cur.close()
         
         # Preparar seção de transporte
-        if valor_frete > 0:
+        # IMPORTANTE: Incluir transporte sempre que houver dados da transportadora OU frete > 0
+        # A transportadora deve ser incluída diretamente na NF-e, não precisa estar no pedido do Bling
+        transporte_data = None
+        tem_dados_transportadora = bool(transportadora_cnpj or transportadora_nome)
+        
+        if valor_frete > 0 or tem_dados_transportadora:
             transporte_data = {
                 "fretePorConta": 0,  # 0 = Por conta do destinatário
-                "frete": valor_frete
             }
             
-            # Adicionar dados completos da transportadora escolhida no checkout
-            if transportadora_nome:
-                transportador_data = {
-                    "nome": transportadora_nome
-                }
-                
-                # CNPJ
-                if transportadora_cnpj:
-                    # Limpar formatação do CNPJ
-                    cnpj_limpo = str(transportadora_cnpj).replace('.', '').replace('-', '').replace('/', '')
-                    transportador_data["numeroDocumento"] = cnpj_limpo
-                
-                # Inscrição Estadual
-                if transportadora_ie:
-                    transportador_data["ie"] = transportadora_ie
-                
-                # Endereço completo da transportadora
-                if transportadora_endereco or transportadora_numero:
-                    endereco_transportadora = {
-                        "endereco": transportadora_endereco or "",
-                        "numero": transportadora_numero or "",
-                    }
-                    
-                    if transportadora_complemento:
-                        endereco_transportadora["complemento"] = transportadora_complemento
-                    
-                    if transportadora_bairro:
-                        endereco_transportadora["bairro"] = transportadora_bairro
-                    
-                    if transportadora_municipio:
-                        endereco_transportadora["municipio"] = transportadora_municipio
-                    
-                    if transportadora_uf:
-                        endereco_transportadora["uf"] = transportadora_uf.upper()
-                    
-                    if transportadora_cep:
-                        # Limpar formatação do CEP
-                        cep_limpo = str(transportadora_cep).replace('-', '').replace(' ', '')
-                        endereco_transportadora["cep"] = cep_limpo
-                    
-                    transportador_data["endereco"] = endereco_transportadora
-                
-                transporte_data["transportador"] = transportador_data
-                
+            # Adicionar valor do frete apenas se for maior que 0
+            if valor_frete > 0:
+                transporte_data["frete"] = valor_frete
+            
+            # SEMPRE incluir transportadora se houver dados
+            # REMOVIDO: Lógica de busca na tabela transportadoras_bling
+            # Agora usamos apenas os dados que já vêm do checkout (ID do transporte)
+            transportador_data = None  # Inicializar variável
+            if tem_dados_transportadora:
                 current_app.logger.info(
-                    f"🚚 Transportadora adicionada ao transporte: {transportadora_nome} "
-                    f"(CNPJ: {transportadora_cnpj}, IE: {transportadora_ie}, UF: {transportadora_uf})"
+                    f"🚚 Dados de transportadora encontrados na venda {venda_id}: "
+                    f"Nome={transportadora_nome}, CNPJ={transportadora_cnpj}, IE={transportadora_ie}"
                 )
+                try:
+                    # Usar dados diretamente da tabela vendas (já vêm completos do checkout)
+                    # REMOVIDO: Lógica de busca na tabela transportadoras_bling
+                    # Agora usamos apenas os dados que já vêm do checkout (ID do transporte)
+                    import re
+                    transportador_data = {}
+                    
+                    if transportadora_nome:
+                        transportador_data["nome"] = transportadora_nome
+                    
+                    if transportadora_cnpj:
+                        cnpj_limpo = re.sub(r'[^\d]', '', str(transportadora_cnpj))
+                        if len(cnpj_limpo) == 14:
+                            transportador_data["numeroDocumento"] = cnpj_limpo
+                        else:
+                            current_app.logger.warning(f"⚠️ CNPJ inválido: {transportadora_cnpj}")
+                            transportador_data = None
+                    
+                    if transportador_data and transportadora_ie:
+                        transportador_data["ie"] = transportadora_ie
+                    
+                    if transportador_data:
+                        current_app.logger.info(
+                            f"✅ Transportadora preparada com dados da venda: "
+                            f"{transportador_data.get('nome', 'N/A')} "
+                            f"(CNPJ: {transportador_data.get('numeroDocumento', 'N/A')})"
+                        )
+                    else:
+                        current_app.logger.warning(
+                            f"⚠️ Não foi possível preparar transportadora: "
+                            f"Nome={transportadora_nome or 'N/A'}, CNPJ={transportadora_cnpj or 'N/A'}"
+                        )
+                except Exception as e:
+                    current_app.logger.warning(
+                        f"⚠️ Erro ao preparar transportadora: {e}", 
+                        exc_info=True
+                    )
+                    transportador_data = None
+                
+                # SEMPRE incluir transportadora na NF-e SE tiver dados válidos (fora do try/except)
+                if transportador_data:
+                    transporte_data["transportador"] = transportador_data
+                    current_app.logger.info(
+                        f"✅ Transportadora incluída no transporte_data da NF-e: "
+                        f"{json_module.dumps(transportador_data, indent=2, ensure_ascii=False)}"
+                    )
+                else:
+                    current_app.logger.warning(
+                        f"⚠️ Transportadora NÃO incluída na NF-e (dados insuficientes ou inválidos). "
+                        f"Nome: {transportadora_nome or 'N/A'}, CNPJ: {transportadora_cnpj or 'N/A'}"
+                    )
+            else:
+                # Se não há CNPJ nem nome, mas há frete, ainda criar estrutura básica
+                if valor_frete > 0:
+                    current_app.logger.warning(
+                        f"⚠️ Frete presente (R$ {valor_frete:.2f}) mas sem dados da transportadora. "
+                        f"Transporte será incluído sem transportador."
+                    )
             
             # Adicionar serviço de postagem (integração Melhor Envio) se disponível
             # O Bling espera o ID do serviço de logística
@@ -755,9 +814,36 @@ def emit_nfe(venda_id: int) -> Dict:
         if valor_desconto > 0:
             nfe_payload["desconto"] = valor_desconto
         
-        # Adicionar transporte se houver frete
+        # Adicionar transporte se houver frete ou dados da transportadora
         if transporte_data:
+            # Verificar se transportador foi adicionado
+            tem_transportador = bool(transporte_data.get('transportador'))
+            
             nfe_payload["transporte"] = transporte_data
+            current_app.logger.info(
+                f"✅ Transporte incluído na NF-e: "
+                f"Frete=R$ {transporte_data.get('frete', 0):.2f}, "
+                f"Transportador={'Sim' if tem_transportador else 'Não'}, "
+                f"Volumes={'Sim' if transporte_data.get('volumes') else 'Não'}"
+            )
+            
+            if tem_transportador:
+                # Log detalhado do payload de transporte para debug
+                current_app.logger.info(
+                    f"📦 Payload completo do transporte: {json_module.dumps(transporte_data, indent=2, ensure_ascii=False)}"
+                )
+            else:
+                current_app.logger.error(
+                    f"❌ ERRO: Transporte incluído na NF-e mas SEM transportador! "
+                    f"Frete={valor_frete:.2f}, Transportadora Nome={transportadora_nome or 'N/A'}, "
+                    f"Transportadora CNPJ={transportadora_cnpj or 'N/A'}"
+                )
+        else:
+            current_app.logger.warning(
+                f"⚠️ Transporte NÃO incluído na NF-e para pedido {venda_id}. "
+                f"Frete={valor_frete:.2f}, Transportadora Nome={transportadora_nome or 'N/A'}, "
+                f"Transportadora CNPJ={transportadora_cnpj or 'N/A'}"
+            )
         
         # Adicionar observações
         codigo_pedido = venda_data.get('codigo_pedido', '')
@@ -769,58 +855,334 @@ def emit_nfe(venda_id: int) -> Dict:
         nfe_payload["observacoes"] = observacoes
         
         current_app.logger.info(f"📄 Emitindo NF-e (Modelo 55) para venda {venda_id}...")
-        current_app.logger.debug(f"Payload NF-e: {json.dumps(nfe_payload, indent=2, ensure_ascii=False)}")
         
-        # Enviar requisição para API do Bling
-        response = make_bling_api_request(
-            'POST',
-            '/nfe',
-            json=nfe_payload
-        )
+        # Log detalhado do transporte no payload final
+        if 'transporte' in nfe_payload:
+            transporte_final = nfe_payload['transporte']
+            tem_transportador_final = bool(transporte_final.get('transportador'))
+            current_app.logger.info(
+                f"🔍 Verificação final do transporte no payload NF-e: "
+                f"Transportador={'Sim' if tem_transportador_final else 'NÃO'}, "
+                f"Frete={transporte_final.get('frete', 0):.2f}"
+            )
+            if tem_transportador_final:
+                transportador_final = transporte_final.get('transportador', {})
+                current_app.logger.info(
+                    f"   Transportador: {transportador_final.get('nome', 'N/A')}, "
+                    f"CNPJ: {transportador_final.get('numeroDocumento', 'N/A')}, "
+                    f"IE: {transportador_final.get('ie', 'N/A')}"
+                )
+            else:
+                current_app.logger.error(
+                    f"❌ ERRO CRÍTICO: Transporte está no payload mas SEM transportador! "
+                    f"Verifique os logs anteriores para entender o problema."
+                )
         
-        if response.status_code in [200, 201]:
+        current_app.logger.debug(f"Payload NF-e completo: {json_module.dumps(nfe_payload, indent=2, ensure_ascii=False)}")
+        
+        # IMPORTANTE: Se temos pedido no Bling, criar NF-e associada ao pedido primeiro
+        # Depois editamos para adicionar dados customizados (transportadora, etc.)
+        nfe_id = None
+        if pedido_bling_id:
+            current_app.logger.info(
+                f"📄 Criando NF-e associada ao pedido {pedido_bling_id} no Bling..."
+            )
+            
+            # Passo 1: Criar NF-e associada ao pedido usando endpoint do Bling
+            response_gerar = make_bling_api_request(
+                'POST',
+                f'/pedidos/vendas/{pedido_bling_id}/gerar-nfe',
+                json={}  # Bling cria NF-e baseada no pedido
+            )
+            
+            if response_gerar.status_code in [200, 201]:
+                data_gerar = response_gerar.json()
+                
+                # Log da resposta completa para debug
+                current_app.logger.debug(
+                    f"📋 Resposta do POST /pedidos/vendas/{pedido_bling_id}/gerar-nfe: "
+                    f"{json_module.dumps(data_gerar, indent=2, ensure_ascii=False)}"
+                )
+                
+                # Tentar extrair ID da NF-e de diferentes formatos de resposta
+                nfe_data_gerar = data_gerar.get('data', {})
+                
+                # Extrair ID da NF-e criada (pode estar em diferentes lugares)
+                nfe_id = None
+                if isinstance(nfe_data_gerar, dict):
+                    nfe_id = nfe_data_gerar.get('id')
+                elif isinstance(data_gerar, dict):
+                    nfe_id = data_gerar.get('id')
+                
+                # Se ainda não encontrou, tentar buscar no pedido
+                if not nfe_id:
+                    current_app.logger.info(
+                        f"🔍 ID da NF-e não encontrado na resposta. Buscando no pedido..."
+                    )
+                    time.sleep(1)
+                    response_pedido_check = make_bling_api_request(
+                        'GET',
+                        f'/pedidos/vendas/{pedido_bling_id}'
+                    )
+                    if response_pedido_check.status_code == 200:
+                        pedido_data_check = response_pedido_check.json().get('data', {})
+                        nfe_pedido_check = pedido_data_check.get('notaFiscal', {})
+                        if nfe_pedido_check:
+                            nfe_id = nfe_pedido_check.get('id')
+                            current_app.logger.info(
+                                f"✅ ID da NF-e encontrado no pedido: {nfe_id}"
+                            )
+                
+                if nfe_id:
+                    current_app.logger.info(
+                        f"✅ NF-e {nfe_id} criada e associada ao pedido {pedido_bling_id} no Bling. "
+                        f"NF-e criada com todos os dados do pedido (não é necessário editar)."
+                    )
+                    # REMOVIDO: Edição da NF-e após criação
+                    # Os dados já estão corretos quando a NF-e é criada via /gerar-nfe
+                    # A edição estava causando erros porque a NF-e recém-criada pode não ter número ainda
+                else:
+                    current_app.logger.warning(
+                        f"⚠️ NF-e criada mas ID não encontrado na resposta. "
+                        f"Tentando criar NF-e diretamente..."
+                    )
+                    nfe_id = None
+            else:
+                error_text_gerar = response_gerar.text
+                current_app.logger.warning(
+                    f"⚠️ Erro ao criar NF-e associada ao pedido: HTTP {response_gerar.status_code} - {error_text_gerar}. "
+                    f"Tentando criar NF-e diretamente..."
+                )
+                nfe_id = None
+        
+        # Se não conseguiu criar via pedido ou não tem pedido, criar NF-e diretamente
+        response = None
+        if not nfe_id:
+            current_app.logger.info(
+                f"📄 Criando NF-e diretamente no Bling (sem associação inicial ao pedido)..."
+            )
+            
+            # Enviar requisição para API do Bling
+            response = make_bling_api_request(
+                'POST',
+                '/nfe',
+                json=nfe_payload
+            )
+        
+        # Processar resposta (seja da criação via pedido ou direta)
+        data = {}  # Inicializar data
+        if nfe_id:
+            # NF-e já foi criada via pedido, buscar informações atualizadas
+            current_app.logger.info(
+                f"📋 Buscando informações atualizadas da NF-e {nfe_id} no Bling..."
+            )
+            
+            response_nfe_info = make_bling_api_request(
+                'GET',
+                f'/nfe/{nfe_id}'
+            )
+            
+            if response_nfe_info.status_code == 200:
+                data = response_nfe_info.json()
+                nfe_data = data.get('data', {})
+            else:
+                # Se não conseguir buscar, usar dados básicos
+                nfe_data = {'id': nfe_id}
+                data = {'data': nfe_data}
+        elif response and response.status_code in [200, 201]:
+            # NF-e criada diretamente
             data = response.json()
             nfe_data = data.get('data', {})
-            
-            # Extrair informações da NF-e
-            nfe_id = nfe_data.get('id')
-            nfe_numero = nfe_data.get('numero')
-            nfe_chave_acesso = nfe_data.get('chaveAcesso')
-            nfe_situacao = nfe_data.get('situacao', 'PENDENTE')
-            
-            current_app.logger.info(
-                f"✅ NF-e emitida com sucesso para venda {venda_id}. "
-                f"ID: {nfe_id}, Número: {nfe_numero}, Status: {nfe_situacao}"
-            )
-            
-            # Salvar informações da NF-e
-            # Buscar pedido Bling relacionado se existir
-            bling_pedido = get_bling_order_by_local_id(venda_id)
-            pedido_bling_id = bling_pedido.get('bling_pedido_id') if bling_pedido else None
-            
-            save_nfe_info(venda_id, pedido_bling_id, nfe_id, nfe_numero, nfe_chave_acesso, None, nfe_situacao, data)
-            
-            return {
-                'success': True,
-                'nfe_id': nfe_id,
-                'nfe_numero': nfe_numero,
-                'nfe_chave_acesso': nfe_chave_acesso,
-                'nfe_situacao': nfe_situacao,
-                'message': 'NF-e emitida com sucesso'
-            }
         else:
-            error_text = response.text
+            # Erro na criação
+            error_text = response.text if response else "Resposta não disponível"
             current_app.logger.error(
-                f"❌ Erro ao emitir NF-e para venda {venda_id}: {response.status_code} - {error_text}"
+                f"❌ Erro ao emitir NF-e para venda {venda_id}: {response.status_code if response else 'N/A'} - {error_text}"
             )
             
-            save_nfe_error(venda_id, f"Erro HTTP {response.status_code}: {error_text}")
+            save_nfe_error(venda_id, f"Erro HTTP {response.status_code if response else 'N/A'}: {error_text}")
             
             return {
                 'success': False,
-                'error': f"Erro HTTP {response.status_code}",
+                'error': f"Erro HTTP {response.status_code if response else 'N/A'}",
                 'details': error_text
             }
+        
+        # Extrair informações da NF-e
+        if not nfe_id:
+            nfe_id = nfe_data.get('id')
+        nfe_numero = nfe_data.get('numero')
+        nfe_chave_acesso = nfe_data.get('chaveAcesso')
+        nfe_situacao = nfe_data.get('situacao', 'PENDENTE')
+        
+        current_app.logger.info(
+            f"✅ NF-e criada com sucesso para venda {venda_id}. "
+            f"ID: {nfe_id}, Número: {nfe_numero}, Status: {nfe_situacao}"
+        )
+        
+        # IMPORTANTE: Verificar status da NF-e antes de tentar enviar
+        # Só enviamos se estiver pendente ou rejeitada
+        if nfe_id:
+            # Buscar status atual da NF-e
+            current_app.logger.info(
+                f"🔍 Verificando status atual da NF-e {nfe_id} antes de enviar..."
+            )
+            
+            response_nfe_status = make_bling_api_request(
+                'GET',
+                f'/nfe/{nfe_id}'
+            )
+            
+            if response_nfe_status.status_code == 200:
+                nfe_data_status = response_nfe_status.json().get('data', {})
+                nfe_situacao_atual = nfe_data_status.get('situacao', nfe_situacao)
+                nfe_chave_acesso = nfe_data_status.get('chaveAcesso') or nfe_chave_acesso
+                nfe_numero = nfe_data_status.get('numero') or nfe_numero
+                
+                # O Bling retorna situação como número:
+                # 1 = Pendente, 2 = Cancelada, 3 = Aguardando recibo,
+                # 4 = Rejeitada, 5 = Autorizada, 6 = Emitida DANFE, 7 = Registrada,
+                # 8 = Aguardando protocolo, 9 = Denegada, 10 = Consulta situação, 11 = Bloqueada
+                # Converter para número se for string
+                if isinstance(nfe_situacao_atual, str):
+                    try:
+                        nfe_situacao_atual = int(nfe_situacao_atual)
+                    except (ValueError, TypeError):
+                        # Se não conseguir converter, tratar como pendente
+                        nfe_situacao_atual = 1
+                
+                # Situações que indicam que a NF-e já foi processada/autorizada (números)
+                # 5 = AUTORIZADA, 6 = EMITIDA_DANFE, 7 = REGISTRADA, 2 = CANCELADA
+                situacoes_finais = [2, 5, 6, 7]  # Cancelada, Autorizada, Emitida DANFE, Registrada
+                
+                # Verificar se a NF-e já está em uma situação final
+                if isinstance(nfe_situacao_atual, int) and nfe_situacao_atual in situacoes_finais:
+                    situacao_nomes = {
+                        2: 'CANCELADA',
+                        5: 'AUTORIZADA',
+                        6: 'EMITIDA_DANFE',
+                        7: 'REGISTRADA'
+                    }
+                    situacao_nome = situacao_nomes.get(nfe_situacao_atual, f'DESCONHECIDA_{nfe_situacao_atual}')
+                    current_app.logger.info(
+                        f"ℹ️ NF-e {nfe_id} já está na situação {nfe_situacao_atual} ({situacao_nome}). "
+                        f"Não é necessário enviar novamente."
+                    )
+                    nfe_situacao = nfe_situacao_atual
+                else:
+                    # NF-e está pendente ou rejeitada, podemos tentar enviar
+                    current_app.logger.info(
+                        f"📤 Enviando NF-e {nfe_id} para o SEFAZ (situação atual: {nfe_situacao_atual})..."
+                    )
+                    
+                    # Enviar para o SEFAZ usando POST /nfe/{idNotaFiscal}/enviar
+                    time.sleep(1)  # Aguardar 1 segundo antes de enviar
+                    
+                    response_enviar = make_bling_api_request(
+                        'POST',
+                        f'/nfe/{nfe_id}/enviar',
+                        json={}  # Endpoint pode não exigir body
+                    )
+                    
+                    if response_enviar.status_code in [200, 201, 204]:
+                        current_app.logger.info(
+                            f"✅ NF-e {nfe_id} enviada para o SEFAZ com sucesso"
+                        )
+                        
+                        # Aguardar um pouco e consultar status atualizado
+                        time.sleep(2)
+                        
+                        # Consultar NF-e atualizada para obter chave de acesso e status
+                        response_nfe = make_bling_api_request(
+                            'GET',
+                            f'/nfe/{nfe_id}'
+                        )
+                        
+                        if response_nfe.status_code == 200:
+                            nfe_data_atualizada = response_nfe.json().get('data', {})
+                            nfe_chave_acesso = nfe_data_atualizada.get('chaveAcesso') or nfe_chave_acesso
+                            nfe_situacao = nfe_data_atualizada.get('situacao', nfe_situacao_atual)
+                            nfe_numero = nfe_data_atualizada.get('numero') or nfe_numero
+                            
+                            current_app.logger.info(
+                                f"📋 NF-e {nfe_id} atualizada após envio: "
+                                f"Situação: {nfe_situacao}, "
+                                f"Chave de acesso: {'Sim' if nfe_chave_acesso else 'Não'}"
+                            )
+                    else:
+                        error_text_enviar = response_enviar.text
+                        current_app.logger.warning(
+                            f"⚠️ Erro ao enviar NF-e {nfe_id} para o SEFAZ: "
+                            f"HTTP {response_enviar.status_code} - {error_text_enviar}"
+                        )
+                        # Continuar mesmo se o envio falhar, pois a NF-e foi criada
+            else:
+                current_app.logger.warning(
+                    f"⚠️ Não foi possível verificar status da NF-e {nfe_id}. "
+                    f"Tentando enviar mesmo assim..."
+                )
+                # Se não conseguir verificar, tentar enviar (comportamento antigo)
+                time.sleep(1)
+                response_enviar = make_bling_api_request(
+                    'POST',
+                    f'/nfe/{nfe_id}/enviar',
+                    json={}
+                )
+                if response_enviar.status_code not in [200, 201, 204]:
+                    error_text_enviar = response_enviar.text
+                    current_app.logger.warning(
+                        f"⚠️ Erro ao enviar NF-e {nfe_id} para o SEFAZ: "
+                        f"HTTP {response_enviar.status_code} - {error_text_enviar}"
+                    )
+        
+        # IMPORTANTE: Se temos pedido no Bling, tentar associar a NF-e ao pedido
+        # O pedido_bling_id já foi buscado no início da função
+        if pedido_bling_id and nfe_id:
+            # Tentar associar a NF-e ao pedido no Bling
+            # O Bling pode associar automaticamente quando a NF-e é autorizada
+            try:
+                current_app.logger.info(
+                    f"🔗 Verificando associação da NF-e {nfe_id} ao pedido {pedido_bling_id} no Bling..."
+                )
+                
+                # Verificar se a NF-e já está associada ao pedido
+                response_pedido = make_bling_api_request(
+                    'GET',
+                    f'/pedidos/vendas/{pedido_bling_id}'
+                )
+                
+                if response_pedido.status_code == 200:
+                    pedido_data = response_pedido.json().get('data', {})
+                    nfe_pedido = pedido_data.get('notaFiscal', {})
+                    
+                    if nfe_pedido and nfe_pedido.get('id') == nfe_id:
+                        current_app.logger.info(
+                            f"✅ NF-e {nfe_id} já está associada ao pedido {pedido_bling_id}"
+                        )
+                    else:
+                        current_app.logger.info(
+                            f"ℹ️ NF-e {nfe_id} ainda não está associada ao pedido {pedido_bling_id}. "
+                            f"O Bling geralmente associa automaticamente quando a NF-e é autorizada pelo SEFAZ."
+                        )
+                        # Nota: O Bling pode associar automaticamente quando a NF-e é autorizada
+                        # Se não associar, pode ser necessário fazer manualmente no painel do Bling
+            except Exception as e:
+                current_app.logger.warning(
+                    f"⚠️ Erro ao verificar associação NF-e/pedido: {e}"
+                )
+        
+        # Salvar informações da NF-e
+        save_nfe_info(venda_id, pedido_bling_id, nfe_id, nfe_numero, nfe_chave_acesso, None, nfe_situacao, data)
+        
+        return {
+            'success': True,
+            'nfe_id': nfe_id,
+            'nfe_numero': nfe_numero,
+            'nfe_chave_acesso': nfe_chave_acesso,
+            'nfe_situacao': nfe_situacao,
+            'pedido_bling_id': pedido_bling_id,
+            'message': 'NF-e emitida e enviada para o SEFAZ com sucesso'
+        }
             
     except BlingAPIError as e:
         current_app.logger.error(f"❌ Erro da API Bling ao emitir NF-e: {e}")

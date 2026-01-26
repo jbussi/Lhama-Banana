@@ -1,0 +1,40 @@
+{
+  "kind": "singleType",
+  "collectionName": "conteudo_contato",
+  "info": {
+    "singularName": "conteudo-contato",
+    "pluralName": "conteudo-contatos",
+    "displayName": "Conteúdo Contato",
+    "description": "Conteúdo da página de contato"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "titulo": {
+      "type": "string",
+      "default": "Entre em Contato"
+    },
+    "texto_principal": {
+      "type": "richtext"
+    },
+    "informacoes_contato": {
+      "type": "json"
+    },
+    "redes_sociais": {
+      "type": "json"
+    },
+    "form_titulo": {
+      "type": "string",
+      "default": "Envie sua Mensagem"
+    },
+    "form_texto": {
+      "type": "text"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

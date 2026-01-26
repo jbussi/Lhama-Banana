@@ -111,24 +111,25 @@ def get_product_for_bling_sync(produto_id: int) -> Optional[Dict]:
         # #endregion
         
         # Query base - campos que sempre existem
+        # IMPORTANTE: peso_kg e dimensões estão na tabela produtos, não em nome_produto
         query_base = """
             SELECT 
                 p.id,
                 p.codigo_sku,
                 p.ncm,
+                p.cest,
                 p.preco_venda,
                 p.preco_promocional,
                 p.custo,
                 p.estoque,
-                p.estoque_minimo,
                 p.codigo_barras,
+                p.peso_kg,
+                p.dimensoes_largura,
+                p.dimensoes_altura,
+                p.dimensoes_comprimento,
                 np.nome,
                 np.descricao,
                 np.descricao_curta,
-                np.peso_kg,
-                np.dimensoes_largura,
-                np.dimensoes_altura,
-                np.dimensoes_comprimento,
                 c.nome as categoria_nome,
                 e.nome as estampa_nome,
                 t.nome as tamanho_nome
@@ -434,10 +435,9 @@ def validate_product_for_bling(produto: Dict) -> List[str]:
     
     # CEST (opcional, mas se informado deve ter 7 dígitos)
     # CEST é obrigatório apenas para produtos sujeitos a ST
-    # Se o banco tiver campo 'cest', adicionar validação:
-    # cest = produto.get('cest')
-    # if cest and (len(str(cest)) != 7 or not str(cest).isdigit()):
-    #     errors.append("CEST deve ter 7 dígitos (se informado)")
+    cest = produto.get('cest')
+    if cest and (len(str(cest)) != 7 or not str(cest).isdigit()):
+        errors.append("CEST deve ter 7 dígitos (se informado)")
     
     return errors
 
@@ -499,17 +499,64 @@ def map_product_to_bling_format(produto: Dict) -> Dict:
     estoque_atual_raw = produto.get('estoque')
     estoque_atual = int(estoque_atual_raw) if estoque_atual_raw is not None else 0
     
-    estoque_minimo_raw = produto.get('estoque_minimo')
-    estoque_minimo = int(estoque_minimo_raw) if estoque_minimo_raw is not None else 0
-    
-    current_app.logger.debug(f"[map_product_to_bling_format] Estoque: atual={estoque_atual}, minimo={estoque_minimo} (raw: atual={estoque_atual_raw}, minimo={estoque_minimo_raw})")
+    current_app.logger.debug(f"[map_product_to_bling_format] Estoque: atual={estoque_atual} (raw: {estoque_atual_raw})")
     
     # IMPORTANTE: Bling usa 'saldoVirtualTotal' para estoque atual, não 'atual'
     bling_product["estoque"] = {
-        "minimo": estoque_minimo,
+        "minimo": 0,  # Não configurado (removido do sistema)
         "maximo": 0,  # Não configurado
         "saldoVirtualTotal": estoque_atual  # Usar saldoVirtualTotal em vez de atual
     }
+    
+    # Peso e dimensões (para cálculo de frete e fiscal)
+    peso_kg = float(produto.get('peso_kg') or 0)
+    if peso_kg > 0:
+        bling_product["pesoLiq"] = peso_kg
+        bling_product["pesoBruto"] = peso_kg * 1.1  # Peso bruto = líquido + 10% (embalagem)
+        current_app.logger.debug(f"[map_product_to_bling_format] Peso: {peso_kg} kg")
+    
+    # Dimensões (largura, altura, comprimento/profundidade)
+    # IMPORTANTE: Incluir dimensões mesmo que não estejam todas preenchidas
+    dimensoes_largura = float(produto.get('dimensoes_largura') or 0)
+    dimensoes_altura = float(produto.get('dimensoes_altura') or 0)
+    dimensoes_comprimento = float(produto.get('dimensoes_comprimento') or 0)
+    
+    # Bling aceita dimensões tanto no nível raiz quanto em objeto "dimensoes"
+    # Vamos incluir em ambos os formatos para garantir compatibilidade
+    dimensoes_dict = {}
+    
+    if dimensoes_largura > 0:
+        bling_product["largura"] = dimensoes_largura
+        dimensoes_dict["largura"] = dimensoes_largura
+        current_app.logger.debug(f"[map_product_to_bling_format] Largura: {dimensoes_largura} cm")
+    
+    if dimensoes_altura > 0:
+        bling_product["altura"] = dimensoes_altura
+        dimensoes_dict["altura"] = dimensoes_altura
+        current_app.logger.debug(f"[map_product_to_bling_format] Altura: {dimensoes_altura} cm")
+    
+    if dimensoes_comprimento > 0:
+        # Bling usa "profundidade" para comprimento (confirmado na resposta da API)
+        bling_product["profundidade"] = dimensoes_comprimento
+        dimensoes_dict["profundidade"] = dimensoes_comprimento
+        current_app.logger.debug(f"[map_product_to_bling_format] Comprimento (profundidade): {dimensoes_comprimento} cm")
+    
+    # Incluir também em objeto "dimensoes" (formato que o Bling retorna)
+    if dimensoes_dict:
+        bling_product["dimensoes"] = dimensoes_dict
+        current_app.logger.debug(f"[map_product_to_bling_format] Dimensões em objeto: {dimensoes_dict}")
+    
+    # Log informativo se todas as dimensões estiverem preenchidas
+    if dimensoes_largura > 0 and dimensoes_altura > 0 and dimensoes_comprimento > 0:
+        current_app.logger.info(
+            f"[map_product_to_bling_format] Dimensões completas: "
+            f"L={dimensoes_largura}cm x A={dimensoes_altura}cm x C={dimensoes_comprimento}cm"
+        )
+    
+    # CEST (Código Especificador da Substituição Tributária) - opcional
+    cest = produto.get('cest')
+    if cest and len(str(cest)) == 7 and str(cest).isdigit():
+        bling_product["cest"] = str(cest)
     
     # Descrição básica (opcional, apenas se disponível)
     if produto.get('descricao_curta'):
@@ -2579,6 +2626,8 @@ def sync_stock_to_bling(produto_id: int = None) -> Dict:
                                 quantidade_absoluta = abs(diferenca)
                                 
                                 # Estrutura do payload para lançamento de estoque
+                                # tipoOperacao é obrigatório e deve ser string: "E"=Entrada, "S"=Saída, "B"=Balanço
+                                # O campo "tipo" também deve ser "E" ou "S"
                                 estoque_payload = {
                                     "produto": {
                                         "id": bling_id
@@ -2586,7 +2635,8 @@ def sync_stock_to_bling(produto_id: int = None) -> Dict:
                                     "deposito": {
                                         "id": deposito_id
                                     },
-                                    "tipo": tipo_lancamento,
+                                    "tipo": tipo_lancamento,  # E=Entrada, S=Saída
+                                    "tipoOperacao": tipo_lancamento,  # "E"=Entrada, "S"=Saída (obrigatório, deve ser string)
                                     "quantidade": quantidade_absoluta
                                 }
                                 

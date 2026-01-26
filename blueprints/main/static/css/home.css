@@ -61,12 +61,13 @@ main {
 .carrossel-container {
     width: 100%;
     position: relative;
+    padding: 30px 0;
 }
 
 .carrossel-produtos {
     display: none;
     width: 100%;
-    padding: 20px 0 50px; /* Espaço para navegação e paginação */
+    padding: 30px 0 60px; /* Espaço aumentado para navegação e paginação */
     overflow: hidden;
 }
 
@@ -87,60 +88,230 @@ main {
     display: flex;
     justify-content: center;
     align-items: flex-start;
-    padding: 10px;
+    padding: 15px; /* Padding aumentado para melhor espaçamento */
     box-sizing: border-box;
 }
 
-.produto-card {
+/* Estilo para cards customizados do carrossel */
+.carrossel-item-card {
     background-color: #fff;
-    border-radius: 12px;
+    border-radius: 16px;
     overflow: hidden;
     text-align: center;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    border: 1px solid #eee;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    border: 1px solid #f0f0f0;
     height: 100%;
     display: flex;
     flex-direction: column;
+    position: relative;
 }
 
-.produto-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+.carrossel-item-link {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
-.produto-card img {
+.carrossel-item-image {
     width: 100%;
-    height: 300px; /* Altura fixa para as imagens */
-    object-fit: cover; /* Garante que a imagem cubra a área sem distorcer */
-    display: block;
+    height: 400px;
+    overflow: hidden;
+    position: relative;
 }
 
-.produto-card h3 {
+.carrossel-item-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+}
+
+.carrossel-item-card:hover .carrossel-item-image img {
+    transform: scale(1.05);
+}
+
+.carrossel-item-content {
+    padding: 25px 20px;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.carrossel-item-titulo {
     font-family: 'Fredoka', sans-serif;
-    font-size: 1.1rem;
-    margin: 15px 10px 5px;
+    font-size: 1.3rem;
+    margin: 0 0 10px 0;
     color: var(--cor-texto-cinza);
-    flex-grow: 1; /* Faz o título ocupar o espaço disponível */
+    font-weight: 600;
+    line-height: 1.4;
 }
 
-.produto-card p {
-    font-size: 1.2rem;
+.carrossel-item-subtitulo {
+    font-family: 'Poppins', sans-serif;
+    font-size: 1rem;
+    color: #666;
+    margin: 0;
+    line-height: 1.6;
+    font-style: italic;
+}
+
+.carrossel-item-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 12px 35px rgba(64, 224, 208, 0.15);
+    border-color: var(--cor-principal-turquesa);
+}
+
+.carrossel-item-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--cor-principal-turquesa), var(--cor-secundaria-amarelo));
+    transform: scaleX(0);
+    transition: transform 0.4s ease;
+}
+
+.carrossel-item-card:hover::before {
+    transform: scaleX(1);
+}
+
+/* Estilo unificado para cards de produtos no carrossel (mantido para compatibilidade) */
+.produto-card,
+.card-product {
+    background-color: #fff;
+    border-radius: 16px;
+    overflow: hidden;
+    text-align: center;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    border: 1px solid #f0f0f0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.produto-card::before,
+.card-product::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--cor-principal-turquesa), var(--cor-secundaria-amarelo));
+    transform: scaleX(0);
+    transition: transform 0.4s ease;
+}
+
+.produto-card:hover,
+.card-product:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 12px 35px rgba(64, 224, 208, 0.15);
+    border-color: var(--cor-principal-turquesa);
+}
+
+.produto-card:hover::before,
+.card-product:hover::before {
+    transform: scaleX(1);
+}
+
+.produto-card img,
+.card-product-image {
+    width: 100%;
+    height: 320px;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.5s ease;
+}
+
+.produto-card:hover img,
+.card-product:hover .card-product-image {
+    transform: scale(1.05);
+}
+
+.produto-card h3,
+.card-product-title {
+    font-family: 'Fredoka', sans-serif;
+    font-size: 1.15rem;
+    margin: 20px 15px 8px;
+    color: var(--cor-texto-cinza);
+    flex-grow: 1;
     font-weight: 600;
+    line-height: 1.4;
+}
+
+.produto-card p,
+.card-product-price {
+    font-size: 1.3rem;
+    font-weight: 700;
     color: var(--cor-principal-turquesa);
     margin-bottom: 20px;
+    font-family: 'Poppins', sans-serif;
+}
+
+/* Conteúdo do card-product */
+.card-product-content {
+    padding: 0 15px 20px;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.card-product-actions {
+    margin-top: auto;
+    padding-top: 15px;
+}
+
+.btn-primary.btn-small {
+    padding: 10px 24px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border-radius: 25px;
+    background: var(--cor-principal-turquesa);
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'Poppins', sans-serif;
+}
+
+.btn-primary.btn-small:hover {
+    background: #20c9b9;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(64, 224, 208, 0.4);
 }
 
 /* Navegação do Swiper */
 .swiper-button-next,
 .swiper-button-prev {
     color: var(--cor-principal-turquesa);
-    --swiper-navigation-size: 28px;
+    --swiper-navigation-size: 32px;
+    background: rgba(255, 255, 255, 0.9);
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+.swiper-button-next:hover,
+.swiper-button-prev:hover {
+    background: var(--cor-principal-turquesa);
+    color: white;
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(64, 224, 208, 0.3);
 }
 
 .swiper-button-next:after,
 .swiper-button-prev:after {
     font-weight: 900;
+    font-size: 18px;
 }
 
 /* Estilos adicionais para o Swiper */
@@ -244,7 +415,7 @@ main {
     background: white;
     border-radius: 15px;
     padding: 60px 40px;
-    margin-bottom: 60px;
+    margin-bottom: 0; /* Removido margin-bottom para o espaçamento ser controlado pelo depoimentos-container */
     box-shadow: 0 10px 30px rgba(0,0,0,0.05);
     width: 100%;
     max-width: 1200px;
@@ -352,6 +523,7 @@ main {
 
 /* Depoimentos */
 .depoimentos-container {
+    margin-top: 80px; /* Espaçamento aumentado entre a caixa de destaques e os depoimentos */
     margin-bottom: 60px;
     text-align: center;
 }
@@ -376,18 +548,40 @@ main {
     background-color: var(--cor-secundaria-amarelo);
 }
 
-.depoimentos-grid {
+/* Carrossel de Depoimentos */
+.depoimentos-carousel-wrapper {
+    position: relative;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 60px;
+}
+
+.depoimentos-carousel {
+    overflow: hidden;
+    position: relative;
+}
+
+.depoimentos-track {
     display: flex;
-    flex-wrap: wrap;
+    transition: transform 0.5s ease-in-out;
     gap: 30px;
+    will-change: transform;
+    align-items: center; /* Centraliza verticalmente */
+}
+
+.depoimento-item {
+    flex: 0 0 calc((100% - 60px) / 3);
+    min-width: 0;
+    display: flex;
     justify-content: center;
-    align-items: stretch;
+    align-items: center; /* Centraliza verticalmente */
+    box-sizing: border-box;
+    height: auto; /* Altura automática */
 }
 
 .depoimento {
-    flex: 1;
-    min-width: 300px;
-    max-width: 500px;
+    width: 100%;
+    max-width: 350px;
     background: white;
     padding: 40px 30px 30px;
     border-radius: 15px;
@@ -395,55 +589,23 @@ main {
     position: relative;
     text-align: left;
     border: 1px solid #f0f0f0;
+    display: flex;
+    flex-direction: column;
+    height: auto; /* Altura baseada no conteúdo */
+    box-sizing: border-box;
 }
 
+/* Imagem do time removida - não será mais exibida */
 .imagem-destaque {
-    flex: 1;
-    min-width: 300px;
-    max-width: 500px;
-    position: relative;
-    border-radius: 15px;
-    overflow: hidden;
-    box-shadow: 0 15px 35px rgba(0,0,0,0.1);
-    align-self: center;
-    transition: transform 0.5s ease;
-}
-
-.imagem-destaque:hover {
-    transform: translateY(-5px);
+    display: none;
 }
 
 .imagem-principal {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    transition: transform 0.8s ease;
-}
-
-.imagem-destaque:hover .imagem-principal {
-    transform: scale(1.05);
+    display: none;
 }
 
 .selo-qualidade {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    background: var(--cor-secundaria-amarelo);
-    color: var(--cor-texto-preto);
-    padding: 10px 20px;
-    border-radius: 30px;
-    font-weight: 600;
-    font-size: 0.9rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-    z-index: 2;
-}
-
-.selo-qualidade i {
-    font-size: 1.2rem;
+    display: none;
 }
 
 .aspas {
@@ -467,28 +629,82 @@ main {
     font-size: 1.05rem;
     margin-bottom: 20px;
     border-bottom: 1px solid #f0f0f0;
+    flex-shrink: 0; /* Não encolhe */
 }
 
 .autor-depoimento {
     display: flex;
     align-items: center;
-    gap: 15px;
+    justify-content: center;
+    gap: 0;
+    margin-top: 20px;
+    flex-shrink: 0; /* Não encolhe */
 }
 
-.foto-cliente {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 3px solid var(--cor-principal-turquesa);
-    padding: 2px;
+/* Botões de navegação do carrossel */
+.carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
     background: white;
+    border: 2px solid var(--cor-secundaria-amarelo);
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.carousel-btn:hover {
+    background: var(--cor-secundaria-amarelo);
+    transform: translateY(-50%) scale(1.1);
+}
+
+.carousel-btn:hover svg {
+    stroke: white;
+}
+
+.carousel-btn svg {
+    stroke: var(--cor-secundaria-amarelo);
+    transition: stroke 0.3s ease;
+}
+
+.carousel-btn-prev {
+    left: 0;
+}
+
+.carousel-btn-next {
+    right: 0;
+}
+
+.carousel-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.carousel-btn:disabled:hover {
+    transform: translateY(-50%);
+    background: white;
+}
+
+.carousel-btn:disabled:hover svg {
+    stroke: var(--cor-secundaria-amarelo);
+}
+
+/* Foto do cliente removida - não será mais exibida */
+.foto-cliente {
+    display: none;
 }
 
 .info-cliente {
     display: flex;
     flex-direction: column;
-    text-align: left;
+    text-align: center; /* Centralizado já que não há mais foto */
 }
 
 .nome {
@@ -561,13 +777,35 @@ main {
         max-width: calc(50% - 20px);
     }
     
-    .depoimentos-grid {
-        flex-direction: column;
-        align-items: center;
+    .depoimentos-carousel-wrapper {
+        padding: 0 50px;
+    }
+    
+    .depoimento-item {
+        flex: 0 0 calc((100% - 30px) / 2);
     }
     
     .depoimento, .imagem-destaque {
         max-width: 100%;
+    }
+}
+
+/* Responsividade para carrossel customizado */
+@media (max-width: 768px) {
+    .carrossel-item-image {
+        height: 300px;
+    }
+    
+    .carrossel-item-titulo {
+        font-size: 1.1rem;
+    }
+    
+    .carrossel-item-subtitulo {
+        font-size: 0.9rem;
+    }
+    
+    .carrossel-item-content {
+        padding: 20px 15px;
     }
 }
 
@@ -578,6 +816,19 @@ main {
     
     .destaque {
         font-size: 1.1rem;
+    }
+    
+    .depoimentos-carousel-wrapper {
+        padding: 0 50px;
+    }
+    
+    .depoimento-item {
+        flex: 0 0 100%;
+    }
+    
+    .carousel-btn {
+        width: 40px;
+        height: 40px;
     }
     
     .item-qualidade {

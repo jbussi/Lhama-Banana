@@ -133,12 +133,6 @@ class Config:
     STRAPI_ENABLED = os.environ.get('STRAPI_ENABLED', 'true').lower() == 'true'
     
     # ============================================
-    # METABASE - ANALYTICS E DASHBOARDS
-    # ============================================
-    METABASE_URL = os.environ.get('METABASE_URL', 'http://metabase:3000')
-    METABASE_ENABLED = os.environ.get('METABASE_ENABLED', 'true').lower() == 'true'
-    
-    # ============================================
     # EMAIL - SERVIÇO DE EMAILS CUSTOMIZADOS
     # ============================================
     # Configurações SMTP para envio de emails administrativos

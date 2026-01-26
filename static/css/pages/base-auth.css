@@ -103,6 +103,16 @@
     font-family: 'Fredoka', sans-serif;
 }
 
+.tm-symbol {
+    font-size: 0.35em;
+    color: #000;
+    font-weight: normal;
+    vertical-align: super;
+    margin-left: 1px;
+    opacity: 0.7;
+    font-family: Arial, sans-serif;
+}
+
 .auth-container h2 {
     color: var(--cor-texto-cinza);
     text-align: center;

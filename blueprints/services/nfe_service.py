@@ -106,11 +106,16 @@ def check_and_emit_nfe(venda_id: int) -> Optional[Dict]:
                     f"✅ NF-e emitida via Bling para venda {venda_id}. "
                     f"Status: {bling_result.get('nfe_situacao')}"
                 )
+                # Situações que indicam nota autorizada: 5=AUTORIZADA, 6=EMITIDA_DANFE, 7=REGISTRADA
+                nfe_situacao = bling_result.get('nfe_situacao', '')
+                situacoes_autorizadas = ['EMITIDA', 'AUTORIZADA', 'AUTORIZADO', 'EMITIDA_DANFE', 'REGISTRADA']
+                status_emitida = 'emitida' if nfe_situacao.upper() in [s.upper() for s in situacoes_autorizadas] else 'processando'
+                
                 return {
                     'id': nfe_id,
                     'venda_id': venda_id,
                     'codigo_pedido': venda_data[1],
-                    'status': 'emitida' if bling_result.get('nfe_situacao') in ['EMITIDA', 'AUTORIZADA'] else 'processando',
+                    'status': status_emitida,
                     'nfe_numero': bling_result.get('nfe_numero'),
                     'nfe_chave_acesso': bling_result.get('nfe_chave_acesso'),
                     'message': 'NF-e emitida via Bling com sucesso'

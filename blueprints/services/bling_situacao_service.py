@@ -299,15 +299,16 @@ def map_bling_situacao_id_to_status(bling_situacao_id: int) -> Optional[str]:
     current_app.logger.info(f"🔍 [MAP_BLING_SITUACAO] Tentando mapear pelo nome: '{nome}' (lower: '{nome_lower}')")
     
     # Mapeamento padrão baseado no nome
+    # IMPORTANTE: "APROVADO" só aparece quando status do Bling for "Em andamento"
     nome_to_status = {
-        'em aberto': 'sincronizado_bling',
-        'em andamento': 'em_processamento',
+        'em aberto': 'sincronizado_bling',  # Status: PAGO (não APROVADO)
+        'em andamento': 'em_processamento',  # Status: APROVADO (único que mostra APROVADO)
         'atendido': 'entregue',
         'cancelado': 'cancelado_pelo_vendedor',
-        'venda agenciada': 'em_processamento',
+        'venda agenciada': 'em_processamento',  # Status: APROVADO
         'em digitação': 'pendente_pagamento',
-        'verificado': 'em_processamento',
-        'venda atendimento humano': 'em_processamento',
+        'verificado': 'em_processamento',  # Status: APROVADO
+        'venda atendimento humano': 'em_processamento',  # Status: APROVADO
         'logística': 'pronto_envio',
         'logistica': 'pronto_envio'  # Sem acento também
     }
@@ -427,8 +428,7 @@ def update_pedido_situacao(venda_id: int, bling_situacao_id: int,
                 UPDATE vendas
                 SET status_pedido = %s,
                     bling_situacao_id = %s,
-                    bling_situacao_nome = %s,
-                    atualizado_em = NOW()
+                    bling_situacao_nome = %s
                 WHERE id = %s
             """, (status_site, bling_situacao_id, bling_situacao_nome, venda_id))
         else:
@@ -437,8 +437,7 @@ def update_pedido_situacao(venda_id: int, bling_situacao_id: int,
             cur.execute("""
                 UPDATE vendas
                 SET bling_situacao_id = %s,
-                    bling_situacao_nome = %s,
-                    atualizado_em = NOW()
+                    bling_situacao_nome = %s
                 WHERE id = %s
             """, (bling_situacao_id, bling_situacao_nome, venda_id))
         

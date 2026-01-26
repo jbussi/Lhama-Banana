@@ -1,0 +1,33 @@
+{
+  "kind": "singleType",
+  "collectionName": "politica_envio",
+  "info": {
+    "singularName": "politica-envio",
+    "pluralName": "politica-envios",
+    "displayName": "Política de Envio",
+    "description": "Conteúdo da página de política de envio"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "titulo": {
+      "type": "string",
+      "default": "Política de Envio"
+    },
+    "ultima_atualizacao": {
+      "type": "date"
+    },
+    "conteudo": {
+      "type": "richtext"
+    },
+    "secoes": {
+      "type": "json"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

@@ -93,9 +93,15 @@ def get_valid_access_token() -> str:
         
         # Verificar se token expirou (com margem de 5 minutos)
         expires_at = token_data['expires_at']
-        if expires_at and datetime.now() + timedelta(minutes=5) > expires_at:
+        token_expired = expires_at and datetime.now() > expires_at
+        token_expiring_soon = expires_at and datetime.now() + timedelta(minutes=5) > expires_at
+        
+        if token_expired or token_expiring_soon:
             # Token expirado ou próximo de expirar - tentar renovar
-            current_app.logger.info("Token Bling expirado ou próximo de expirar. Tentando renovar...")
+            if token_expired:
+                current_app.logger.warning("Token Bling expirado. Tentando renovar...")
+            else:
+                current_app.logger.info("Token Bling próximo de expirar. Tentando renovar...")
             
             refresh_token = token_data.get('refresh_token')
             if refresh_token:
@@ -121,7 +127,14 @@ def get_valid_access_token() -> str:
                     current_app.logger.info("✅ Token Bling renovado com sucesso")
                     return new_tokens['access_token']
                 else:
-                    current_app.logger.warning("⚠️ Falha ao renovar token. Usando token expirado.")
+                    if token_expired:
+                        current_app.logger.error("❌ Falha ao renovar token expirado. É necessário reautorizar via /api/bling/authorize")
+                        raise ValueError("Token Bling expirado e não foi possível renovar. Reautorize via /api/bling/authorize")
+                    else:
+                        current_app.logger.warning("⚠️ Falha ao renovar token. Usando token atual.")
+            else:
+                current_app.logger.error("❌ Token expirado e refresh_token não disponível. É necessário reautorizar via /api/bling/authorize")
+                raise ValueError("Token Bling expirado e refresh_token não disponível. Reautorize via /api/bling/authorize")
         
         return token_data['access_token']
         
@@ -322,11 +335,24 @@ def make_bling_api_request(method: str, endpoint: str, max_retries: int = 3,
             
             # Token expirado - renovar e tentar novamente (apenas uma vez)
             if response.status_code == 401 and attempt == 0:
-                current_app.logger.warning("⚠️ Token expirado. Renovando e tentando novamente...")
-                access_token = get_valid_access_token()  # Força renovação
-                headers['Authorization'] = f'Bearer {access_token}'
-                kwargs['headers'] = headers
-                continue  # Tentar novamente sem incrementar attempt
+                error_type, error_msg = _classify_bling_error(response)
+                if 'expired' in error_msg.lower() or 'invalid_token' in error_msg.lower():
+                    current_app.logger.warning("⚠️ Token expirado detectado na resposta. Tentando renovar...")
+                    try:
+                        # Forçar renovação do token
+                        access_token = get_valid_access_token()  # Isso já tenta renovar automaticamente
+                        headers['Authorization'] = f'Bearer {access_token}'
+                        kwargs['headers'] = headers
+                        current_app.logger.info("✅ Token renovado. Tentando requisição novamente...")
+                        continue  # Tentar novamente sem incrementar attempt
+                    except ValueError as e:
+                        # Token não pode ser renovado - precisa reautorizar
+                        current_app.logger.error(f"❌ Não foi possível renovar token: {e}")
+                        raise BlingAPIError(
+                            "Token Bling expirado e não foi possível renovar. Acesse /api/bling/authorize para reautorizar.",
+                            status_code=401,
+                            error_type=BlingErrorType.AUTHENTICATION_ERROR
+                        )
             
             # Verificar se deve fazer retry
             if _should_retry(response.status_code, attempt, max_retries):

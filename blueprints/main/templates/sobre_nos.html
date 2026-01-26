@@ -13,86 +13,67 @@
     <h1 class="page-title">Sobre Nós</h1>
     
     <div class="about-container">
+        {% if sobre and sobre.historia_conteudo %}
         <section class="about-section">
-            <h2>Nossa História</h2>
-        <p>Olá! Somos a <span class="highlight">LhamaBanana</span>, uma marca que nasceu da paixão por moda divertida, conforto inigualável e, é claro, lhamas fofinhas! 🦙✨</p>
-        
-        <p>Tudo começou em 2020, quando nossa fundadora, Ana, estava procurando por uma camiseta estampada com lhamas para presentear uma amiga. Para sua surpresa, não encontrou muitas opções que combinassem qualidade, estilo e um toque de humor. Foi aí que surgiu a ideia: <span class="highlight">por que não criar uma marca que une moda casual a estampas únicas de lhamas e frutas tropicais?</span></p>
-        
-        <p>Com um pequeno investimento inicial e muito amor pelo que fazemos, demos vida à LhamaBanana. Começamos com uma pequena coleção de camisetas e, em pouco tempo, nossa comunidade de clientes apaixonados por lhamas começou a crescer!</p>
-    </section>
+            <h2>{{ sobre.historia_titulo }}</h2>
+            <div class="historia-conteudo">
+                {{ sobre.historia_conteudo|replace('\n', '<br>')|safe }}
+            </div>
+        </section>
+        {% endif %}
     
-    <section class="about-section">
-        <h2>Nossos Valores</h2>
-        <div class="values-grid">
-            <div class="value-card">
-                <i class="fas fa-star"></i>
-                <h3>Qualidade Premium</h3>
-                <p>Usamos apenas os melhores tecidos para garantir conforto e durabilidade em cada peça.</p>
-            </div>
-            <div class="value-card">
-                <i class="fas fa-palette"></i>
-                <h3>Design Exclusivo</h3>
-                <p>Nossas estampas são criadas por artistas independentes, garantindo peças únicas e cheias de personalidade.</p>
-            </div>
-            <div class="value-card">
-                <i class="fas fa-leaf"></i>
-                <h3>Sustentabilidade</h3>
-                <p>Comprometidos com o meio ambiente, utilizamos materiais ecológicos e processos de produção responsáveis.</p>
-            </div>
-        </div>
-    </section>
-    
-    <section class="about-section">
-        <h2>Nossa Equipe</h2>
-        <p>Conheça as mentes criativas por trás da LhamaBanana:</p>
-        
-        <div class="team-gallery">
-            <div class="team-member">
-                <img src="https://source.unsplash.com/random/300x300/?portrait,woman,brazilian" alt="Ana Silva">
-                <h4>Ana Silva</h4>
-                <p class="role">Fundadora & CEO</p>
-                <p>A mente criativa por trás da LhamaBanana, Ana adora desenhar novas estampas e cuidar de suas plantinhas.</p>
-                <div class="social-links">
-                    <a href="#"><i class="fab fa-instagram"></i></a>
-                    <a href="#"><i class="fab fa-linkedin"></i></a>
-                    <a href="#"><i class="fab fa-twitter"></i></a>
+        {% if sobre and sobre.valores %}
+        <section class="about-section">
+            <h2>{{ sobre.valores_titulo }}</h2>
+            <div class="values-grid">
+                {% for valor in sobre.valores %}
+                <div class="value-card">
+                    {% if valor.icone %}
+                    <i class="{{ valor.icone }}"></i>
+                    {% endif %}
+                    <h3>{{ valor.titulo }}</h3>
+                    <p>{{ valor.descricao }}</p>
                 </div>
+                {% endfor %}
             </div>
+        </section>
+        {% endif %}
+    
+        {% if sobre and sobre.equipe %}
+        <section class="about-section">
+            <h2>{{ sobre.equipe_titulo }}</h2>
+            <p>Conheça as mentes criativas por trás da LhamaBanana™:</p>
             
-            <div class="team-member">
-                <img src="https://source.unsplash.com/random/300x300/?portrait,man,brazilian" alt="Carlos Mendes">
-                <h4>Carlos Mendes</h4>
-                <p class="role">Diretor de Operações</p>
-                <p>Garante que tudo funcione perfeitamente, dos pedidos à logística. Nosso mestre da organização!</p>
-                <div class="social-links">
-                    <a href="#"><i class="fab fa-instagram"></i></a>
-                    <a href="#"><i class="fab fa-linkedin"></i></a>
+            <div class="team-gallery">
+                {% for membro in sobre.equipe %}
+                <div class="team-member">
+                    {% if membro.foto %}
+                    <img src="{{ membro.foto }}" alt="{{ membro.nome }}">
+                    {% endif %}
+                    <h4>{{ membro.nome }}</h4>
+                    <p class="role">{{ membro.cargo }}</p>
+                    <p>{{ membro.descricao }}</p>
+                    {% if membro.redes_sociais %}
+                    <div class="social-links">
+                        {% if membro.redes_sociais.instagram %}
+                        <a href="{{ membro.redes_sociais.instagram }}" target="_blank"><i class="fab fa-instagram"></i></a>
+                        {% endif %}
+                        {% if membro.redes_sociais.linkedin %}
+                        <a href="{{ membro.redes_sociais.linkedin }}" target="_blank"><i class="fab fa-linkedin"></i></a>
+                        {% endif %}
+                        {% if membro.redes_sociais.twitter %}
+                        <a href="{{ membro.redes_sociais.twitter }}" target="_blank"><i class="fab fa-twitter"></i></a>
+                        {% endif %}
+                        {% if membro.redes_sociais.behance %}
+                        <a href="{{ membro.redes_sociais.behance }}" target="_blank"><i class="fab fa-behance"></i></a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
+                {% endfor %}
             </div>
-            
-            <div class="team-member">
-                <img src="https://source.unsplash.com/random/300x300/?portrait,woman,brazilian,young" alt="Juliana Costa">
-                <h4>Juliana Costa</h4>
-                <p class="role">Designer Chefe</p>
-                <p>Transforma ideias em estampas incríveis. Ama café forte e suas duas lhamas de estimação, Paco e Lola.</p>
-                <div class="social-links">
-                    <a href="#"><i class="fab fa-instagram"></i></a>
-                    <a href="#"><i class="fab fa-behance"></i></a>
-                </div>
-            </div>
-        </div>
-    </section>
-    
-    <section class="about-section">
-        <h2>Venha nos Visitar!</h2>
-        <p>Nossa loja física fica no coração de São Paulo e está cheia de surpresas! Aqui você encontra nossa coleção completa, itens exclusivos e um cantinho especial para tirar fotos com nossos adoráveis amigos de pelúcia.</p>
-        
-        <div class="cta-buttons" style="margin-top: 2rem; text-align: center;">
-            <a href="{{ url_for('main.contato_page') }}" class="btn" style="background-color: #2ab7a9; color: white; padding: 0.8rem 2rem; border-radius: 50px; text-decoration: none; display: inline-block; margin: 0 0.5rem; transition: all 0.3s ease;">Entre em Contato</a>
-            <a href="{{ url_for('produtos.produtos_page') }}" class="btn" style="background-color: #f9d71c; color: #333; padding: 0.8rem 2rem; border-radius: 50px; text-decoration: none; display: inline-block; margin: 0 0.5rem; transition: all 0.3s ease;">Ver Loja Online</a>
-        </div>
-    </section>
+        </section>
+        {% endif %}
     
     <section class="about-section">
         <h2>Junte-se à Nossa Jornada!</h2>

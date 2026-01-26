@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('main.static', filename='css/politica-privacidade.css') }}">
+{% endblock %}
+
+{% block title %}Política de Privacidade - LhamaBanana{% endblock %}
+
+{% block content %}
+
+<div class="container politica-container">
+    <h1 class="page-title">{{ politica.titulo if politica and politica.titulo else 'Política de Privacidade' }}</h1>
+    
+    {% if politica and politica.ultima_atualizacao %}
+    <p class="ultima-atualizacao">
+        <i class="fas fa-calendar-alt"></i>
+        Última atualização: {{ politica.ultima_atualizacao.strftime('%d/%m/%Y') if politica.ultima_atualizacao else '' }}
+    </p>
+    {% endif %}
+    
+    {% if politica and politica.conteudo %}
+    <div class="introducao">
+        {{ politica.conteudo|replace('\n', '<br>')|safe }}
+    </div>
+    {% endif %}
+    
+    {% if politica and politica.secoes %}
+    <div class="secoes">
+        {% for secao in politica.secoes %}
+        <section class="secao">
+            <h2>{{ secao.titulo }}</h2>
+            <div class="secao-conteudo">
+                {{ secao.conteudo|replace('\n', '<br>')|safe }}
+            </div>
+        </section>
+        {% endfor %}
+    </div>
+    {% else %}
+    <!-- Conteúdo padrão caso não haja dados -->
+    <div class="secoes">
+        <section class="secao">
+            <h2>1. Informações que Coletamos</h2>
+            <div class="secao-conteudo">
+                <p>Coletamos informações que você nos fornece diretamente, incluindo:</p>
+                <ul>
+                    <li>Nome completo</li>
+                    <li>Endereço de e-mail</li>
+                    <li>Telefone</li>
+                    <li>Endereço de entrega e cobrança</li>
+                    <li>Informações de pagamento (processadas de forma segura por nossos parceiros)</li>
+                    <li>Histórico de compras</li>
+                    <li>Comunicações conosco (e-mails, mensagens, etc.)</li>
+                </ul>
+            </div>
+        </section>
+    </div>
+    {% endif %}
+    
+    <div class="contato-politica">
+        <p>
+            <strong>Dúvidas sobre nossa Política de Privacidade?</strong><br>
+            Entre em contato conosco através do nosso <a href="{{ url_for('main.contato_page') }}">formulário de contato</a>.
+        </p>
+    </div>
+</div>
+
+{% endblock %}

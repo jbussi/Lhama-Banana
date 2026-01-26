@@ -20,7 +20,6 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./db/seeds.sql:/docker-entrypoint-initdb.d/02_seeds.sql:ro
-      - ./db/init-metabase.sh:/docker-entrypoint-initdb.d/00_init-metabase.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-sistema_usuarios}"]
       interval: 10s
@@ -47,9 +46,21 @@ services:
       DB_PORT: 5432
       
       # Flask
-      FLASK_ENV: ${FLASK_ENV:-development}
-      FLASK_DEBUG: ${FLASK_DEBUG:-1}
+      FLASK_ENV: ${FLASK_ENV:-production}
+      FLASK_DEBUG: ${FLASK_DEBUG:-0}
       SECRET_KEY: ${SECRET_KEY:-asdf#FGSgvasgf$5$WGT}
+      
+      # Gunicorn
+      USE_GUNICORN: ${USE_GUNICORN:-true}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+      GUNICORN_THREADS: ${GUNICORN_THREADS:-2}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-120}
+      GUNICORN_GRACEFUL_TIMEOUT: ${GUNICORN_GRACEFUL_TIMEOUT:-30}
+      GUNICORN_MAX_REQUESTS: ${GUNICORN_MAX_REQUESTS:-1000}
+      GUNICORN_MAX_REQUESTS_JITTER: ${GUNICORN_MAX_REQUESTS_JITTER:-50}
+      GUNICORN_WORKER_CLASS: ${GUNICORN_WORKER_CLASS:-sync}
+      GUNICORN_BIND: ${GUNICORN_BIND:-0.0.0.0:5000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       
       # Firebase
       FIREBASE_ADMIN_SDK_PATH: ${FIREBASE_ADMIN_SDK_PATH:-/app/key.json}
@@ -67,15 +78,19 @@ services:
       # Admin
       ADMIN_EMAILS: ${ADMIN_EMAILS:-joao.paulo.bussi1@gmail.com}
       
+      # Bling
+      BLING_CLIENT_ID: ${BLING_CLIENT_ID:-}
+      BLING_CLIENT_SECRET: ${BLING_CLIENT_SECRET:-}
+      BLING_REDIRECT_URI: ${BLING_REDIRECT_URI:-}
+      NGROK_URL: ${NGROK_URL:-https://efractory-burdenless-kathlene.ngrok-free.dev}
+      BLING_WEBHOOK_URL: ${BLING_WEBHOOK_URL:-}
+      
       # Strapi
       STRAPI_URL: http://strapi:1337
       STRAPI_ENABLED: ${STRAPI_ENABLED:-true}
-      
-      # Metabase
-      METABASE_URL: http://metabase:3000
-      METABASE_ENABLED: ${METABASE_ENABLED:-true}
-    ports:
-      - "${FLASK_PORT:-5000}:5000"
+    # Porta interna apenas (Nginx faz proxy)
+    # ports:
+    #   - "${FLASK_PORT:-5000}:5000"
     volumes:
       - .:/app
       - flask_logs:/app/logs
@@ -92,7 +107,53 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
+
+  # =====================================================
+  # Nginx Reverse Proxy
+  # =====================================================
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    container_name: lhama_banana_nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/nginx
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
+    depends_on:
+      flask:
+        condition: service_healthy
+    networks:
+      - lhama_banana_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # =====================================================
+  # Certbot (Let's Encrypt SSL Certificates)
+  # =====================================================
+  certbot:
+    image: certbot/certbot:latest
+    container_name: lhama_banana_certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+    networks:
+      - lhama_banana_network
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    environment:
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL:-joao.paulo.bussi1@gmail.com}
+      - CERTBOT_DOMAIN=${CERTBOT_DOMAIN:-}
 
   # =====================================================
   # Strapi Admin Panel
@@ -152,57 +213,6 @@ services:
       retries: 3
       start_period: 60s
 
-  # =====================================================
-  # Metabase Analytics Dashboard
-  # =====================================================
-  metabase:
-    image: metabase/metabase:latest
-    container_name: lhama_banana_metabase
-    restart: unless-stopped
-    environment:
-      # Database do Metabase (banco interno para armazenar configurações)
-      # Usa H2 embutido por padrão, mas pode ser configurado para PostgreSQL
-      MB_DB_TYPE: postgres
-      MB_DB_DBNAME: ${METABASE_DB_NAME:-metabase}
-      MB_DB_PORT: 5432
-      MB_DB_USER: ${DB_USER:-postgres}
-      MB_DB_PASS: ${DB_PASSWORD:-far111111}
-      MB_DB_HOST: postgres
-      
-      # Configurações do Metabase
-      MB_ENCRYPTION_SECRET_KEY: ${METABASE_ENCRYPTION_SECRET:-metabase-encryption-secret-key-change-in-production}
-      MB_SITE_NAME: "LhamaBanana Analytics"
-      MB_SITE_LOCALE: pt_BR
-      MB_TIMEZONE: America/Sao_Paulo
-      
-      # URL pública (via proxy Flask)
-      MB_SITE_URL: ${METABASE_SITE_URL:-http://localhost:5000/analytics}
-      
-      # Configurações de performance
-      JAVA_TIMEZONE: America/Sao_Paulo
-      MB_JETTY_THREADS: 50
-      MB_JETTY_REQUEST_HEADER_SIZE: 16384
-      
-      # Desabilitar atualizações automáticas
-      MB_CHECK_FOR_UPDATES: false
-    # Porta exposta para desenvolvimento/testes (acesso direto sem autenticação)
-    # TODO: Remover em produção e usar apenas via proxy Flask (/analytics)
-    ports:
-      - "3000:3000"
-    volumes:
-      - metabase_data:/metabase-data
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - lhama_banana_network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
-
 # =====================================================
 # Volumes
 # =====================================================
@@ -215,16 +225,16 @@ volumes:
       device: ./db/docker/postgres/data
   flask_logs:
     driver: local
+  nginx_logs:
+    driver: local
   strapi_data:
     driver: local
   strapi_uploads:
     driver: local
-  metabase_data:
+  certbot_www:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./metabase/data
+  certbot_conf:
+    driver: local
 
 # =====================================================
 # Networks

@@ -68,20 +68,23 @@ def get_fiscal_data():
             return jsonify({"erro": "Usuário não encontrado"}), 404
         
         conn = get_db()
-        cur = conn.cursor()
-        
-        cur.execute("""
-            SELECT 
-                id, tipo, cpf_cnpj, nome_razao_social,
-                inscricao_estadual, inscricao_municipal,
-                rua, numero, complemento, bairro, cidade, estado, cep,
-                ativo, criado_em, atualizado_em
-            FROM dados_fiscais
-            WHERE usuario_id = %s AND ativo = TRUE
-        """, (user_data['id'],))
-        
-        fiscal_data = cur.fetchone()
-        cur.close()
+        cur = None
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT 
+                    id, tipo, cpf_cnpj, nome_razao_social,
+                    inscricao_estadual, inscricao_municipal,
+                    rua, numero, complemento, bairro, cidade, estado, cep,
+                    ativo, criado_em, atualizado_em
+                FROM dados_fiscais
+                WHERE usuario_id = %s AND ativo = TRUE
+            """, (user_data['id'],))
+            
+            fiscal_data = cur.fetchone()
+        finally:
+            if cur:
+                cur.close()
         
         if not fiscal_data:
             return jsonify({"fiscal_data": None}), 200
@@ -171,60 +174,67 @@ def create_fiscal_data():
             return jsonify({"erro": "CEP inválido"}), 400
         
         conn = get_db()
-        cur = conn.cursor()
-        
-        # Verificar se já existe (ativo ou inativo)
-        cur.execute("SELECT id, ativo FROM dados_fiscais WHERE usuario_id = %s", (user_data['id'],))
-        existing = cur.fetchone()
-        
-        if existing:
-            # Atualizar existente (reativar se estiver inativo)
-            cur.execute("""
-                UPDATE dados_fiscais SET
-                    tipo = %s,
-                    cpf_cnpj = %s,
-                    nome_razao_social = %s,
-                    inscricao_estadual = %s,
-                    inscricao_municipal = %s,
-                    rua = %s,
-                    numero = %s,
-                    complemento = %s,
-                    bairro = %s,
-                    cidade = %s,
-                    estado = %s,
-                    cep = %s,
-                    ativo = TRUE,
-                    atualizado_em = NOW()
-                WHERE id = %s
-            """, (
-                tipo, cpf_cnpj, nome_razao_social,
-                data.get('inscricao_estadual') or None,
-                data.get('inscricao_municipal') or None,
-                endereco['rua'], endereco['numero'], endereco.get('complemento') or None,
-                endereco['bairro'], endereco['cidade'], endereco['estado'], cep,
-                existing[0]
-            ))
-            fiscal_id = existing[0]
-        else:
-            # Criar novo
-            cur.execute("""
-                INSERT INTO dados_fiscais (
-                    usuario_id, tipo, cpf_cnpj, nome_razao_social,
-                    inscricao_estadual, inscricao_municipal,
-                    rua, numero, complemento, bairro, cidade, estado, cep
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                user_data['id'], tipo, cpf_cnpj, nome_razao_social,
-                data.get('inscricao_estadual') or None,
-                data.get('inscricao_municipal') or None,
-                endereco['rua'], endereco['numero'], endereco.get('complemento') or None,
-                endereco['bairro'], endereco['cidade'], endereco['estado'], cep
-            ))
-            fiscal_id = cur.fetchone()[0]
-        
-        conn.commit()
-        cur.close()
+        cur = None
+        try:
+            cur = conn.cursor()
+            
+            # Verificar se já existe (ativo ou inativo)
+            cur.execute("SELECT id, ativo FROM dados_fiscais WHERE usuario_id = %s", (user_data['id'],))
+            existing = cur.fetchone()
+            
+            if existing:
+                # Atualizar existente (reativar se estiver inativo)
+                cur.execute("""
+                    UPDATE dados_fiscais SET
+                        tipo = %s,
+                        cpf_cnpj = %s,
+                        nome_razao_social = %s,
+                        inscricao_estadual = %s,
+                        inscricao_municipal = %s,
+                        rua = %s,
+                        numero = %s,
+                        complemento = %s,
+                        bairro = %s,
+                        cidade = %s,
+                        estado = %s,
+                        cep = %s,
+                        ativo = TRUE,
+                        atualizado_em = NOW()
+                    WHERE id = %s
+                """, (
+                    tipo, cpf_cnpj, nome_razao_social,
+                    data.get('inscricao_estadual') or None,
+                    data.get('inscricao_municipal') or None,
+                    endereco['rua'], endereco['numero'], endereco.get('complemento') or None,
+                    endereco['bairro'], endereco['cidade'], endereco['estado'], cep,
+                    existing[0]
+                ))
+                fiscal_id = existing[0]
+            else:
+                # Criar novo
+                cur.execute("""
+                    INSERT INTO dados_fiscais (
+                        usuario_id, tipo, cpf_cnpj, nome_razao_social,
+                        inscricao_estadual, inscricao_municipal,
+                        rua, numero, complemento, bairro, cidade, estado, cep
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    user_data['id'], tipo, cpf_cnpj, nome_razao_social,
+                    data.get('inscricao_estadual') or None,
+                    data.get('inscricao_municipal') or None,
+                    endereco['rua'], endereco['numero'], endereco.get('complemento') or None,
+                    endereco['bairro'], endereco['cidade'], endereco['estado'], cep
+                ))
+                fiscal_id = cur.fetchone()[0]
+            
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise
+        finally:
+            if cur:
+                cur.close()
         
         return jsonify({
             "success": True,
@@ -258,20 +268,26 @@ def delete_fiscal_data():
             return jsonify({"erro": "Usuário não encontrado"}), 404
         
         conn = get_db()
-        cur = conn.cursor()
-        
-        cur.execute("""
-            UPDATE dados_fiscais 
-            SET ativo = FALSE, atualizado_em = NOW()
-            WHERE usuario_id = %s AND ativo = TRUE
-        """, (user_data['id'],))
-        
-        if cur.rowcount == 0:
-            cur.close()
-            return jsonify({"erro": "Dados fiscais não encontrados"}), 404
-        
-        conn.commit()
-        cur.close()
+        cur = None
+        try:
+            cur = conn.cursor()
+            
+            cur.execute("""
+                UPDATE dados_fiscais 
+                SET ativo = FALSE, atualizado_em = NOW()
+                WHERE usuario_id = %s AND ativo = TRUE
+            """, (user_data['id'],))
+            
+            if cur.rowcount == 0:
+                return jsonify({"erro": "Dados fiscais não encontrados"}), 404
+            
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise
+        finally:
+            if cur:
+                cur.close()
         
         return jsonify({
             "success": True,

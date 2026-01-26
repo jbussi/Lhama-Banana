@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificar Email - LhamaBanana</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base/base.css') }}">
+    <style>
+        .action-container {
+            max-width: 500px;
+            margin: 100px auto;
+            padding: 40px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .action-icon {
+            font-size: 64px;
+            color: #2ab7a9;
+            margin-bottom: 20px;
+        }
+        .action-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .action-message {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        .verify-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #40e0d0, #2ab7a9);
+            color: white;
+            padding: 14px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .verify-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(64, 224, 208, 0.3);
+        }
+        .verify-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+        .success-message {
+            display: none;
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .error-message {
+            display: none;
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="action-container">
+        <div class="action-icon">✉️</div>
+        <h1 class="action-title">Verificar Email</h1>
+        <p class="action-message">
+            Clique no botão abaixo para verificar seu endereço de email:<br>
+            <strong>{{ email }}</strong>
+        </p>
+        
+        <button id="verifyBtn" class="verify-button" onclick="verifyEmail()">
+            Verificar Email
+        </button>
+        
+        <div id="loading" class="loading">
+            <p>Verificando...</p>
+        </div>
+        
+        <div id="successMessage" class="success-message">
+            ✅ Email verificado com sucesso! Você será redirecionado para a página de login.
+        </div>
+        
+        <div id="errorMessage" class="error-message">
+            ❌ Erro ao verificar email. Por favor, tente novamente.
+        </div>
+    </div>
+
+    <script type="module">
+        import { getAuth, applyActionCode, signInWithEmailLink } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+        
+        // Configuração do Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDd13Tl9dJaUqIvNhGWakoEbpYqw7ZrB7Y",
+            authDomain: "lhamabanana-981d5.firebaseapp.com",
+            projectId: "lhamabanana-981d5",
+            storageBucket: "lhamabanana-981d5.firebasestorage.app",
+            messagingSenderId: "209130422039",
+            appId: "1:209130422039:web:70fcf2089fa90715364152",
+            measurementId: "G-4XQSZZB0JK"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        
+        window.verifyEmail = async function() {
+            const btn = document.getElementById('verifyBtn');
+            const loading = document.getElementById('loading');
+            const success = document.getElementById('successMessage');
+            const error = document.getElementById('errorMessage');
+            
+            btn.disabled = true;
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            
+            try {
+                const oobCode = '{{ oob_code }}';
+                await applyActionCode(auth, oobCode);
+                
+                loading.style.display = 'none';
+                success.style.display = 'block';
+                btn.style.display = 'none';
+                
+                // Redirecionar após 2 segundos
+                setTimeout(() => {
+                    window.location.href = '/login?verified=1';
+                }, 2000);
+                
+            } catch (err) {
+                console.error('Erro ao verificar email:', err);
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.innerHTML = `❌ Erro: ${err.message}`;
+                btn.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>

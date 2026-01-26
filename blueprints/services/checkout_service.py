@@ -114,7 +114,34 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
         # Extrair dados da transportadora do shipping_option
         transportadora_data = {}
         if shipping_option and shipping_option.get('transportadora'):
-            transportadora_data = shipping_option.get('transportadora', {})
+            transportadora_data = shipping_option.get('transportadora', {}).copy()
+            current_app.logger.info(
+                f"🚚 Dados da transportadora recebidos no checkout: "
+                f"Nome={transportadora_data.get('nome', 'N/A')}, "
+                f"CNPJ={transportadora_data.get('cnpj', 'N/A')}, "
+                f"IE={transportadora_data.get('ie', 'N/A')}, "
+                f"UF={transportadora_data.get('uf', 'N/A')}"
+            )
+            
+            # REMOVIDO: Lógica de busca de transportadora por CNPJ/nome
+            # Agora usamos apenas os dados que já vêm do checkout (ID do transporte)
+            # Os dados da transportadora já estão completos no shipping_option
+            
+            # Log final dos dados completos
+            current_app.logger.info(
+                f"✅ Dados completos da transportadora para salvar: "
+                f"Nome={transportadora_data.get('nome', 'N/A')}, "
+                f"CNPJ={transportadora_data.get('cnpj', 'N/A')}, "
+                f"IE={transportadora_data.get('ie', 'N/A')}, "
+                f"UF={transportadora_data.get('uf', 'N/A')}, "
+                f"Município={transportadora_data.get('municipio', 'N/A')}"
+            )
+        else:
+            current_app.logger.warning(
+                f"⚠️ Nenhum dado de transportadora recebido no checkout. "
+                f"shipping_option={shipping_option is not None}, "
+                f"transportadora={shipping_option.get('transportadora') if shipping_option else 'N/A'}"
+            )
         
         # Construir query dinamicamente
         base_columns = """
@@ -250,9 +277,13 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
                 conn.rollback()
                 current_app.logger.warning(f"Erro ao criar coluna produto_id: {alter_error}")
         
-        # 4. Inserir na tabela 'itens_venda' e decrementar estoque
+        # 4. Inserir na tabela 'itens_venda'
+        # IMPORTANTE: Estoque NÃO é decrementado aqui - o Bling é responsável por gerenciar o estoque
+        # O estoque será atualizado automaticamente quando:
+        # 1. O pedido for criado no Bling (Bling abate estoque automaticamente)
+        # 2. O webhook do Bling notificar mudanças de estoque (stock.updated)
         for item in cart_items:
-            # Verificar estoque disponível
+            # Verificar estoque disponível (apenas para validação, não decrementa)
             cur.execute("""
                 SELECT estoque FROM produtos WHERE id = %s
             """, (item['produto_id'],))
@@ -273,12 +304,12 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
                 json.dumps(item.get('detalhes_produto_snapshot', {}))
             ))
             
-            # Decrementar estoque
-            cur.execute("""
-                UPDATE produtos 
-                SET estoque = estoque - %s 
-                WHERE id = %s
-            """, (item['quantidade'], item['produto_id']))
+            # REMOVIDO: Decremento de estoque
+            # O Bling é a fonte de verdade para estoque e abaterá automaticamente quando o pedido for criado
+            current_app.logger.info(
+                f"ℹ️ Item {item.get('nome_produto_snapshot')} adicionado ao pedido. "
+                f"Estoque será gerenciado pelo Bling."
+            )
 
         # 5. Registrar uso do cupom se fornecido
         if cupom_id and user_id:
@@ -642,12 +673,41 @@ def call_pagbank_api(endpoint_url: str, api_token: str, payload: Dict) -> Dict:
             current_app.logger.warning(f"[PagBank] ⚠️ notification_urls NÃO está presente no payload!")
             current_app.logger.warning(f"[PagBank] Webhook não será chamado pelo PagBank!")
         
-        response = requests.post(
-            endpoint_url, 
-            headers=headers, 
-            json=payload,  # Usar json= ao invés de data=json.dumps()
-            timeout=30
-        )
+        # Tentar até 3 vezes em caso de erro de conexão ou timeout
+        max_retries = 3
+        retry_count = 0
+        last_error = None
+        
+        while retry_count < max_retries:
+            try:
+                response = requests.post(
+                    endpoint_url, 
+                    headers=headers, 
+                    json=payload,  # Usar json= ao invés de data=json.dumps()
+                    timeout=30
+                )
+                # Se chegou aqui, a requisição foi bem-sucedida
+                break
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                retry_count += 1
+                last_error = e
+                if retry_count < max_retries:
+                    wait_time = retry_count * 2  # Backoff exponencial: 2s, 4s, 6s
+                    current_app.logger.warning(
+                        f"Erro de conexão/timeout ao chamar PagBank (tentativa {retry_count}/{max_retries}): {e}. "
+                        f"Aguardando {wait_time}s antes de tentar novamente..."
+                    )
+                    import time
+                    time.sleep(wait_time)
+                else:
+                    # Última tentativa falhou
+                    raise
+            except Exception as e:
+                # Outros erros não devem ser retentados
+                raise
+        
+        if retry_count > 0:
+            current_app.logger.info(f"✅ Requisição ao PagBank bem-sucedida após {retry_count} tentativa(s)")
         
         current_app.logger.info(f"Resposta PagBank - Status: {response.status_code}")
         

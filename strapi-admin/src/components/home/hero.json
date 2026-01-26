@@ -1,0 +1,27 @@
+{
+  "collectionName": "components_home_hero",
+  "info": {
+    "displayName": "Hero",
+    "description": "Seção hero da home"
+  },
+  "options": {},
+  "attributes": {
+    "titulo": {
+      "type": "string",
+      "required": true
+    },
+    "subtitulo": {
+      "type": "text"
+    },
+    "imagem": {
+      "type": "media",
+      "multiple": false,
+      "required": false,
+      "allowedTypes": ["images"]
+    },
+    "texto_botao": {
+      "type": "string",
+      "default": "Comprar Agora"
+    }
+  }
+}

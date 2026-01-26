@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Erro - LhamaBanana</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base/base.css') }}">
+    <style>
+        .error-container {
+            max-width: 500px;
+            margin: 100px auto;
+            padding: 40px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .error-icon {
+            font-size: 64px;
+            color: #dc3545;
+            margin-bottom: 20px;
+        }
+        .error-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .error-message {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        .home-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #40e0d0, #2ab7a9);
+            color: white;
+            padding: 14px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .home-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(64, 224, 208, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="error-icon">⚠️</div>
+        <h1 class="error-title">{{ error }}</h1>
+        <p class="error-message">{{ message }}</p>
+        <a href="/" class="home-button">Voltar para a Página Inicial</a>
+    </div>
+</body>
+</html>

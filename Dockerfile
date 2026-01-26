@@ -27,6 +27,10 @@ COPY . .
 # Criar diretório para logs
 RUN mkdir -p /app/logs
 
+# Tornar entrypoint.sh executável
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 # Expor porta
 EXPOSE 5000
 

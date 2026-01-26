@@ -26,6 +26,73 @@ googleProvider.addScope('email');
 googleProvider.addScope('profile');
 
 /**
+ * Traduz códigos de erro do Firebase para mensagens amigáveis em português
+ * @param {string} errorCode - Código de erro do Firebase
+ * @param {string} defaultMessage - Mensagem padrão caso o código não seja reconhecido
+ * @returns {string} Mensagem amigável em português
+ */
+function getFriendlyErrorMessage(errorCode, defaultMessage = null) {
+    const errorMessages = {
+        // Erros de autenticação geral
+        'auth/user-not-found': 'Não encontramos uma conta com este email. Verifique se o email está correto ou crie uma nova conta.',
+        'auth/wrong-password': 'Senha incorreta. Verifique sua senha e tente novamente.',
+        'auth/invalid-email': 'O formato do email é inválido. Por favor, verifique e tente novamente.',
+        'auth/user-disabled': 'Esta conta foi desativada. Entre em contato com o suporte para mais informações.',
+        'auth/email-already-in-use': 'Este email já está cadastrado. Tente fazer login ou use outro email.',
+        'auth/weak-password': 'A senha é muito fraca. Use pelo menos 6 caracteres e combine letras, números e símbolos.',
+        'auth/operation-not-allowed': 'Este método de autenticação não está habilitado. Entre em contato com o suporte.',
+        'auth/too-many-requests': 'Muitas tentativas de login falharam. Por segurança, aguarde alguns minutos antes de tentar novamente.',
+        'auth/network-request-failed': 'Erro de conexão. Verifique sua internet e tente novamente.',
+        'auth/internal-error': 'Ocorreu um erro interno. Por favor, tente novamente em alguns instantes.',
+        'auth/invalid-credential': 'Email ou senha incorretos. Verifique suas credenciais e tente novamente.',
+        'auth/invalid-verification-code': 'Código de verificação inválido ou expirado. Solicite um novo código.',
+        'auth/invalid-verification-id': 'Link de verificação inválido ou expirado. Solicite um novo link.',
+        'auth/missing-email': 'Email é obrigatório. Por favor, preencha o campo de email.',
+        'auth/missing-password': 'Senha é obrigatória. Por favor, preencha o campo de senha.',
+        
+        // Erros de popup/redirect
+        'auth/popup-closed-by-user': 'Cadastro cancelado. Você fechou a janela de autenticação.',
+        'auth/popup-blocked': 'A janela de cadastro foi bloqueada pelo navegador. Permita popups para este site nas configurações do navegador.',
+        'auth/cancelled-popup-request': 'Outra solicitação de cadastro está em andamento. Aguarde um momento.',
+        'auth/account-exists-with-different-credential': 'Já existe uma conta com este email usando outro método de login. Tente fazer login com o método original.',
+        
+        // Erros de token
+        'auth/invalid-user-token': 'Sua sessão expirou. Por favor, faça login novamente.',
+        'auth/user-token-expired': 'Sua sessão expirou. Por favor, faça login novamente.',
+        'auth/invalid-api-key': 'Erro de configuração. Entre em contato com o suporte.',
+        
+        // Erros de verificação de email
+        'auth/email-already-verified': 'Este email já foi verificado.',
+        'auth/invalid-action-code': 'O link de verificação é inválido ou expirou. Solicite um novo link.',
+        'auth/expired-action-code': 'O link de verificação expirou. Solicite um novo link.',
+        
+        // Erros de redefinição de senha
+        'auth/invalid-continue-uri': 'Link de redirecionamento inválido.',
+        'auth/missing-continue-uri': 'Link de redirecionamento não fornecido.',
+        
+        // Outros erros
+        'auth/requires-recent-login': 'Por segurança, faça login novamente antes de realizar esta ação.',
+        'auth/unauthorized-domain': 'Este domínio não está autorizado. Entre em contato com o suporte.',
+        'auth/credential-already-in-use': 'Esta credencial já está associada a outra conta.',
+        'auth/timeout': 'A operação demorou muito para responder. Tente novamente.',
+        'auth/app-deleted': 'A aplicação foi desativada. Entre em contato com o suporte.',
+        'auth/app-not-authorized': 'Aplicação não autorizada. Entre em contato com o suporte.',
+        'auth/argument-error': 'Erro nos dados fornecidos. Verifique os campos e tente novamente.',
+        'auth/invalid-app-credential': 'Credencial da aplicação inválida. Entre em contato com o suporte.',
+        'auth/invalid-app-id': 'ID da aplicação inválido. Entre em contato com o suporte.',
+        'auth/invalid-phone-number': 'Número de telefone inválido. Verifique o formato.',
+        'auth/missing-phone-number': 'Número de telefone é obrigatório.',
+        'auth/quota-exceeded': 'Limite de requisições excedido. Tente novamente mais tarde.',
+        'auth/session-cookie-expired': 'Sua sessão expirou. Por favor, faça login novamente.',
+        'auth/too-many-requests': 'Muitas tentativas. Por segurança, aguarde alguns minutos antes de tentar novamente.',
+        'auth/unverified-email': 'Email não verificado. Verifique sua caixa de entrada e confirme seu email.',
+        'auth/web-storage-unsupported': 'Seu navegador não suporta armazenamento local. Atualize seu navegador ou use outro dispositivo.'
+    };
+    
+    return errorMessages[errorCode] || defaultMessage || 'Ocorreu um erro inesperado. Por favor, tente novamente ou entre em contato com o suporte.';
+}
+
+/**
  * Função auxiliar para fazer requisição com retry automático em caso de clock skew
  * Implementa retry silencioso: se receber erro de clock skew, faz refresh de token e tenta novamente
  * 
@@ -46,19 +113,39 @@ async function fetchWithClockSkewRetry(requestFn, user, maxRetries = 1) {
                 return response;
             }
             
+            // Clonar resposta antes de ler o JSON para evitar "body stream already read"
+            const responseClone = response.clone();
+            
+            // Tentar parsear JSON (pode falhar se não for JSON)
+            let data = {};
+            try {
+                data = await responseClone.json();
+            } catch (e) {
+                // Se não for JSON, usar objeto vazio
+                data = {};
+            }
+            
             // Verificar se é erro de clock skew
-            const data = await response.json().catch(() => ({}));
             if (data.clock_skew_error && retryCount < maxRetries) {
                 console.log(`[CLOCK_SKEW_RETRY] Erro de clock skew detectado (diferença: ${data.time_diff}s). Fazendo refresh de token e tentando novamente...`);
                 
-                // Forçar refresh do token
+                // Delay otimizado: apenas o tempo necessário + margem mínima
+                const timeDiff = data.time_diff || 1;
+                // Delay reduzido: diferença + 500ms (margem mínima), máximo 3s
+                const delay = Math.min(timeDiff * 1000 + 500, 3000);
+                console.log(`[CLOCK_SKEW_RETRY] Aguardando ${delay}ms antes de tentar novamente...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                
+                // Forçar refresh do token apenas quando necessário
+                console.log(`[CLOCK_SKEW_RETRY] Obtendo novo token...`);
                 const newToken = await user.getIdToken(true);
                 
-                // Aguardar um pouco para o token ficar válido
+                // Delay mínimo após refresh (500ms é suficiente)
                 await new Promise(resolve => setTimeout(resolve, 500));
                 
                 // Retry com novo token (a função requestFn deve usar o novo token)
                 retryCount++;
+                console.log(`[CLOCK_SKEW_RETRY] Tentativa ${retryCount + 1}/${maxRetries + 1}...`);
                 continue;
             }
             
@@ -123,7 +210,7 @@ document.addEventListener('DOMContentLoaded', function() {
               id_token: currentToken
             })
           });
-        }, user, 1); // 1 retry adicional
+        }, user, 3); // 3 retries adicionais para clock skew grande
       } catch (fetchError) {
         console.error("Erro na requisição:", fetchError);
         throw new Error("Erro ao comunicar com o servidor. Verifique sua conexão.");
@@ -160,11 +247,12 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (emailError) {
           console.error("Erro ao enviar email de verificação:", emailError);
           
-          // Mesmo se falhar, informar o usuário
+          // Mesmo se falhar, informar o usuário com mensagem amigável
           const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
           if (container && window.MessageHelper) {
+            const emailErrorMessage = getFriendlyErrorMessage(emailError.code, null);
             MessageHelper.showWarning(
-              "Conta criada com sucesso! Por favor, verifique seu email para confirmar sua conta. Se não receber o email, você pode solicitar um novo na página de login.",
+              `Conta criada com sucesso! Porém, não foi possível enviar o email de verificação: ${emailErrorMessage}. Você pode solicitar um novo email de verificação na página de login.`,
               container,
               10000
             );
@@ -193,7 +281,10 @@ document.addEventListener('DOMContentLoaded', function() {
       LoadingHelper.hidePageLoader();
       const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
       if (container && window.MessageHelper) {
-        MessageHelper.showError("Erro ao criar conta: " + error.message, container);
+        // Se for erro do backend, usar mensagem do backend; se for erro do Firebase, traduzir
+        const errorMessage = error.code ? getFriendlyErrorMessage(error.code, error.message) : 
+                            (error.message || 'Ocorreu um erro ao criar sua conta. Tente novamente.');
+        MessageHelper.showError(errorMessage, container);
       }
     }
   }
@@ -241,24 +332,7 @@ document.addEventListener('DOMContentLoaded', function() {
       await handleRegister(userCredential, username);
     } catch (error) {
       console.error("Erro no registro:", error);
-      let errorMessage = "Erro ao criar conta. ";
-      
-      switch (error.code) {
-        case 'auth/email-already-in-use':
-          errorMessage = "Este email já está em uso.";
-          break;
-        case 'auth/invalid-email':
-          errorMessage = "Email inválido.";
-          break;
-        case 'auth/weak-password':
-          errorMessage = "Senha muito fraca. Use pelo menos 6 caracteres.";
-          break;
-        case 'auth/operation-not-allowed':
-          errorMessage = "Operação não permitida.";
-          break;
-        default:
-          errorMessage += error.message;
-      }
+      const errorMessage = getFriendlyErrorMessage(error.code, error.message);
       
       const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
       if (container && window.MessageHelper) {
@@ -293,17 +367,7 @@ document.addEventListener('DOMContentLoaded', function() {
         await handleRegister(userCredential);
       } catch (error) {
         console.error("Erro no registro Google:", error);
-        let errorMessage = "Erro ao fazer registro com Google. ";
-        
-        if (error.code === 'auth/popup-closed-by-user') {
-          errorMessage = "Registro cancelado.";
-        } else if (error.code === 'auth/popup-blocked') {
-          errorMessage = "Popup bloqueado. Permita popups para este site.";
-        } else if (error.code === 'auth/account-exists-with-different-credential') {
-          errorMessage = "Já existe uma conta com este email usando outro método de login.";
-        } else {
-          errorMessage += error.message;
-        }
+        const errorMessage = getFriendlyErrorMessage(error.code, error.message);
         
         const container = document.getElementById('register-messages-container') || document.querySelector('.auth-container');
         if (container && window.MessageHelper) {

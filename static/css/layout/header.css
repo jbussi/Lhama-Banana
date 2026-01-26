@@ -57,6 +57,16 @@ nav {
     pointer-events: none;
 }
 
+.tm-symbol {
+    font-size: 0.35em;
+    color: #000;
+    font-weight: normal;
+    vertical-align: super;
+    margin-left: 1px;
+    opacity: 0.7;
+    font-family: Arial, sans-serif;
+}
+
 /* Menu Mobile Toggle */
 .menu-toggle {
     display: none;

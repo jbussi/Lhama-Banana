@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/page-loader.css') }}">
     {% block page_css %}{% endblock %}
 
-    <title>LhamaBanana - {% block title %}{% endblock %}</title>
+    <title>LhamaBanana™ - {% block title %}{% endblock %}</title>
 
 </head>
 <body>
@@ -25,7 +25,7 @@
         <div class="auth-container">
             <div class="auth-logo">
                 <img src="{{ url_for('static', filename='img/logo.png') }}" alt="LhamaBanana">
-                <h1>LhamaBanana</h1>
+                <h1>LhamaBanana<span class="tm-symbol">TM</span></h1>
             </div>
             {% block content %}{% endblock %}
         </div>

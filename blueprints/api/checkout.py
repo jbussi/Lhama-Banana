@@ -389,7 +389,37 @@ def process_checkout():
             cur.execute("DELETE FROM carrinho_itens WHERE carrinho_id = %s", (cart_id,))
             conn.commit()
 
-            # 13. Preparar resposta
+            # 13. Enviar email de confirmação de pedido (TEMPORARIAMENTE DESABILITADO)
+            # TODO: Reativar quando SMTP estiver configurado
+            # try:
+            #     from ..services.email_service import send_order_confirmation_email
+            #     
+            #     # Preparar itens do pedido para o email
+            #     order_items = []
+            #     for item in cart_items:
+            #         order_items.append({
+            #             'nome': item.get('nome', 'Produto'),
+            #             'quantidade': item.get('quantidade', 1),
+            #             'preco': float(item.get('preco', 0))
+            #         })
+            #     
+            #     # Obter nome do cliente
+            #     customer_name = customer_data.get('name', shipping_info.get('nome_recebedor', 'Cliente'))
+            #     customer_email = customer_data.get('email', shipping_info.get('email'))
+            #     
+            #     if customer_email:
+            #         send_order_confirmation_email(
+            #             user_email=customer_email,
+            #             user_name=customer_name,
+            #             order_number=codigo_pedido,
+            #             order_total=final_total,
+            #             order_items=order_items
+            #         )
+            # except Exception as email_error:
+            #     current_app.logger.warning(f"Erro ao enviar email de confirmação de pedido: {email_error}")
+            #     # Não falhar o checkout se o email falhar
+
+            # 14. Preparar resposta
             response_data = {
                 "success": True,
                 "codigo_pedido": codigo_pedido,

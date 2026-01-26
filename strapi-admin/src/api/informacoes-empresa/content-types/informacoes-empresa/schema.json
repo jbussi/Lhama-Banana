@@ -1,0 +1,38 @@
+{
+  "kind": "singleType",
+  "collectionName": "informacoes_empresa",
+  "info": {
+    "singularName": "informacoes-empresa",
+    "pluralName": "informacoes-empresas",
+    "displayName": "Informações da Empresa",
+    "description": "Informações de contato, valores e redes sociais da empresa"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "email": {
+      "type": "email"
+    },
+    "telefone": {
+      "type": "string"
+    },
+    "whatsapp": {
+      "type": "string"
+    },
+    "horario_atendimento": {
+      "type": "text"
+    },
+    "valores": {
+      "type": "json"
+    },
+    "redes_sociais": {
+      "type": "json"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

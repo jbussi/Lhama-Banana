@@ -17,7 +17,7 @@ IMPORTANTE:
 - Frontend nunca valida pagamento, apenas faz polling do status
 """
 from flask import Blueprint, request, jsonify, current_app
-from ..services.order_service import get_order_by_venda_id, update_order_status, delete_order_token
+from ..services.order_service import get_order_by_venda_id, update_order_status, delete_order_token, sync_order_status_from_venda
 from ..services import get_db
 import psycopg2.extras
 import json
@@ -237,12 +237,70 @@ def pagbank_webhook():
                             payment = cur_temp.fetchone()
                             if payment:
                                 current_app.logger.info(f"Pagamento encontrado no banco pelo notificationCode: {payment['id']}")
-                                # Se encontrou no banco, aceitar a notificação mas não processar agora
-                                # O PagBank pode enviar os dados completos em outra requisição
-                                return jsonify({
-                                    "status": "ok",
-                                    "message": "Notificação recebida, pagamento encontrado no banco"
-                                }), 200
+                                # Buscar dados completos do pagamento para processar o webhook
+                                # Mesmo que a API retorne 404, podemos processar usando o status do banco
+                                cur_temp.execute("""
+                                    SELECT p.id, p.venda_id, p.status_pagamento, p.pagbank_order_id, p.pagbank_charge_id,
+                                           v.codigo_pedido, v.status_pedido
+                                    FROM pagamentos p
+                                    JOIN vendas v ON p.venda_id = v.id
+                                    WHERE p.id = %s
+                                """, (payment['id'],))
+                                payment_full = cur_temp.fetchone()
+                                
+                                if payment_full:
+                                    # Processar webhook usando dados do banco
+                                    # Criar estrutura de dados similar à resposta da API
+                                    venda_id = payment_full['venda_id']
+                                    current_status = payment_full['status_pagamento']
+                                    
+                                    # Se o pagamento já está pago e o pedido ainda não foi criado no Bling, criar agora
+                                    if current_status in ['PAID', 'AUTHORIZED', 'APPROVED']:
+                                        # Verificar se o pedido já existe no Bling
+                                        cur_temp.execute("""
+                                            SELECT bp.bling_pedido_id
+                                            FROM bling_pedidos bp
+                                            WHERE bp.venda_id = %s
+                                            LIMIT 1
+                                        """, (venda_id,))
+                                        bling_pedido = cur_temp.fetchone()
+                                        
+                                        if not bling_pedido:
+                                            current_app.logger.info(
+                                                f"💰 Pagamento {payment_full['id']} está {current_status} mas pedido ainda não foi criado no Bling. "
+                                                f"Criando pedido para venda {venda_id}..."
+                                            )
+                                            try:
+                                                from ..services.bling_order_service import sync_order_to_bling
+                                                result = sync_order_to_bling(venda_id)
+                                                
+                                                if result.get('success'):
+                                                    bling_pedido_id = result.get('bling_pedido_id')
+                                                    current_app.logger.info(f"✅ Pedido criado no Bling: {bling_pedido_id}")
+                                                else:
+                                                    current_app.logger.warning(
+                                                        f"⚠️ Falha ao criar pedido no Bling: {result.get('error')}"
+                                                    )
+                                            except Exception as bling_error:
+                                                current_app.logger.error(
+                                                    f"❌ Erro ao criar pedido no Bling: {bling_error}",
+                                                    exc_info=True
+                                                )
+                                        else:
+                                            current_app.logger.info(
+                                                f"ℹ️ Pedido já existe no Bling para venda {venda_id} (ID: {bling_pedido['bling_pedido_id']})"
+                                            )
+                                    
+                                    # Aceitar a notificação
+                                    return jsonify({
+                                        "status": "ok",
+                                        "message": "Notificação recebida, pagamento encontrado no banco e processado"
+                                    }), 200
+                                else:
+                                    return jsonify({
+                                        "status": "ok",
+                                        "message": "Notificação recebida, pagamento encontrado no banco"
+                                    }), 200
                             else:
                                 current_app.logger.warning(f"Pagamento não encontrado nem na API nem no banco para notificationCode: {notification_code}")
                                 return jsonify({
@@ -596,7 +654,18 @@ def pagbank_webhook():
                     result = sync_order_to_bling(venda_id)
                     
                     if result.get('success'):
-                        current_app.logger.info(f"✅ Pedido criado no Bling: {result.get('bling_pedido_id')}")
+                        bling_pedido_id = result.get('bling_pedido_id')
+                        current_app.logger.info(f"✅ Pedido criado no Bling: {bling_pedido_id}")
+                        
+                        # NOTA: Não emitir NF-e quando pedido está em aberto
+                        # A NF-e será emitida apenas quando a nota for aprovada (via webhook NFE)
+                        current_app.logger.info(
+                            f"ℹ️ Pedido {bling_pedido_id} criado no Bling. "
+                            f"NF-e será emitida apenas quando a nota for aprovada."
+                        )
+                        
+                        # REMOVIDO: Lógica de emissão de NF-e no pedido em aberto
+                        # A emissão agora acontece apenas quando a nota é aprovada (via webhook NFE)
                     else:
                         current_app.logger.warning(
                             f"⚠️ Falha ao criar pedido no Bling: {result.get('error')}. "
@@ -624,41 +693,31 @@ def pagbank_webhook():
             if new_venda_status:
                 cur.execute("""
                     UPDATE vendas
-                    SET status_pedido = %s,
-                        atualizado_em = NOW()
+                    SET status_pedido = %s
                     WHERE id = %s
                 """, (new_venda_status, venda_id))
                 conn.commit()
                 
-                # Se status mudou para processando_envio, sincronizar estoque com Bling
-                # REMOVIDO: Criação automática de etiqueta - será criada apenas após aprovação do SEFAZ
+                # Sincronizar status da tabela orders
+                try:
+                    sync_order_status_from_venda(venda_id)
+                except Exception as sync_error:
+                    current_app.logger.warning(f"Erro ao sincronizar status do order: {sync_error}")
+                
+                # IMPORTANTE: Estoque é gerenciado exclusivamente pelo Bling
+                # Quando o pedido for criado no Bling, o Bling abaterá o estoque automaticamente
+                # O webhook do Bling (stock.updated) atualizará o estoque do site automaticamente
                 if new_venda_status == 'processando_envio':
-                    # 1. Sincronizar estoque com Bling (estoque já foi decrementado na criação do pedido)
-                    try:
-                        from ..services.bling_stock_service import update_stock_after_sale
-                        stock_result = update_stock_after_sale(venda_id, sync_to_bling=True)
-                        if stock_result.get('success'):
-                            current_app.logger.info(f"✅ Estoque sincronizado com Bling após confirmação de pagamento (venda {venda_id})")
-                        else:
-                            current_app.logger.warning(f"⚠️ Falha ao sincronizar estoque com Bling (venda {venda_id}): {stock_result.get('error')}")
-                    except Exception as stock_error:
-                        current_app.logger.error(f"❌ Erro ao sincronizar estoque com Bling (venda {venda_id}): {stock_error}")
-                        import traceback
-                        current_app.logger.error(traceback.format_exc())
-                        # Não falhar o webhook por erro na sincronização de estoque
+                    current_app.logger.info(
+                        f"ℹ️ Estoque será gerenciado pelo Bling quando o pedido {venda_id} "
+                        f"for criado no Bling. O webhook do Bling atualizará o estoque do site automaticamente."
+                    )
                     
-                    # 2. Criar conta a receber no Bling - REMOVIDO (não essencial para o escopo atual)
-                    # A criação de contas a receber será gerenciada diretamente pelo Bling quando necessário
-                    
-                    # 3. Verificar se precisa emitir NFe
-                    try:
-                        from ..services.nfe_service import check_and_emit_nfe
-                        nfe_result = check_and_emit_nfe(venda_id)
-                        if nfe_result:
-                            current_app.logger.info(f"✅ NFe registrada para venda {venda_id}: {nfe_result}")
-                    except Exception as nfe_error:
-                        current_app.logger.error(f"❌ Erro ao processar NFe para venda {venda_id}: {nfe_error}")
-                        # Não falhar o webhook por erro na NFe
+                    # NF-e será emitida quando pedido mudar para "Em andamento" no Bling
+                    current_app.logger.info(
+                        f"ℹ️ NF-e será emitida automaticamente quando pedido {venda_id} "
+                        f"mudar para 'Em andamento' no Bling (via webhook do Bling)"
+                    )
             
             current_app.logger.info("=" * 80)
             current_app.logger.info(f"✅ WEBHOOK PROCESSADO COM SUCESSO")
@@ -763,7 +822,20 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
                     "message": f"Evento deleted recebido para pedido {venda_id}"
                 }), 200
             
+            # PROTEÇÃO: Não permitir regressão de "Logística" para "Em andamento"
+            # Se o pedido já está em "pronto_envio" (Logística), não deve voltar para "Em andamento"
+            if status_atual == 'pronto_envio':
+                current_app.logger.info(
+                    f"🛡️ PROTEÇÃO: Pedido {venda_id} já está em 'pronto_envio' (Logística). "
+                    f"Ignorando atualização de situação via webhook para evitar regressão."
+                )
+                return jsonify({
+                    "status": "ok",
+                    "message": f"Pedido {venda_id} já está em Logística, ignorando atualização"
+                }), 200
+            
             # Extrair ID da situação do Bling (pode vir em diferentes formatos)
+            # IMPORTANTE: Extrair antes da proteção para poder verificar se é Logística
             situacao_bling_id = None
             situacao_bling_nome = None
             
@@ -782,14 +854,49 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
             
             # Se não encontrou situação no webhook, buscar do pedido via API
             if not situacao_bling_id:
+                # Buscar pedido completo no Bling para obter situação
                 try:
                     from ..services.bling_order_service import get_bling_order_by_local_id
-                    pedido_bling_full = get_bling_order_by_local_id(venda_id)
-                    if pedido_bling_full and 'situacao' in pedido_bling_full:
-                        situacao_data = pedido_bling_full['situacao']
-                        if isinstance(situacao_data, dict):
-                            situacao_bling_id = situacao_data.get('id')
-                            situacao_bling_nome = situacao_data.get('nome')
+                    from ..services.bling_api_service import make_bling_api_request
+                    
+                    pedido_bling_local = get_bling_order_by_local_id(venda_id)
+                    if pedido_bling_local:
+                        bling_pedido_id = pedido_bling_local.get('bling_pedido_id')
+                        if bling_pedido_id:
+                            current_app.logger.info(
+                                f"🔍 Situação não encontrada no webhook. Buscando pedido {bling_pedido_id} no Bling..."
+                            )
+                            response = make_bling_api_request('GET', f'/pedidos/vendas/{bling_pedido_id}')
+                            if response.status_code == 200:
+                                pedido_data = response.json().get('data', {})
+                                situacao_data = pedido_data.get('situacao', {})
+                                if isinstance(situacao_data, dict):
+                                    situacao_bling_id = situacao_data.get('id')
+                                    situacao_bling_nome = situacao_data.get('nome')
+                                    
+                                    # Se temos ID mas não nome, buscar nome via API de situações
+                                    if situacao_bling_id and not situacao_bling_nome:
+                                        try:
+                                            from ..services.bling_situacao_service import get_bling_situacao_by_id
+                                            situacao_info = get_bling_situacao_by_id(situacao_bling_id)
+                                            if situacao_info:
+                                                situacao_bling_nome = situacao_info.get('nome')
+                                                current_app.logger.info(
+                                                    f"✅ Situação encontrada no Bling: ID {situacao_bling_id} - {situacao_bling_nome}"
+                                                )
+                                            else:
+                                                current_app.logger.info(
+                                                    f"✅ Situação encontrada no Bling: ID {situacao_bling_id} - (nome não disponível)"
+                                                )
+                                        except Exception as e:
+                                            current_app.logger.warning(f"Erro ao buscar nome da situação {situacao_bling_id}: {e}")
+                                            current_app.logger.info(
+                                                f"✅ Situação encontrada no Bling: ID {situacao_bling_id}"
+                                            )
+                                    else:
+                                        current_app.logger.info(
+                                            f"✅ Situação encontrada no Bling: ID {situacao_bling_id} - {situacao_bling_nome or '(nome não disponível)'}"
+                                        )
                 except Exception as e:
                     current_app.logger.warning(f"Erro ao buscar situação do pedido via API: {e}")
             
@@ -813,31 +920,210 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
                         "message": "Webhook sem informação de situação"
                     }), 200
             
-            # Verificar se a situação mudou
-            if situacao_bling_id == situacao_atual_id:
-                current_app.logger.info(
-                    f"Situação não mudou para pedido {venda_id}: {situacao_bling_id}"
-                )
-                return jsonify({
-                    "status": "ok",
-                    "message": "Situação não mudou"
-                }), 200
-            
-            # Buscar nome da situação se não fornecido
-            if not situacao_bling_nome:
-                current_app.logger.info(f"🔍 [WEBHOOK] Nome da situação não fornecido no webhook, buscando no banco...")
+            # Buscar nome da situação se não fornecido (ANTES de verificar se mudou)
+            if not situacao_bling_nome and situacao_bling_id:
+                # Primeiro tentar buscar no banco (mais rápido)
                 try:
                     from ..services.bling_situacao_service import get_situacao_mapping
                     situacao_info = get_situacao_mapping(situacao_bling_id)
                     if situacao_info:
                         situacao_bling_nome = situacao_info.get('nome')
-                        current_app.logger.info(f"✅ [WEBHOOK] Nome encontrado: '{situacao_bling_nome}'")
+                        current_app.logger.info(f"✅ [WEBHOOK] Nome encontrado no banco: '{situacao_bling_nome}'")
                     else:
-                        current_app.logger.warning(f"⚠️ [WEBHOOK] Situação ID {situacao_bling_id} não encontrada no banco")
+                        # Se não encontrou no banco, buscar via API do Bling
+                        try:
+                            from ..services.bling_situacao_service import get_bling_situacao_by_id
+                            situacao_info = get_bling_situacao_by_id(situacao_bling_id)
+                            if situacao_info:
+                                situacao_bling_nome = situacao_info.get('nome')
+                                current_app.logger.info(f"✅ [WEBHOOK] Nome encontrado via API: '{situacao_bling_nome}'")
+                        except Exception as e:
+                            current_app.logger.warning(f"⚠️ [WEBHOOK] Erro ao buscar nome da situação via API: {e}")
                 except Exception as e:
-                    current_app.logger.error(f"❌ [WEBHOOK] Erro ao buscar nome da situação: {e}")
-            else:
-                current_app.logger.info(f"📋 [WEBHOOK] Nome da situação fornecido no webhook: '{situacao_bling_nome}'")
+                    current_app.logger.warning(f"⚠️ [WEBHOOK] Erro ao buscar nome da situação no banco: {e}")
+            
+            # Log da situação final
+            if situacao_bling_id:
+                current_app.logger.info(
+                    f"📋 [WEBHOOK] Situação do pedido {venda_id}: ID {situacao_bling_id} - '{situacao_bling_nome or 'sem nome'}'"
+                )
+            
+            # PROTEÇÃO: Se o pedido já está em "nfe_autorizada", permitir apenas mudança para Logística
+            if status_atual == 'nfe_autorizada':
+                # Se está tentando mudar para Logística (ID 716906), permitir
+                if situacao_bling_id == 716906:
+                    current_app.logger.info(
+                        f"✅ Permitindo mudança para Logística para pedido {venda_id} "
+                        f"(status atual: nfe_autorizada)"
+                    )
+                    # Continuar o fluxo normalmente
+                else:
+                    current_app.logger.info(
+                        f"🛡️ PROTEÇÃO: Pedido {venda_id} já tem NF-e autorizada. "
+                        f"Ignorando atualização de situação via webhook para evitar regressão."
+                    )
+                    return jsonify({
+                        "status": "ok",
+                        "message": f"Pedido {venda_id} já tem NF-e autorizada, ignorando atualização"
+                    }), 200
+            
+            # PROTEÇÃO ADICIONAL: Verificar se está tentando regredir de "Logística" (ID 716906) para outra situação
+            # Se a situação atual é "Logística" e está tentando mudar para outra, bloquear
+            if situacao_atual_id == 716906 and situacao_bling_id != 716906:
+                current_app.logger.warning(
+                    f"🛡️ PROTEÇÃO: Tentativa de regressão detectada para pedido {venda_id}! "
+                    f"Situação atual: Logística (ID 716906) → Tentando mudar para: {situacao_bling_id} ({situacao_bling_nome or 'sem nome'})"
+                )
+                current_app.logger.warning(
+                    f"   Status atual: {status_atual}"
+                )
+                current_app.logger.warning(
+                    f"   ⚠️ BLOQUEANDO regressão. Pedido permanecerá em 'Logística'."
+                )
+                return jsonify({
+                    "status": "ok",
+                    "message": f"Proteção: bloqueada regressão de Logística para {situacao_bling_id}"
+                }), 200
+            
+            # Verificar se mudou para "Atendido" (comportamento padrão do Bling ao emitir NF-e)
+            situacao_nome_lower = (situacao_bling_nome or '').lower() if situacao_bling_nome else ''
+            is_atendido = (
+                situacao_bling_id == 9 or  # ID conhecido de "Atendido"
+                'atendido' in situacao_nome_lower
+            )
+            
+            if is_atendido:
+                current_app.logger.info(
+                    f"ℹ️ Pedido {venda_id} mudou para 'Atendido' (comportamento padrão do Bling ao emitir NF-e). "
+                    f"Será movido para 'Logística' quando NF-e for aprovada pelo SEFAZ."
+                )
+                # Permitir a mudança - não bloquear (comportamento esperado do Bling)
+            
+            # IMPORTANTE: Verificar se precisa emitir NF-e quando pedido está em "Em andamento"
+            # Isso deve ser verificado tanto quando a situação muda quanto quando não muda
+            situacao_nome_lower = (situacao_bling_nome or '').lower() if situacao_bling_nome else ''
+            is_em_andamento = (
+                'em andamento' in situacao_nome_lower or
+                situacao_bling_id == 15  # ID conhecido de "Em andamento"
+            )
+            
+            # Garantir que NÃO está em "Em aberto" (ID 6)
+            is_em_aberto = (
+                'em aberto' in situacao_nome_lower or
+                situacao_bling_id == 6  # ID conhecido de "Em aberto"
+            )
+            
+            current_app.logger.info(
+                f"🔍 Verificando emissão de NF-e para pedido {venda_id}: "
+                f"situacao_id={situacao_bling_id}, situacao_nome='{situacao_bling_nome}', "
+                f"is_em_andamento={is_em_andamento}, is_em_aberto={is_em_aberto}, "
+                f"situacao_mudou={situacao_bling_id != situacao_atual_id}, "
+                f"situacao_atual_id={situacao_atual_id}"
+            )
+            
+            # Função auxiliar para verificar e emitir NF-e
+            def verificar_e_emitir_nfe():
+                """Verifica se precisa emitir NF-e e emite se necessário"""
+                if not is_em_andamento or is_em_aberto:
+                    return False
+                
+                # Verificar se NF-e já foi emitida E está associada ao pedido no Bling
+                cur.execute("""
+                    SELECT bp.bling_nfe_id, bp.nfe_status, bp.bling_pedido_id
+                    FROM bling_pedidos bp
+                    WHERE bp.venda_id = %s
+                """, (venda_id,))
+                
+                nfe_info = cur.fetchone()
+                pedido_bling_id = nfe_info.get('bling_pedido_id') if nfe_info else None
+                nfe_id_local = nfe_info.get('bling_nfe_id') if nfe_info else None
+                
+                # Verificar se a NF-e está realmente associada ao pedido no Bling
+                nfe_associada = False
+                if nfe_id_local and pedido_bling_id:
+                    try:
+                        from ..services.bling_api_service import make_bling_api_request
+                        
+                        # Buscar pedido no Bling para verificar se tem NF-e associada
+                        response_pedido = make_bling_api_request(
+                            'GET',
+                            f'/pedidos/vendas/{pedido_bling_id}'
+                        )
+                        
+                        if response_pedido.status_code == 200:
+                            pedido_data = response_pedido.json().get('data', {})
+                            nfe_pedido = pedido_data.get('notaFiscal', {})
+                            
+                            if nfe_pedido and nfe_pedido.get('id') == nfe_id_local:
+                                nfe_associada = True
+                                current_app.logger.info(
+                                    f"✅ NF-e {nfe_id_local} está associada ao pedido {pedido_bling_id} no Bling"
+                                )
+                            else:
+                                current_app.logger.info(
+                                    f"⚠️ NF-e {nfe_id_local} existe no banco local mas NÃO está associada ao pedido {pedido_bling_id} no Bling. "
+                                    f"Vamos emitir uma nova NF-e associada ao pedido."
+                                )
+                    except Exception as e:
+                        current_app.logger.warning(
+                            f"⚠️ Erro ao verificar associação NF-e/pedido no Bling: {e}. "
+                            f"Vamos tentar emitir NF-e novamente."
+                        )
+                
+                # Se não tem NF-e associada, emitir agora
+                if not nfe_associada:
+                    current_app.logger.info(
+                        f"📄 Pedido {venda_id} está em 'Em andamento' e não tem NF-e. "
+                        f"Emitindo NF-e agora..."
+                    )
+                    try:
+                        from ..services.bling_nfe_service import emit_nfe
+                        nfe_result = emit_nfe(venda_id)
+                        
+                        if nfe_result.get('success'):
+                            current_app.logger.info(
+                                f"✅ NF-e emitida com sucesso para pedido {venda_id}: "
+                                f"ID={nfe_result.get('nfe_id')}, "
+                                f"Status={nfe_result.get('nfe_situacao')}"
+                            )
+                            return True
+                        else:
+                            current_app.logger.error(
+                                f"❌ Falha ao emitir NF-e para pedido {venda_id}: "
+                                f"{nfe_result.get('error')}"
+                            )
+                            return False
+                    except Exception as nfe_error:
+                        current_app.logger.error(
+                            f"❌ Erro ao emitir NF-e para pedido {venda_id}: {nfe_error}",
+                            exc_info=True
+                        )
+                        return False
+                else:
+                    current_app.logger.info(
+                        f"ℹ️ Pedido {venda_id} está em 'Em andamento' e já tem NF-e associada."
+                    )
+                    return True
+            
+            # IMPORTANTE: Se está em "Em andamento", SEMPRE verificar e emitir NF-e
+            # Isso deve acontecer ANTES de verificar se a situação mudou
+            if is_em_andamento and not is_em_aberto:
+                current_app.logger.info(
+                    f"🚀 PEDIDO {venda_id} ESTÁ EM 'EM ANDAMENTO' (ID: {situacao_bling_id}) - VERIFICANDO E EMITINDO NF-e AGORA!"
+                )
+                verificar_e_emitir_nfe()
+            
+            # Verificar se a situação mudou
+            if situacao_bling_id == situacao_atual_id:
+                # Se não está em "Em andamento", apenas retornar
+                # (A emissão de NF-e já foi verificada acima se estiver em "Em andamento")
+                current_app.logger.info(
+                    f"ℹ️ Situação não mudou para pedido {venda_id}: {situacao_bling_id} ({situacao_bling_nome or 'sem nome'})"
+                )
+                return jsonify({
+                    "status": "ok",
+                    "message": "Situação não mudou"
+                }), 200
             
             # Atualizar situação e status do pedido usando o serviço de situação
             from ..services.bling_situacao_service import update_pedido_situacao
@@ -867,74 +1153,22 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
                 current_app.logger.info(f"   Status Site: {status_atual} → {novo_status}")
                 current_app.logger.info("=" * 80)
                 
-                # Verificar se mudou para "Em andamento" e emitir NF-e
-                situacao_nome_lower = (situacao_bling_nome or '').lower()
-                is_em_andamento = 'em andamento' in situacao_nome_lower
-                
-                # Também verificar pelo ID se conhecido (pode ser mapeado depois)
-                # Por enquanto, usar apenas o nome
-                if is_em_andamento:
-                    current_app.logger.info(f"🚀 Pedido {venda_id} mudou para 'Em andamento'. Emitindo NF-e...")
-                    
-                    try:
-                        from ..services.bling_nfe_service import emit_nfe
-                        
-                        # Verificar se NF-e já foi emitida
-                        cur.execute("""
-                            SELECT bling_nfe_id, nfe_status
-                            FROM bling_pedidos
-                            WHERE venda_id = %s
-                        """, (venda_id,))
-                        
-                        nfe_info = cur.fetchone()
-                        
-                        if nfe_info and nfe_info.get('bling_nfe_id'):
-                            current_app.logger.info(
-                                f"ℹ️ NF-e já existe para pedido {venda_id}. "
-                                f"ID: {nfe_info.get('bling_nfe_id')}, Status: {nfe_info.get('nfe_status')}"
-                            )
-                        else:
-                            # Emitir NF-e
-                            nfe_result = emit_nfe(venda_id)
-                            
-                            if nfe_result.get('success'):
-                                current_app.logger.info(
-                                    f"✅ NF-e emitida com sucesso para pedido {venda_id}. "
-                                    f"Número: {nfe_result.get('nfe_numero')}, "
-                                    f"Chave: {nfe_result.get('nfe_chave_acesso')}"
-                                )
-                                
-                                # Atualizar status do pedido para aguardando aprovação SEFAZ
-                                cur.execute("""
-                                    UPDATE vendas
-                                    SET status_pedido = 'nfe_aguardando_aprovacao',
-                                        atualizado_em = NOW()
-                                    WHERE id = %s
-                                """, (venda_id,))
-                                conn.commit()
-                                
-                                current_app.logger.info(
-                                    f"📋 Status do pedido {venda_id} atualizado para 'nfe_aguardando_aprovacao'"
-                                )
-                            else:
-                                current_app.logger.error(
-                                    f"❌ Erro ao emitir NF-e para pedido {venda_id}: {nfe_result.get('error')}"
-                                )
-                                
-                                # Atualizar status para erro
-                                cur.execute("""
-                                    UPDATE vendas
-                                    SET status_pedido = 'erro_nfe_timeout',
-                                        atualizado_em = NOW()
-                                    WHERE id = %s
-                                """, (venda_id,))
-                                conn.commit()
-                                
-                    except Exception as e:
-                        current_app.logger.error(
-                            f"❌ Erro ao processar emissão de NF-e para pedido {venda_id}: {e}",
-                            exc_info=True
-                        )
+                # Se mudou para "Em andamento", verificar se precisa emitir NF-e
+                if is_em_andamento and not is_em_aberto:
+                    current_app.logger.info(
+                        f"📄 Pedido {venda_id} mudou para 'Em andamento' (ID: {situacao_bling_id}). "
+                        f"Emitindo NF-e agora..."
+                    )
+                    resultado_nfe = verificar_e_emitir_nfe()
+                    if resultado_nfe:
+                        current_app.logger.info(f"✅ NF-e processada com sucesso para pedido {venda_id}")
+                    else:
+                        current_app.logger.warning(f"⚠️ NF-e não foi emitida para pedido {venda_id} (já existe ou erro)")
+                else:
+                    current_app.logger.info(
+                        f"ℹ️ Pedido {venda_id} não está em 'Em andamento' ou está em 'Em aberto'. "
+                        f"is_em_andamento={is_em_andamento}, is_em_aberto={is_em_aberto}"
+                    )
             else:
                 current_app.logger.warning(f"Falha ao atualizar situação do pedido {venda_id}")
             
@@ -1019,13 +1253,24 @@ def process_nfe_webhook(webhook_data: dict, event: str, event_id: str, data: dic
         current_app.logger.info(f"Dados: {json.dumps(data, indent=2, ensure_ascii=False)[:500]}")
         
         # Extrair informações da nota fiscal
-        nfe_id = data.get('id')
-        nfe_situacao = data.get('situacao')  # 1 = Autorizada, outros valores = outras situações
-        nfe_numero = data.get('numero')
-        nfe_tipo = data.get('tipo')  # 0 = NF-e (Modelo 55), 1 = NFC-e
+        # O Bling pode enviar os dados diretamente ou dentro de um objeto 'invoice'
+        nfe_data = data.get('invoice') or data  # Tentar 'invoice' primeiro, depois dados diretos
+        
+        nfe_id = nfe_data.get('id') or data.get('id')
+        nfe_situacao = nfe_data.get('situacao') or data.get('situacao')  # 1 = Autorizada, outros valores = outras situações
+        nfe_numero = nfe_data.get('numero') or data.get('numero')
+        nfe_tipo = nfe_data.get('tipo') or data.get('tipo')  # 0 = NF-e (Modelo 55), 1 = NFC-e
+        
+        current_app.logger.info(
+            f"📋 Dados extraídos da NF-e: ID={nfe_id}, Situação={nfe_situacao}, "
+            f"Número={nfe_numero}, Tipo={nfe_tipo}"
+        )
         
         if not nfe_id:
-            current_app.logger.warning(f"Webhook de nota fiscal sem ID. Event: {event}")
+            current_app.logger.warning(
+                f"Webhook de nota fiscal sem ID. Event: {event}, "
+                f"Dados recebidos: {json.dumps(data, indent=2, ensure_ascii=False)[:500]}"
+            )
             return jsonify({
                 "status": "ok",
                 "message": "Webhook sem ID da nota fiscal, ignorado"
@@ -1036,11 +1281,229 @@ def process_nfe_webhook(webhook_data: dict, event: str, event_id: str, data: dic
         
         pedido_info = get_order_by_nfe_id(nfe_id)
         
+        # Se não encontrou pelo ID, tentar buscar pelo número da NF-e (normalizado)
+        if not pedido_info and nfe_numero:
+            current_app.logger.info(
+                f"⚠️ NF-e não encontrada pelo ID {nfe_id}. Tentando buscar pelo número {nfe_numero}..."
+            )
+            conn_temp = get_db()
+            cur_temp = conn_temp.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            try:
+                # Normalizar número da NF-e (remover zeros à esquerda e converter para string)
+                nfe_numero_normalizado = str(int(nfe_numero)) if nfe_numero else None
+                nfe_numero_com_zeros = str(nfe_numero).zfill(9)  # Formato com zeros: 000000004
+                
+                # Tentar buscar com número normalizado e com zeros
+                # O número pode estar salvo como string ou inteiro
+                cur_temp.execute("""
+                    SELECT venda_id, bling_pedido_id
+                    FROM bling_pedidos
+                    WHERE (nfe_numero::text = %s 
+                       OR nfe_numero::text = %s
+                       OR nfe_numero::text = %s
+                       OR nfe_numero::text = %s
+                       OR LPAD(nfe_numero::text, 9, '0') = %s)
+                    LIMIT 1
+                """, (
+                    nfe_numero_normalizado, 
+                    nfe_numero_com_zeros, 
+                    nfe_numero, 
+                    str(nfe_numero),
+                    nfe_numero_com_zeros
+                ))
+                pedido_temp = cur_temp.fetchone()
+                if pedido_temp:
+                    pedido_info = {
+                        'venda_id': pedido_temp['venda_id'],
+                        'bling_pedido_id': pedido_temp['bling_pedido_id']
+                    }
+                    current_app.logger.info(
+                        f"✅ Pedido encontrado pelo número da NF-e: {pedido_info['venda_id']}"
+                    )
+            except Exception as e:
+                current_app.logger.error(f"Erro ao buscar pedido pelo número da NF-e: {e}")
+            finally:
+                cur_temp.close()
+        
+        # Se ainda não encontrou, tentar buscar pelo contato do pedido (se disponível)
+        if not pedido_info:
+            contato_id = data.get('contato', {}).get('id') if isinstance(data.get('contato'), dict) else None
+            if contato_id:
+                current_app.logger.info(
+                    f"⚠️ Tentando buscar pedido pelo contato {contato_id} da NF-e..."
+                )
+                conn_temp = get_db()
+                cur_temp = conn_temp.cursor(cursor_factory=psycopg2.extras.DictCursor)
+                try:
+                    # Buscar pedido pelo contato do Bling (cliente)
+                    # Buscar pedido Bling mais recente do contato e depois encontrar pedido local
+                    from ..services.bling_api_service import make_bling_api_request
+                    try:
+                        # Buscar pedidos do contato no Bling
+                        response = make_bling_api_request(
+                            'GET',
+                            '/pedidos/vendas',
+                            params={
+                                'contato': contato_id,
+                                'limite': 10
+                            }
+                        )
+                        if response.status_code == 200:
+                            pedidos_data = response.json().get('data', [])
+                            # Procurar pedido mais recente que ainda não tem NF-e ou tem esta NF-e
+                            for pedido_bling in pedidos_data:
+                                pedido_bling_id = pedido_bling.get('id')
+                                nfe_pedido = pedido_bling.get('notaFiscal', {})
+                                nfe_pedido_id = nfe_pedido.get('id') if isinstance(nfe_pedido, dict) else None
+                                
+                                # Se este pedido tem esta NF-e ou não tem NF-e ainda
+                                if nfe_pedido_id == nfe_id or nfe_pedido_id is None:
+                                    # Buscar pedido local pelo bling_pedido_id
+                                    cur_temp.execute("""
+                                        SELECT venda_id, bling_pedido_id
+                                        FROM bling_pedidos
+                                        WHERE bling_pedido_id = %s
+                                        LIMIT 1
+                                    """, (pedido_bling_id,))
+                                    pedido_local = cur_temp.fetchone()
+                                    if pedido_local:
+                                        pedido_info = {
+                                            'venda_id': pedido_local['venda_id'],
+                                            'bling_pedido_id': pedido_local['bling_pedido_id']
+                                        }
+                                        current_app.logger.info(
+                                            f"✅ Pedido encontrado pelo contato via API Bling: {pedido_info['venda_id']}"
+                                        )
+                                        break
+                    except Exception as api_error:
+                        current_app.logger.warning(f"Erro ao buscar pedido via API Bling: {api_error}")
+                    
+                    # Se não encontrou via API, tentar buscar pedido local mais recente sem NF-e
+                    if not pedido_info:
+                        cur_temp.execute("""
+                            SELECT v.id as venda_id, bp.bling_pedido_id
+                            FROM vendas v
+                            JOIN bling_pedidos bp ON v.id = bp.venda_id
+                            WHERE bp.bling_nfe_id IS NULL
+                            ORDER BY v.id DESC
+                            LIMIT 5
+                        """)
+                        pedidos_sem_nfe = cur_temp.fetchall()
+                        # Tentar encontrar pedido do mesmo contato verificando via API
+                        for pedido_candidate in pedidos_sem_nfe:
+                            try:
+                                pedido_bling_id_candidate = pedido_candidate['bling_pedido_id']
+                                response = make_bling_api_request(
+                                    'GET',
+                                    f'/pedidos/vendas/{pedido_bling_id_candidate}'
+                                )
+                                if response.status_code == 200:
+                                    pedido_data = response.json().get('data', {})
+                                    contato_pedido = pedido_data.get('contato', {})
+                                    contato_pedido_id = contato_pedido.get('id') if isinstance(contato_pedido, dict) else None
+                                    if contato_pedido_id == contato_id:
+                                        pedido_info = {
+                                            'venda_id': pedido_candidate['venda_id'],
+                                            'bling_pedido_id': pedido_bling_id_candidate
+                                        }
+                                        current_app.logger.info(
+                                            f"✅ Pedido encontrado pelo contato (verificação via API): {pedido_info['venda_id']}"
+                                        )
+                                        break
+                            except:
+                                continue
+                    pedido_temp = cur_temp.fetchone()
+                    if pedido_temp:
+                        pedido_info = {
+                            'venda_id': pedido_temp['venda_id'],
+                            'bling_pedido_id': pedido_temp['bling_pedido_id']
+                        }
+                        current_app.logger.info(
+                            f"✅ Pedido encontrado pelo contato: {pedido_info['venda_id']}"
+                        )
+                except Exception as e:
+                    current_app.logger.error(f"Erro ao buscar pedido pelo contato: {e}")
+                finally:
+                    cur_temp.close()
+        
+        if not pedido_info:
+            # Tentar buscar pelo pedido Bling diretamente usando o contato
+            # Se a NF-e foi criada mas não foi salva no banco ainda, podemos tentar encontrar o pedido
+            contato_id = data.get('contato', {}).get('id') if isinstance(data.get('contato'), dict) else None
+            if contato_id:
+                current_app.logger.info(
+                    f"⚠️ Tentando buscar pedido mais recente do contato {contato_id} para vincular NF-e..."
+                )
+                conn_temp = get_db()
+                cur_temp = conn_temp.cursor(cursor_factory=psycopg2.extras.DictCursor)
+                try:
+                    # Buscar pedido mais recente do cliente que ainda não tem NF-e
+                    # Usar API do Bling para buscar pedidos do contato
+                    from ..services.bling_api_service import make_bling_api_request
+                    try:
+                        response = make_bling_api_request(
+                            'GET',
+                            '/pedidos/vendas',
+                            params={
+                                'contato': contato_id,
+                                'limite': 10
+                            }
+                        )
+                        if response.status_code == 200:
+                            pedidos_data = response.json().get('data', [])
+                            for pedido_bling in pedidos_data:
+                                pedido_bling_id = pedido_bling.get('id')
+                                nfe_pedido = pedido_bling.get('notaFiscal', {})
+                                # Se pedido não tem NF-e ainda
+                                if not nfe_pedido or not nfe_pedido.get('id'):
+                                    # Buscar pedido local
+                                    cur_temp.execute("""
+                                        SELECT venda_id, bling_pedido_id
+                                        FROM bling_pedidos
+                                        WHERE bling_pedido_id = %s
+                                        LIMIT 1
+                                    """, (pedido_bling_id,))
+                                    pedido_local = cur_temp.fetchone()
+                                    if pedido_local:
+                                        pedido_info = {
+                                            'venda_id': pedido_local['venda_id'],
+                                            'bling_pedido_id': pedido_local['bling_pedido_id']
+                                        }
+                                        break
+                    except Exception as api_error:
+                        current_app.logger.warning(f"Erro ao buscar pedido via API Bling: {api_error}")
+                    pedido_temp = cur_temp.fetchone()
+                    if pedido_temp:
+                        pedido_info = {
+                            'venda_id': pedido_temp['venda_id'],
+                            'bling_pedido_id': pedido_temp['bling_pedido_id']
+                        }
+                        current_app.logger.info(
+                            f"✅ Pedido encontrado pelo contato (sem NF-e ainda): {pedido_info['venda_id']}. "
+                            f"Vinculando NF-e {nfe_id} a este pedido."
+                        )
+                        # Salvar a NF-e neste pedido
+                        cur_temp.execute("""
+                            UPDATE bling_pedidos
+                            SET bling_nfe_id = %s,
+                                nfe_numero = %s,
+                                nfe_status = %s,
+                                updated_at = NOW()
+                            WHERE venda_id = %s
+                        """, (nfe_id, nfe_numero, f'SITUACAO_{nfe_situacao}', pedido_info['venda_id']))
+                        conn_temp.commit()
+                except Exception as e:
+                    current_app.logger.error(f"Erro ao buscar/vincular pedido pelo contato: {e}")
+                    conn_temp.rollback()
+                finally:
+                    cur_temp.close()
+        
         if not pedido_info:
             current_app.logger.warning(
-                f"Nota fiscal {nfe_id} não encontrada em nenhum pedido local. "
-                f"Pode ser uma nota criada diretamente no Bling."
+                f"Nota fiscal {nfe_id} (número: {nfe_numero}) não encontrada em nenhum pedido local. "
+                f"Pode ser uma nota criada diretamente no Bling ou ainda não sincronizada."
             )
+            # Não retornar erro, apenas logar - pode ser uma NF-e criada diretamente no Bling
             return jsonify({
                 "status": "ok",
                 "message": f"Nota fiscal {nfe_id} não encontrada em pedidos locais"
@@ -1057,11 +1520,178 @@ def process_nfe_webhook(webhook_data: dict, event: str, event_id: str, data: dic
         
         try:
             if action == 'updated':
-                # Verificar se situação mudou para Autorizada (1)
-                if nfe_situacao == 1:
+                # Buscar situação real da NF-e no Bling para confirmar
+                # O Bling pode usar códigos diferentes ou o webhook pode estar desatualizado
+                situacao_real = None
+                nfe_data_real = {}
+                nfe_chave_acesso_real = None
+                try:
+                    from ..services.bling_api_service import make_bling_api_request
+                    nfe_response = make_bling_api_request('GET', f'/nfe/{nfe_id}')
+                    if nfe_response.status_code == 200:
+                        nfe_data_real = nfe_response.json().get('data', {})
+                        situacao_real = nfe_data_real.get('situacao')
+                        nfe_chave_acesso_real = nfe_data_real.get('chaveAcesso') or nfe_data_real.get('chave_acesso')
+                        current_app.logger.info(
+                            f"📋 Situação real da NF-e {nfe_id} no Bling: {situacao_real} "
+                            f"(webhook informou: {nfe_situacao}), "
+                            f"Chave de acesso: {'Sim' if nfe_chave_acesso_real else 'Não'}"
+                        )
+                except Exception as busca_error:
+                    current_app.logger.warning(f"Erro ao buscar situação real da NF-e: {busca_error}")
+                
+                # Usar situação real se disponível, senão usar do webhook
+                situacao_final = situacao_real if situacao_real is not None else nfe_situacao
+                
+                # Mapear situações do Bling conforme documentação oficial:
+                # 1 = Pendente, 2 = Cancelada, 3 = Aguardando recibo
+                # 4 = Rejeitada, 5 = Autorizada, 6 = Emitida DANFE
+                # 7 = Registrada, 8 = Aguardando protocolo, 9 = Denegada
+                # 10 = Consulta situação, 11 = Bloqueada
+                situacao_map = {
+                    1: 'PENDENTE',
+                    2: 'CANCELADA',
+                    3: 'AGUARDANDO_RECIBO',
+                    4: 'REJEITADA',
+                    5: 'AUTORIZADA',  # Situação 5 = AUTORIZADA
+                    6: 'EMITIDA_DANFE',  # Situação 6 = Emitida DANFE
+                    7: 'REGISTRADA',
+                    8: 'AGUARDANDO_PROTOCOLO',
+                    9: 'DENEGADA',
+                    10: 'CONSULTA_SITUACAO',
+                    11: 'BLOQUEADA'
+                }
+                nfe_status_str = situacao_map.get(situacao_final, f'DESCONHECIDA_{situacao_final}')
+                
+                current_app.logger.info(
+                    f"📋 Situação da NF-e {nfe_id}: {situacao_final} ({nfe_status_str}) "
+                    f"(webhook: {nfe_situacao}, real: {situacao_real})"
+                )
+                
+                # Verificar se situação mudou para Autorizada
+                # Situação 1 = PENDENTE (estado inicial, ainda não processada)
+                # Situação 5 = AUTORIZADA (nota autorizada pelo SEFAZ)
+                # Situação 6 = EMITIDA_DANFE (DANFE foi emitido)
+                # Situação 7 = REGISTRADA (nota registrada)
+                # Se a NF-e tem chave de acesso, provavelmente está autorizada mesmo com situação diferente
+                nfe_chave_acesso = (
+                    nfe_data.get('chaveAcesso') or 
+                    nfe_data.get('chave_acesso') or 
+                    data.get('chaveAcesso') or 
+                    data.get('chave_acesso') or
+                    nfe_chave_acesso_real
+                )
+                
+                # Considerar autorizada se:
+                # 1. Situação é 5 (AUTORIZADA) - nota autorizada pelo SEFAZ
+                # 2. Situação é 6 (EMITIDA_DANFE) - DANFE foi emitido (nota autorizada)
+                # 3. Situação é 7 (REGISTRADA) - nota registrada (autorizada)
+                # 4. Tem chave de acesso válida (44 dígitos) - independente da situação
+                is_autorizada = (
+                    situacao_final == 5 or  # Situação 5 = AUTORIZADA
+                    situacao_final == 6 or  # Situação 6 = EMITIDA_DANFE (nota autorizada)
+                    situacao_final == 7 or  # Situação 7 = REGISTRADA (nota autorizada)
+                    (nfe_chave_acesso and len(str(nfe_chave_acesso).strip()) == 44)  # Chave de acesso válida (44 dígitos)
+                )
+                
+                if nfe_chave_acesso:
                     current_app.logger.info(
-                        f"✅ NF-e {nfe_id} AUTORIZADA pelo SEFAZ para pedido {venda_id}"
+                        f"🔑 NF-e {nfe_id} possui chave de acesso: {str(nfe_chave_acesso)[:20]}... "
+                        f"(situação: {situacao_final}, tamanho: {len(str(nfe_chave_acesso).strip())})"
                     )
+                else:
+                    current_app.logger.info(
+                        f"⚠️ NF-e {nfe_id} não possui chave de acesso (situação: {situacao_final})"
+                    )
+                
+                # Log detalhado da verificação
+                current_app.logger.info(
+                    f"🔍 Verificando autorização da NF-e {nfe_id} para pedido {venda_id}:"
+                )
+                current_app.logger.info(
+                    f"   - Situação final: {situacao_final} ({nfe_status_str})"
+                )
+                current_app.logger.info(
+                    f"   - Tem chave de acesso: {'Sim' if nfe_chave_acesso else 'Não'}"
+                )
+                if nfe_chave_acesso:
+                    current_app.logger.info(
+                        f"   - Tamanho da chave: {len(str(nfe_chave_acesso).strip())} dígitos"
+                    )
+                current_app.logger.info(
+                    f"   - Situação 5 (AUTORIZADA): {'Sim' if situacao_final == 5 else 'Não'}"
+                )
+                current_app.logger.info(
+                    f"   - Situação 6 (EMITIDA_DANFE): {'Sim' if situacao_final == 6 else 'Não'}"
+                )
+                current_app.logger.info(
+                    f"   - Situação 7 (REGISTRADA): {'Sim' if situacao_final == 7 else 'Não'}"
+                )
+                current_app.logger.info(
+                    f"   - Chave válida (44 dígitos): {'Sim' if (nfe_chave_acesso and len(str(nfe_chave_acesso).strip()) == 44) else 'Não'}"
+                )
+                current_app.logger.info(
+                    f"   - RESULTADO: {'✅ AUTORIZADA' if is_autorizada else '❌ NÃO AUTORIZADA'}"
+                )
+                
+                if is_autorizada:
+                    current_app.logger.info(
+                        f"✅ NF-e {nfe_id} AUTORIZADA pelo SEFAZ para pedido {venda_id} "
+                        f"(situação: {situacao_final} - {nfe_status_str})"
+                    )
+                    
+                    # Verificar situação atual do pedido no Bling antes de mover para Logística
+                    # O Bling move automaticamente para "Atendido" quando emite a NF-e
+                    # Precisamos mover de "Atendido" para "Logística" quando a NF-e for aprovada
+                    from ..services.bling_order_service import get_bling_order_by_local_id
+                    from ..services.bling_api_service import make_bling_api_request
+                    
+                    bling_order = get_bling_order_by_local_id(venda_id)
+                    situacao_atual_id = None
+                    
+                    if bling_order:
+                        bling_pedido_id = bling_order['bling_pedido_id']
+                        
+                        try:
+                            # Buscar situação atual do pedido no Bling
+                            response_pedido = make_bling_api_request(
+                                'GET',
+                                f'/pedidos/vendas/{bling_pedido_id}'
+                            )
+                            
+                            if response_pedido.status_code == 200:
+                                pedido_data = response_pedido.json().get('data', {})
+                                situacao_atual = pedido_data.get('situacao', {})
+                                
+                                if isinstance(situacao_atual, dict):
+                                    situacao_atual_id = situacao_atual.get('id')
+                                    situacao_atual_nome = situacao_atual.get('nome', '')
+                                elif isinstance(situacao_atual, (int, str)):
+                                    situacao_atual_id = int(situacao_atual)
+                                    situacao_atual_nome = ''
+                                
+                                current_app.logger.info(
+                                    f"📋 Situação atual do pedido {venda_id} no Bling: "
+                                    f"ID {situacao_atual_id} ({situacao_atual_nome or 'sem nome'})"
+                                )
+                                
+                                # Se está em "Atendido" (ID 9), mover para "Logística"
+                                if situacao_atual_id == 9:
+                                    current_app.logger.info(
+                                        f"🔄 Pedido {venda_id} está em 'Atendido' (comportamento padrão do Bling). "
+                                        f"Movendo para 'Logística' após aprovação da NF-e pelo SEFAZ..."
+                                    )
+                                else:
+                                    current_app.logger.info(
+                                        f"ℹ️ Pedido {venda_id} está em situação {situacao_atual_id} "
+                                        f"({situacao_atual_nome or 'sem nome'}). "
+                                        f"Movendo para 'Logística' mesmo assim..."
+                                    )
+                        except Exception as e:
+                            current_app.logger.warning(
+                                f"⚠️ Erro ao verificar situação atual do pedido: {e}. "
+                                f"Continuando com movimento para Logística..."
+                            )
                     
                     # Atualizar informações da NF-e no banco
                     cur.execute("""
@@ -1076,59 +1706,39 @@ def process_nfe_webhook(webhook_data: dict, event: str, event_id: str, data: dic
                     # Atualizar status do pedido para nfe_autorizada
                     cur.execute("""
                         UPDATE vendas
-                        SET status_pedido = 'nfe_autorizada',
-                            atualizado_em = NOW()
+                        SET status_pedido = 'nfe_autorizada'
                         WHERE id = %s
                     """, (venda_id,))
                     
                     conn.commit()
                     
+                    # Sincronizar status da tabela orders
+                    try:
+                        sync_order_status_from_venda(venda_id)
+                    except Exception as sync_error:
+                        current_app.logger.warning(f"Erro ao sincronizar status do order: {sync_error}")
+                    
                     current_app.logger.info(
                         f"✅ Status do pedido {venda_id} atualizado para 'nfe_autorizada'"
                     )
                     
-                    # Criar etiqueta de frete após aprovação do SEFAZ
-                    # Verificar se já existe etiqueta
-                    cur.execute("""
-                        SELECT id FROM etiquetas_frete ef
-                        INNER JOIN etiquetas_frete_venda_lnk lnk ON ef.id = lnk.etiqueta_frete_id
-                        WHERE lnk.venda_id = %s
-                        LIMIT 1
-                    """, (venda_id,))
-                    etiqueta_existente = cur.fetchone()
-                    
-                    if not etiqueta_existente:
-                        # Criar etiqueta automaticamente após aprovação do SEFAZ
-                        try:
-                            from ..api.labels import create_label_automatically
-                            current_app.logger.info(
-                                f"📦 Criando etiqueta de frete para venda {venda_id} após aprovação do SEFAZ"
-                            )
-                            etiqueta_id = create_label_automatically(venda_id)
-                            if etiqueta_id:
-                                current_app.logger.info(
-                                    f"✅ Etiqueta {etiqueta_id} criada automaticamente para venda {venda_id} "
-                                    f"após aprovação do SEFAZ"
-                                )
-                            else:
-                                current_app.logger.warning(
-                                    f"⚠️ Não foi possível criar etiqueta para venda {venda_id}"
-                                )
-                        except Exception as etiqueta_error:
-                            current_app.logger.error(
-                                f"❌ Erro ao criar etiqueta após aprovação SEFAZ para venda {venda_id}: {etiqueta_error}",
-                                exc_info=True
-                            )
-                            # Não falhar o webhook por erro na etiqueta
-                    else:
-                        current_app.logger.info(
-                            f"ℹ️ Etiqueta já existe para venda {venda_id} (ID: {etiqueta_existente[0]})"
-                        )
+                    # Bling criará remessa automaticamente quando pedido for movido para Logística
+                    current_app.logger.info(
+                        f"ℹ️ Bling criará remessa automaticamente quando pedido {venda_id} for movido para Logística"
+                    )
                     
                     # Mudar situação do pedido no Bling para "Logística"
+                    current_app.logger.info(
+                        f"🚚 Iniciando processo para mover pedido {venda_id} para 'Logística' no Bling..."
+                    )
                     from ..services.bling_order_service import update_order_situacao_to_logistica
                     
                     logistica_result = update_order_situacao_to_logistica(venda_id)
+                    
+                    current_app.logger.info(
+                        f"📋 Resultado de update_order_situacao_to_logistica para venda {venda_id}: "
+                        f"{json.dumps(logistica_result, indent=2, ensure_ascii=False)}"
+                    )
                     
                     if logistica_result.get('success'):
                         current_app.logger.info(
@@ -1139,19 +1749,27 @@ def process_nfe_webhook(webhook_data: dict, event: str, event_id: str, data: dic
                         # Atualizar status para pronto_envio após mudar para Logística
                         cur.execute("""
                             UPDATE vendas
-                            SET status_pedido = 'pronto_envio',
-                                atualizado_em = NOW()
+                            SET status_pedido = 'pronto_envio'
                             WHERE id = %s
                         """, (venda_id,))
                         conn.commit()
+                        
+                        # Sincronizar status da tabela orders
+                        try:
+                            sync_order_status_from_venda(venda_id)
+                        except Exception as sync_error:
+                            current_app.logger.warning(f"Erro ao sincronizar status do order: {sync_error}")
                         
                         current_app.logger.info(
                             f"✅ Status do pedido {venda_id} atualizado para 'pronto_envio'"
                         )
                     else:
-                        current_app.logger.warning(
-                            f"⚠️ Não foi possível mover pedido {venda_id} para 'Logística' no Bling: "
-                            f"{logistica_result.get('error')}"
+                        error_msg = logistica_result.get('error', 'Erro desconhecido')
+                        current_app.logger.error(
+                            f"❌ FALHA ao mover pedido {venda_id} para 'Logística' no Bling: {error_msg}"
+                        )
+                        current_app.logger.error(
+                            f"📋 Detalhes completos do erro: {json.dumps(logistica_result, indent=2, ensure_ascii=False)}"
                         )
                     
                     return jsonify({
@@ -1169,11 +1787,19 @@ def process_nfe_webhook(webhook_data: dict, event: str, event_id: str, data: dic
                     )
                     
                     # Atualizar status da NFC-e mesmo assim
+                    # Mapear situações conforme documentação oficial do Bling
                     situacao_map = {
-                        0: 'PENDENTE',
-                        1: 'AUTORIZADA',
+                        1: 'PENDENTE',
                         2: 'CANCELADA',
-                        3: 'REJEITADA'
+                        3: 'AGUARDANDO_RECIBO',
+                        4: 'REJEITADA',
+                        5: 'AUTORIZADA',
+                        6: 'EMITIDA_DANFE',
+                        7: 'REGISTRADA',
+                        8: 'AGUARDANDO_PROTOCOLO',
+                        9: 'DENEGADA',
+                        10: 'CONSULTA_SITUACAO',
+                        11: 'BLOQUEADA'
                     }
                     nfe_status_str = situacao_map.get(nfe_situacao, f'DESCONHECIDA_{nfe_situacao}')
                     
@@ -1345,9 +1971,21 @@ def bling_webhook():
         elif event.startswith('order.'):
             # Processar evento de pedido
             return process_order_webhook(webhook_data, event, event_id, data)
-        elif event.startswith('consumer_invoice.') or event.startswith('nfe.'):
+        elif (event.startswith('consumer_invoice.') or 
+              event.startswith('invoice.') or 
+              event.startswith('nfe.')):
             # Processar evento de nota fiscal
+            # Bling pode enviar: consumer_invoice.updated, invoice.updated, nfe.updated
             return process_nfe_webhook(webhook_data, event, event_id, data)
+        elif event.startswith('product.'):
+            # Processar evento de produto (estoque, atualização, etc.)
+            # Eventos: product.created, product.updated, product.deleted
+            # Por enquanto, apenas logar - estoque é sincronizado via webhook stock.*
+            current_app.logger.info(f"📦 Evento de produto recebido: {event}")
+            return jsonify({
+                "status": "ok",
+                "message": f"Evento de produto {event} recebido (processamento de estoque via stock.*)"
+            }), 200
         else:
             current_app.logger.info(f"Evento não reconhecido: {event}. Ignorando...")
             return jsonify({
@@ -1574,10 +2212,16 @@ def bling_webhook():
             if status_novo != status_atual:
                 cur.execute("""
                     UPDATE vendas
-                    SET status_pedido = %s,
-                        atualizado_em = NOW()
+                    SET status_pedido = %s
                     WHERE id = %s
                 """, (status_novo, venda_id))
+                conn.commit()
+                
+                # Sincronizar status da tabela orders
+                try:
+                    sync_order_status_from_venda(venda_id)
+                except Exception as sync_error:
+                    current_app.logger.warning(f"Erro ao sincronizar status do order: {sync_error}")
                 
                 # Atualizar informações da NF-e se houver
                 nfe_data = data.get('notaFiscal') or data.get('nota_fiscal')

@@ -211,9 +211,28 @@ def register():
     ip_address = request.remote_addr
     log_auth_event('register', uid, True, f"Email: {user_data.get('email')}", ip_address)
     
-    # Notificar administradores sobre novo usuário
-    from ..services.email_service import send_new_user_notification
-    send_new_user_notification(user_data.get('email'), user_data.get('nome'))
+    # Notificar administradores sobre novo usuário (TEMPORARIAMENTE DESABILITADO)
+    # TODO: Reativar quando SMTP estiver configurado
+    # from ..services.email_service import send_new_user_notification, send_welcome_email
+    # send_new_user_notification(user_data.get('email'), user_data.get('nome'))
+    
+    # Enviar email de boas-vindas (TEMPORARIAMENTE DESABILITADO)
+    # try:
+    #     # Obter link de verificação se necessário
+    #     verification_url = None
+    #     if not email_verified:
+    #         success, link, _ = get_email_verification_link(uid)
+    #         if success and link:
+    #             verification_url = link
+    #     
+    #     send_welcome_email(
+    #         user_email=user_data.get('email'),
+    #         user_name=user_data.get('nome', 'Usuário'),
+    #         verification_url=verification_url
+    #     )
+    # except Exception as e:
+    #     logger.warning(f"Erro ao enviar email de boas-vindas: {e}")
+    #     # Não falhar o registro se o email falhar
     
     return jsonify({
         "mensagem": "Conta criada com sucesso",
@@ -368,6 +387,18 @@ def change_password():
     # Este endpoint apenas valida o token e registra o evento
     logger.info(f"Solicitação de alteração de senha para UID: {uid}, Email: {email}")
     log_auth_event('change_password', uid, True, f"Alteração de senha solicitada para: {email}", request.remote_addr)
+    
+    # Enviar email de confirmação de alteração de senha (TEMPORARIAMENTE DESABILITADO)
+    # TODO: Reativar quando SMTP estiver configurado
+    # try:
+    #     from ..services.email_service import send_password_changed_email
+    #     send_password_changed_email(
+    #         user_email=email,
+    #         user_name=user_data.get('nome', 'Usuário')
+    #     )
+    # except Exception as e:
+    #     logger.warning(f"Erro ao enviar email de alteração de senha: {e}")
+    #     # Não falhar a alteração se o email falhar
     
     return jsonify({
         "mensagem": "Alteração de senha processada com sucesso",

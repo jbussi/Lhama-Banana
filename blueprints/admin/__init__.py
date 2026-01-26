@@ -11,9 +11,3 @@ try:
 except ImportError:
     pass
 
-# Importar proxy do Metabase (rotas /analytics/* vão para o Metabase)
-try:
-    from . import metabase_proxy
-except ImportError:
-    pass
-

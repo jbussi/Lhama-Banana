@@ -120,7 +120,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			savedFiscalSection.style.display = 'block';
 			useSavedFiscalSelect.innerHTML = `
 				<option value="">Preencher manualmente</option>
-				<option value="saved">${savedFiscalData.tipo}: ${savedFiscalData.cpf_cnpj} - ${savedFiscalData.nome_razao_social}</option>
+				<option value="saved">CPF: ${savedFiscalData.cpf_cnpj} - ${savedFiscalData.nome_razao_social}</option>
 			`;
 			
 			useSavedFiscalSelect.addEventListener('change', function() {
@@ -137,27 +137,21 @@ document.addEventListener('DOMContentLoaded', function() {
 	 * Preenche formulário fiscal com dados salvos
 	 */
 	function populateFiscalForm(data) {
-		document.getElementById('fiscal-tipo-' + data.tipo.toLowerCase() + '-checkout').checked = true;
-		updateFiscalFormLabelsCheckout(data.tipo);
+		// Sempre usar CPF (removido suporte a CNPJ)
+		const cpfCnpj = data.cpf_cnpj || '';
+		document.getElementById('fiscal-cpf-cnpj-checkout').value = formatCPFCheckout(cpfCnpj);
+		document.getElementById('fiscal-nome-checkout').value = data.nome_razao_social || '';
 		
-		document.getElementById('fiscal-cpf-cnpj-checkout').value = data.cpf_cnpj;
-		document.getElementById('fiscal-nome-checkout').value = data.nome_razao_social;
-		
-		if (data.tipo === 'CNPJ') {
-			document.getElementById('fiscal-inscricao-estadual-checkout').value = data.inscricao_estadual || '';
-			document.getElementById('fiscal-inscricao-municipal-checkout').value = data.inscricao_municipal || '';
-			document.getElementById('fiscal-inscricao-estadual-group-checkout').style.display = 'block';
-			document.getElementById('fiscal-inscricao-municipal-group-checkout').style.display = 'block';
-		}
-		
-		const endereco = data.endereco;
-		document.getElementById('fiscal-rua-checkout').value = endereco.rua;
-		document.getElementById('fiscal-numero-checkout').value = endereco.numero;
+		const endereco = data.endereco || {};
+		document.getElementById('fiscal-rua-checkout').value = endereco.rua || '';
+		document.getElementById('fiscal-numero-checkout').value = endereco.numero || '';
 		document.getElementById('fiscal-complemento-checkout').value = endereco.complemento || '';
-		document.getElementById('fiscal-bairro-checkout').value = endereco.bairro;
-		document.getElementById('fiscal-cidade-checkout').value = endereco.cidade;
-		document.getElementById('fiscal-estado-checkout').value = endereco.estado;
-		document.getElementById('fiscal-cep-checkout').value = endereco.cep.replace(/(\d{5})(\d{3})/, '$1-$2');
+		document.getElementById('fiscal-bairro-checkout').value = endereco.bairro || '';
+		document.getElementById('fiscal-cidade-checkout').value = endereco.cidade || '';
+		document.getElementById('fiscal-estado-checkout').value = endereco.estado || '';
+		if (endereco.cep) {
+			document.getElementById('fiscal-cep-checkout').value = endereco.cep.replace(/(\d{5})(\d{3})/, '$1-$2');
+		}
 	}
 	
 	/**
@@ -165,34 +159,6 @@ document.addEventListener('DOMContentLoaded', function() {
 	 */
 	function clearFiscalForm() {
 		document.getElementById('fiscal-form-checkout').reset();
-		document.getElementById('fiscal-tipo-cpf-checkout').checked = true;
-		updateFiscalFormLabelsCheckout('CPF');
-		document.getElementById('fiscal-inscricao-estadual-group-checkout').style.display = 'none';
-		document.getElementById('fiscal-inscricao-municipal-group-checkout').style.display = 'none';
-	}
-	
-	/**
-	 * Atualiza labels do formulário fiscal baseado no tipo
-	 */
-	function updateFiscalFormLabelsCheckout(tipo) {
-		const cpfCnpjLabel = document.getElementById('fiscal-cpf-cnpj-label-checkout');
-		const nomeLabel = document.getElementById('fiscal-nome-label-checkout');
-		const cpfCnpjInput = document.getElementById('fiscal-cpf-cnpj-checkout');
-		const nomeInput = document.getElementById('fiscal-nome-checkout');
-		
-		if (tipo === 'CNPJ') {
-			cpfCnpjLabel.textContent = 'CNPJ *';
-			cpfCnpjInput.placeholder = '00.000.000/0000-00';
-			cpfCnpjInput.maxLength = 18;
-			nomeLabel.textContent = 'Razão Social *';
-			nomeInput.placeholder = 'Razão social da empresa';
-		} else {
-			cpfCnpjLabel.textContent = 'CPF *';
-			cpfCnpjInput.placeholder = '000.000.000-00';
-			cpfCnpjInput.maxLength = 14;
-			nomeLabel.textContent = 'Nome Completo *';
-			nomeInput.placeholder = 'Seu nome completo';
-		}
 	}
 	
 	/**
@@ -202,17 +168,6 @@ document.addEventListener('DOMContentLoaded', function() {
 		const numbers = value.replace(/\D/g, '');
 		if (numbers.length <= 11) {
 			return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-		}
-		return value;
-	}
-	
-	/**
-	 * Formata CNPJ
-	 */
-	function formatCNPJCheckout(value) {
-		const numbers = value.replace(/\D/g, '');
-		if (numbers.length <= 14) {
-			return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
 		}
 		return value;
 	}
@@ -232,15 +187,14 @@ document.addEventListener('DOMContentLoaded', function() {
 	 * Coleta dados fiscais do formulário
 	 */
 	function getFiscalDataFromForm() {
-		const tipo = document.querySelector('input[name="fiscal-tipo-checkout"]:checked').value;
 		const cpfCnpj = document.getElementById('fiscal-cpf-cnpj-checkout').value.replace(/\D/g, '');
 		
 		return {
-			tipo: tipo,
+			tipo: 'CPF', // Sempre CPF (removido suporte a CNPJ)
 			cpf_cnpj: cpfCnpj,
 			nome_razao_social: document.getElementById('fiscal-nome-checkout').value.trim(),
-			inscricao_estadual: tipo === 'CNPJ' ? (document.getElementById('fiscal-inscricao-estadual-checkout').value.trim() || null) : null,
-			inscricao_municipal: tipo === 'CNPJ' ? (document.getElementById('fiscal-inscricao-municipal-checkout').value.trim() || null) : null,
+			inscricao_estadual: null, // Removido (só para CNPJ)
+			inscricao_municipal: null, // Removido (só para CNPJ)
 			endereco: {
 				rua: document.getElementById('fiscal-rua-checkout').value.trim(),
 				numero: document.getElementById('fiscal-numero-checkout').value.trim(),
@@ -588,33 +542,11 @@ document.addEventListener('DOMContentLoaded', function() {
 	loadSavedAddresses();
 	loadSavedFiscalData();
 	
-	// Event listeners para dados fiscais
-	const fiscalTipoInputs = document.querySelectorAll('input[name="fiscal-tipo-checkout"]');
-	fiscalTipoInputs.forEach(input => {
-		input.addEventListener('change', function() {
-			updateFiscalFormLabelsCheckout(this.value);
-			document.getElementById('fiscal-cpf-cnpj-checkout').value = '';
-			
-			if (this.value === 'CNPJ') {
-				document.getElementById('fiscal-inscricao-estadual-group-checkout').style.display = 'block';
-				document.getElementById('fiscal-inscricao-municipal-group-checkout').style.display = 'block';
-			} else {
-				document.getElementById('fiscal-inscricao-estadual-group-checkout').style.display = 'none';
-				document.getElementById('fiscal-inscricao-municipal-group-checkout').style.display = 'none';
-			}
-		});
-	});
-	
-	// Máscaras de input fiscal
+	// Máscara de input fiscal (apenas CPF)
 	const fiscalCpfCnpjInput = document.getElementById('fiscal-cpf-cnpj-checkout');
 	if (fiscalCpfCnpjInput) {
 		fiscalCpfCnpjInput.addEventListener('input', function() {
-			const tipo = document.querySelector('input[name="fiscal-tipo-checkout"]:checked').value;
-			if (tipo === 'CPF') {
-				this.value = formatCPFCheckout(this.value);
-			} else {
-				this.value = formatCNPJCheckout(this.value);
-			}
+			this.value = formatCPFCheckout(this.value);
 		});
 	}
 	
@@ -695,17 +627,13 @@ document.addEventListener('DOMContentLoaded', function() {
 			if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 			const data = await response.json();
 			if (data.erro) { 
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('CEP não encontrado. Verifique o CEP digitado.', cepInput?.parentElement);
-				}
+				showCheckoutError('CEP não encontrado. Verifique o CEP digitado.');
 				return null; 
 			}
 			return { street: data.logradouro || '', district: data.bairro || '', city: data.localidade || '', state: data.uf || '', cep: data.cep || cleanCEP };
 		} catch (error) {
 			console.error('[Checkout] Erro ao buscar CEP na ViaCEP:', error);
-			if (window.MessageHelper) {
-				window.MessageHelper.showError('Erro ao buscar CEP. Verifique sua conexão e tente novamente.', cepInput?.parentElement);
-			}
+			showCheckoutError('Erro ao buscar CEP. Verifique sua conexão e tente novamente.');
 			return null;
 		}
 	}
@@ -792,9 +720,28 @@ document.addEventListener('DOMContentLoaded', function() {
 			optionDiv.className = 'shipping-option';
 			optionDiv.style.cssText = 'display: flex; align-items: center; padding: 15px; margin-bottom: 10px; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; transition: all 0.3s;';
 			const priceFormatted = formatCurrency(option.price);
+			
+			// Extrair nome do serviço (ex: SEDEX, PAC, .Com)
+			// Priorizar option.name que já vem mapeado corretamente do backend
+			const serviceName = option.name || option.service_name || 'Frete';
+			
+			// Extrair nome da transportadora (ex: Correio, Jadlog)
+			// Priorizar dados da transportadora, depois description
+			const transportadoraName = (option.transportadora && option.transportadora.nome) 
+				|| option.description 
+				|| 'Transportadora';
+			
+			// Tempo de entrega
+			const deliveryTime = option.delivery_time || '';
+			
 			optionDiv.innerHTML = `
 				<input type="radio" name="shipping-option" id="shipping-${index}" value="${option.service}" style="margin-right: 15px; cursor: pointer;">
-				<label for="shipping-${index}" style="flex: 1; cursor: pointer;"><div style="font-weight: 600; margin-bottom: 5px;">${option.name}</div><div style="font-size: 0.9em; color: #666;">${option.description || option.delivery_time}</div><div style="font-size: 0.85em; color: #999; margin-top: 3px;">${option.delivery_time}</div></label><div style="font-weight: 700; font-size: 1.2em; color: #007bff;">${priceFormatted}</div>
+				<label for="shipping-${index}" style="flex: 1; cursor: pointer;">
+					<div style="font-weight: 600; margin-bottom: 3px; font-size: 1.05em;">${serviceName}</div>
+					<div style="font-size: 0.9em; color: #666; margin-bottom: 3px;">${transportadoraName}</div>
+					<div style="font-size: 0.85em; color: #999;">${deliveryTime}</div>
+				</label>
+				<div style="font-weight: 700; font-size: 1.2em; color: #007bff;">${priceFormatted}</div>
 			`;
 			optionDiv.addEventListener('click', function() {
 				document.querySelectorAll('input[name="shipping-option"]').forEach(radio => { radio.checked = false; radio.closest('.shipping-option').style.borderColor = '#e0e0e0'; radio.closest('.shipping-option').style.backgroundColor = ''; });
@@ -831,87 +778,89 @@ document.addEventListener('DOMContentLoaded', function() {
 	// Inicializar estado do formulário de cartão
 	toggleCreditCardForm();
 	
+	// Container de mensagens fixo próximo ao botão de checkout
+	const checkoutMessagesContainer = document.getElementById('checkout-messages-container');
+	
+	// Função helper para mostrar erros no container fixo
+	function showCheckoutError(message) {
+		if (checkoutMessagesContainer && window.MessageHelper) {
+			checkoutMessagesContainer.style.display = 'block';
+			window.MessageHelper.showError(message, checkoutMessagesContainer);
+			// Scroll suave até o container de mensagens
+			checkoutMessagesContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		} else {
+			// Fallback para alert se MessageHelper não estiver disponível
+			alert(message);
+		}
+	}
+	
 	// --- Validação e submissão do formulário ---
 	if (checkoutForm) {
 		checkoutForm.addEventListener('submit', async function(e) {
 			e.preventDefault();
 			
 			// Limpar mensagens anteriores
+			if (checkoutMessagesContainer) {
+				checkoutMessagesContainer.style.display = 'none';
+				if (window.MessageHelper) {
+					window.MessageHelper.clearMessages(checkoutMessagesContainer);
+				}
+			}
 			if (window.MessageHelper) {
 				window.MessageHelper.clearMessages(checkoutForm);
 			}
 			
 			// Validar campos obrigatórios
 			if (!nomeRecebedorInput || !nomeRecebedorInput.value.trim()) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, preencha o nome do recebedor', nomeRecebedorInput?.parentElement);
-				}
+				showCheckoutError('Por favor, preencha o nome do recebedor');
 				nomeRecebedorInput?.focus();
 				return;
 			}
 			
 			if (!cepInput || !cepInput.value.replace(/\D/g, '').match(/^\d{8}$/)) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, preencha um CEP válido', cepInput?.parentElement);
-				}
+				showCheckoutError('Por favor, preencha um CEP válido');
 				cepInput?.focus();
 				return;
 			}
 			
 			if (!ruaInput || !ruaInput.value.trim()) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, preencha a rua', ruaInput?.parentElement);
-				}
+				showCheckoutError('Por favor, preencha a rua');
 				ruaInput?.focus();
 				return;
 			}
 			
 			if (!numeroInput || !numeroInput.value.trim()) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, preencha o número', numeroInput?.parentElement);
-				}
+				showCheckoutError('Por favor, preencha o número');
 				numeroInput?.focus();
 				return;
 			}
 			
 			if (!bairroInput || !bairroInput.value.trim()) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, preencha o bairro', bairroInput?.parentElement);
-				}
+				showCheckoutError('Por favor, preencha o bairro');
 				bairroInput?.focus();
 				return;
 			}
 			
 			if (!cidadeInput || !cidadeInput.value.trim()) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, preencha a cidade', cidadeInput?.parentElement);
-				}
+				showCheckoutError('Por favor, preencha a cidade');
 				cidadeInput?.focus();
 				return;
 			}
 			
 			if (!estadoSelect || !estadoSelect.value) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, selecione o estado', estadoSelect?.parentElement);
-				}
+				showCheckoutError('Por favor, selecione o estado');
 				estadoSelect?.focus();
 				return;
 			}
 			
 			if (!selectedShippingOption) {
-				const shippingContainer = document.getElementById('shippingOptions');
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, selecione uma opção de frete', shippingContainer || checkoutForm);
-				}
+				showCheckoutError('Por favor, selecione uma opção de frete');
 				return;
 			}
 			
 			const selectedPaymentMethod = document.querySelector('input[name="payment_method"]:checked');
 			if (!selectedPaymentMethod) {
-				const paymentContainer = document.querySelector('.payment-methods') || checkoutForm;
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, selecione um método de pagamento', paymentContainer);
-				}
+				showCheckoutError('Por favor, selecione um método de pagamento');
 				return;
 			}
 			
@@ -924,45 +873,32 @@ document.addEventListener('DOMContentLoaded', function() {
 				const cardCvv = document.getElementById('card_cvv')?.value.trim();
 				
 				if (!cardNumber || cardNumber.length < 13) {
-					const cardNumberInput = document.getElementById('card_number');
-					if (window.MessageHelper) {
-						window.MessageHelper.showError('Por favor, preencha um número de cartão válido', cardNumberInput?.parentElement || creditCardForm);
-					}
-					cardNumberInput?.focus();
+					showCheckoutError('Por favor, preencha um número de cartão válido');
+					document.getElementById('card_number')?.focus();
 					return;
 				}
 				
 				if (!cardHolderName || cardHolderName.length < 3) {
-					const cardHolderInput = document.getElementById('card_holder_name');
-					if (window.MessageHelper) {
-						window.MessageHelper.showError('Por favor, preencha o nome no cartão', cardHolderInput?.parentElement || creditCardForm);
-					}
-					cardHolderInput?.focus();
+					showCheckoutError('Por favor, preencha o nome no cartão');
+					document.getElementById('card_holder_name')?.focus();
 					return;
 				}
 				
 				if (!cardExpMonth || !cardExpYear) {
-					if (window.MessageHelper) {
-						window.MessageHelper.showError('Por favor, preencha a validade do cartão', creditCardForm);
-					}
+					showCheckoutError('Por favor, preencha a validade do cartão');
 					return;
 				}
 				
 				if (!cardCvv || cardCvv.length < 3) {
-					const cardCvvInput = document.getElementById('card_cvv');
-					if (window.MessageHelper) {
-						window.MessageHelper.showError('Por favor, preencha o CVV do cartão', cardCvvInput?.parentElement || creditCardForm);
-					}
-					cardCvvInput?.focus();
+					showCheckoutError('Por favor, preencha o CVV do cartão');
+					document.getElementById('card_cvv')?.focus();
 					return;
 				}
 			}
 			
 			// Verificar se há itens no carrinho
 			if (!cartData.items || cartData.items.length === 0) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Seu carrinho está vazio. Adicione produtos antes de finalizar a compra.', checkoutForm);
-				}
+				showCheckoutError('Seu carrinho está vazio. Adicione produtos antes de finalizar a compra.');
 				setTimeout(() => {
 					window.location.href = '/produtos';
 				}, 2000);
@@ -985,9 +921,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			
 			// Validar email
 			if (!emailInput || !emailInput.value.trim() || !emailInput.value.includes('@')) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, preencha um email válido', emailInput?.parentElement);
-				}
+				showCheckoutError('Por favor, preencha um email válido');
 				emailInput?.focus();
 				return;
 			}
@@ -995,9 +929,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			// Validar CPF/CNPJ
 			const cpfCnpj = cpfCnpjInput?.value.replace(/\D/g, '') || '';
 			if (!cpfCnpj || cpfCnpj.length < 11) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, preencha um CPF/CNPJ válido', cpfCnpjInput?.parentElement);
-				}
+				showCheckoutError('Por favor, preencha um CPF/CNPJ válido');
 				cpfCnpjInput?.focus();
 				return;
 			}
@@ -1006,16 +938,12 @@ document.addEventListener('DOMContentLoaded', function() {
 			const phoneArea = phoneAreaInput?.value.replace(/\D/g, '') || '';
 			const phoneNumber = phoneNumberInput?.value.replace(/\D/g, '') || '';
 			if (!phoneArea || phoneArea.length < 2) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, preencha o DDD do telefone', phoneAreaInput?.parentElement);
-				}
+				showCheckoutError('Por favor, preencha o DDD do telefone');
 				phoneAreaInput?.focus();
 				return;
 			}
 			if (!phoneNumber || phoneNumber.length < 8) {
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, preencha o número do telefone', phoneNumberInput?.parentElement);
-				}
+				showCheckoutError('Por favor, preencha o número do telefone');
 				phoneNumberInput?.focus();
 				return;
 			}
@@ -1145,6 +1073,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			}
 			
 			// Fazer requisição para processar checkout (sem dados sensíveis do cartão)
+			console.log('[Checkout] Enviando requisição de checkout...');
 			const headers = await getAuthHeaders();
 			const response = await fetch('/api/checkout/process', {
 				method: 'POST',
@@ -1152,48 +1081,85 @@ document.addEventListener('DOMContentLoaded', function() {
 				headers: headers,
 				body: JSON.stringify(checkoutData)
 			});
-				
-				const responseData = await response.json();
-				
-				if (!response.ok) {
-					throw new Error(responseData.erro || responseData.message || 'Erro ao processar checkout');
-				}
-				
-				if (!responseData.success) {
-					throw new Error(responseData.erro || 'Erro ao processar checkout');
-				}
-				
-				// Limpar cupom aplicado após checkout bem-sucedido
-				localStorage.removeItem('appliedCoupon');
-				
-				// Obter token público e método de pagamento
-				const publicToken = responseData.public_token;
-				const paymentMethodType = responseData.payment_method_type || selectedPaymentMethod.value.toLowerCase();
-				
-				if (!publicToken) {
-					throw new Error('Token público não retornado pelo servidor');
-				}
-				
-				// Redirecionar baseado no método de pagamento
-				if (selectedPaymentMethod.value === 'CREDIT_CARD') {
-					// Cartão de crédito → página de status
-					window.location.href = `/status-pedido?token=${publicToken}`;
-				} else if (selectedPaymentMethod.value === 'PIX') {
-					// PIX → página de pagamento PIX
-					window.location.href = `/pagamento/pix?token=${publicToken}`;
-				} else if (selectedPaymentMethod.value === 'BOLETO') {
-					// Boleto → página de pagamento Boleto
-					window.location.href = `/pagamento/boleto?token=${publicToken}`;
+			
+			console.log('[Checkout] Resposta recebida, status:', response.status);
+			
+			// Verificar se a resposta é JSON
+			const contentType = response.headers.get('content-type');
+			if (!contentType || !contentType.includes('application/json')) {
+				const text = await response.text();
+				console.error('[Checkout] Resposta não é JSON:', text.substring(0, 500));
+				throw new Error('Resposta inválida do servidor. Tente novamente.');
+			}
+			
+			const responseData = await response.json();
+			console.log('[Checkout] Dados da resposta:', responseData);
+			
+			if (!response.ok) {
+				console.error('[Checkout] Erro na resposta:', responseData);
+				throw new Error(responseData.erro || responseData.message || 'Erro ao processar checkout');
+			}
+			
+			if (!responseData.success) {
+				console.error('[Checkout] Success false na resposta:', responseData);
+				throw new Error(responseData.erro || 'Erro ao processar checkout');
+			}
+			
+			// Limpar cupom aplicado após checkout bem-sucedido
+			localStorage.removeItem('appliedCoupon');
+			
+			// Obter token público e método de pagamento
+			const publicToken = responseData.public_token;
+			
+			// Obter método de pagamento da resposta ou do formulário
+			let paymentMethod = '';
+			if (responseData.payment_method_type) {
+				paymentMethod = responseData.payment_method_type.toUpperCase();
+			} else {
+				// Fallback: buscar do formulário
+				const selectedMethod = document.querySelector('input[name="payment_method"]:checked');
+				if (selectedMethod) {
+					paymentMethod = selectedMethod.value.toUpperCase();
 				} else {
-					// Fallback para página de status
-					window.location.href = `/status-pedido?token=${publicToken}`;
+					paymentMethod = 'CREDIT_CARD'; // Default
 				}
+			}
+			
+			console.log('[Checkout] Token público:', publicToken);
+			console.log('[Checkout] Método de pagamento:', paymentMethod);
+			
+			if (!publicToken) {
+				console.error('[Checkout] Token público não encontrado na resposta');
+				throw new Error('Token público não retornado pelo servidor');
+			}
+			
+			// Esconder loading antes de redirecionar
+			if (checkoutLoading) checkoutLoading.style.display = 'none';
+			
+			// Determinar URL de redirecionamento
+			let redirectUrl = '';
+			if (paymentMethod === 'CREDIT_CARD') {
+				// Cartão de crédito → página de status
+				redirectUrl = `/status-pedido?token=${publicToken}`;
+			} else if (paymentMethod === 'PIX') {
+				// PIX → página de pagamento PIX
+				redirectUrl = `/pagamento/pix?token=${publicToken}`;
+			} else if (paymentMethod === 'BOLETO') {
+				// Boleto → página de pagamento Boleto
+				redirectUrl = `/pagamento/boleto?token=${publicToken}`;
+			} else {
+				// Fallback para página de status
+				redirectUrl = `/status-pedido?token=${publicToken}`;
+			}
+			
+			console.log('[Checkout] Redirecionando para:', redirectUrl);
+			
+			// Redirecionar imediatamente
+			window.location.href = redirectUrl;
 				
 			} catch (error) {
 				console.error('[Checkout] Erro ao processar checkout:', error);
-				if (window.MessageHelper) {
-					window.MessageHelper.showError(`Erro ao processar checkout: ${error.message}`, checkoutForm);
-				}
+				showCheckoutError(`Erro ao processar checkout: ${error.message}`);
 				
 				// Esconder loading
 				if (checkoutLoading) checkoutLoading.style.display = 'none';
@@ -1212,9 +1178,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			if (cep.length === 8) { 
 				fillAddressByCEP(cep); 
 			} else { 
-				if (window.MessageHelper) {
-					window.MessageHelper.showError('Por favor, digite um CEP válido (8 dígitos)', cepInput.parentElement);
-				}
+				showCheckoutError('Por favor, digite um CEP válido (8 dígitos)');
 				cepInput.focus(); 
 			} 
 		});

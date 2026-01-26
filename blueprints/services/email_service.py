@@ -17,6 +17,12 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from .email_templates import (
+    get_welcome_email_template,
+    get_password_reset_email_template,
+    get_password_changed_email_template,
+    get_order_confirmation_email_template
+)
 
 logger = logging.getLogger(__name__)
 
@@ -240,4 +246,135 @@ Data: {__import__('datetime').datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
     """
     
     return send_admin_alert(subject, message, alert_type="info")
+
+
+def send_welcome_email(
+    user_email: str,
+    user_name: str,
+    verification_url: Optional[str] = None
+) -> bool:
+    """
+    Envia email de boas-vindas para novo usuário.
+    
+    Args:
+        user_email: Email do usuário
+        user_name: Nome do usuário
+        verification_url: URL de verificação de email (opcional)
+        
+    Returns:
+        True se enviado com sucesso
+    """
+    try:
+        html, text = get_welcome_email_template(user_name, verification_url)
+        subject = "Bem-vindo à LhamaBanana™!"
+        
+        return send_email(
+            to_email=user_email,
+            subject=subject,
+            body_html=html,
+            body_text=text
+        )
+    except Exception as e:
+        logger.error(f"Erro ao enviar email de boas-vindas: {e}")
+        return False
+
+
+def send_password_reset_email(
+    user_email: str,
+    user_name: str,
+    reset_url: str
+) -> bool:
+    """
+    Envia email de recuperação de senha.
+    
+    Args:
+        user_email: Email do usuário
+        user_name: Nome do usuário
+        reset_url: URL para redefinir senha
+        
+    Returns:
+        True se enviado com sucesso
+    """
+    try:
+        html, text = get_password_reset_email_template(user_name, reset_url)
+        subject = "Redefinir sua Senha - LhamaBanana™"
+        
+        return send_email(
+            to_email=user_email,
+            subject=subject,
+            body_html=html,
+            body_text=text
+        )
+    except Exception as e:
+        logger.error(f"Erro ao enviar email de recuperação de senha: {e}")
+        return False
+
+
+def send_password_changed_email(
+    user_email: str,
+    user_name: str
+) -> bool:
+    """
+    Envia email de confirmação de alteração de senha.
+    
+    Args:
+        user_email: Email do usuário
+        user_name: Nome do usuário
+        
+    Returns:
+        True se enviado com sucesso
+    """
+    try:
+        html, text = get_password_changed_email_template(user_name)
+        subject = "Senha Alterada com Sucesso - LhamaBanana™"
+        
+        return send_email(
+            to_email=user_email,
+            subject=subject,
+            body_html=html,
+            body_text=text
+        )
+    except Exception as e:
+        logger.error(f"Erro ao enviar email de alteração de senha: {e}")
+        return False
+
+
+def send_order_confirmation_email(
+    user_email: str,
+    user_name: str,
+    order_number: str,
+    order_total: float,
+    order_items: List[Dict]
+) -> bool:
+    """
+    Envia email de confirmação de pedido.
+    
+    Args:
+        user_email: Email do usuário
+        user_name: Nome do usuário
+        order_number: Número do pedido
+        order_total: Valor total do pedido
+        order_items: Lista de itens do pedido (dict com 'nome', 'quantidade', 'preco')
+        
+    Returns:
+        True se enviado com sucesso
+    """
+    try:
+        html, text = get_order_confirmation_email_template(
+            user_name,
+            order_number,
+            order_total,
+            order_items
+        )
+        subject = f"Pedido #{order_number} Confirmado - LhamaBanana™"
+        
+        return send_email(
+            to_email=user_email,
+            subject=subject,
+            body_html=html,
+            body_text=text
+        )
+    except Exception as e:
+        logger.error(f"Erro ao enviar email de confirmação de pedido: {e}")
+        return False
 

@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request, g, current_app, session
 from ..decorators import admin_required_email
+from ...services.bling_transportadora_sync_service import sync_transportadoras_from_bling
 from datetime import datetime, timedelta
 from firebase_admin import auth
 from ...services.user_service import get_user_by_firebase_uid
@@ -427,6 +428,13 @@ def update_pedido_status():
         resultado_atualizado = cur.fetchone()
         conn.commit()
         
+        # Sincronizar status da tabela orders
+        try:
+            from ...services.order_service import sync_order_status_from_venda
+            sync_order_status_from_venda(venda_id)
+        except Exception as sync_error:
+            current_app.logger.warning(f"Erro ao sincronizar status do order: {sync_error}")
+        
         # Gerenciar estoque conforme mudança de status
         try:
             from ...services.bling_stock_service import handle_order_status_change
@@ -456,6 +464,39 @@ def update_pedido_status():
         return jsonify({"erro": "Erro ao atualizar status do pedido"}), 500
     finally:
         cur.close()
+
+@admin_api_bp.route('/transportadoras/sync', methods=['POST'])
+@admin_required_email
+def sync_transportadoras():
+    """Sincroniza transportadoras do Bling com banco de dados local (sempre manual)"""
+    try:
+        # Sempre forçar sincronização (sincronização é manual)
+        current_app.logger.info("🔄 Iniciando sincronização manual de transportadoras do Bling...")
+        
+        result = sync_transportadoras_from_bling(force_refresh=True)
+        
+        if result['success']:
+            return jsonify({
+                "success": True,
+                "message": "Transportadoras sincronizadas com sucesso",
+                "total_encontradas": result['total_encontradas'],
+                "total_salvas": result['total_salvas'],
+                "total_atualizadas": result['total_atualizadas'],
+                "errors": result['errors']
+            }), 200
+        else:
+            return jsonify({
+                "success": False,
+                "message": "Erro ao sincronizar transportadoras",
+                "errors": result['errors']
+            }), 500
+            
+    except Exception as e:
+        current_app.logger.error(f"Erro ao sincronizar transportadoras: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "message": f"Erro ao sincronizar transportadoras: {str(e)}"
+        }), 500
 
 @admin_api_bp.route('/validate-strapi-access', methods=['POST'])
 def validate_strapi_access():

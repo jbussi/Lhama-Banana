@@ -1,0 +1,122 @@
+.politica-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 20px;
+    line-height: 1.8;
+    color: #333;
+}
+
+.page-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--cor-principal-turquesa);
+    margin-bottom: 1rem;
+    text-align: center;
+}
+
+.ultima-atualizacao {
+    text-align: center;
+    color: #666;
+    font-size: 0.95rem;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.ultima-atualizacao i {
+    margin-right: 0.5rem;
+    color: var(--cor-principal-turquesa);
+}
+
+.introducao {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 10px;
+    margin-bottom: 2.5rem;
+    border-left: 4px solid var(--cor-principal-turquesa);
+    font-size: 1.05rem;
+}
+
+.secoes {
+    margin-top: 2rem;
+}
+
+.secao {
+    margin-bottom: 2.5rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.secao:last-child {
+    border-bottom: none;
+}
+
+.secao h2 {
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: var(--cor-principal-turquesa);
+    margin-bottom: 1rem;
+    padding-top: 1rem;
+}
+
+.secao-conteudo {
+    color: #555;
+    font-size: 1rem;
+}
+
+.secao-conteudo p {
+    margin-bottom: 1rem;
+}
+
+.secao-conteudo ul,
+.secao-conteudo ol {
+    margin: 1rem 0;
+    padding-left: 2rem;
+}
+
+.secao-conteudo li {
+    margin-bottom: 0.5rem;
+}
+
+.secao-conteudo strong {
+    color: #333;
+    font-weight: 600;
+}
+
+.contato-politica {
+    background: var(--cor-principal-turquesa);
+    color: white;
+    padding: 1.5rem;
+    border-radius: 10px;
+    margin-top: 3rem;
+    text-align: center;
+}
+
+.contato-politica a {
+    color: var(--cor-secundaria-amarelo);
+    text-decoration: underline;
+    font-weight: 600;
+    transition: opacity 0.3s ease;
+}
+
+.contato-politica a:hover {
+    opacity: 0.8;
+}
+
+@media (max-width: 768px) {
+    .page-title {
+        font-size: 2rem;
+    }
+    
+    .secao h2 {
+        font-size: 1.5rem;
+    }
+    
+    .politica-container {
+        padding: 1.5rem 15px;
+    }
+    
+    .introducao {
+        padding: 1.2rem;
+    }
+}

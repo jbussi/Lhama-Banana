@@ -41,16 +41,30 @@
       "type": "decimal",
       "min": 0
     },
-    "estoque": {
-      "type": "integer",
-      "required": true,
+    "peso_kg": {
+      "type": "decimal",
       "default": 0,
       "min": 0
     },
-    "estoque_minimo": {
-      "type": "integer",
+    "dimensoes_largura": {
+      "type": "decimal",
       "default": 0,
       "min": 0
+    },
+    "dimensoes_altura": {
+      "type": "decimal",
+      "default": 0,
+      "min": 0
+    },
+    "dimensoes_comprimento": {
+      "type": "decimal",
+      "default": 0,
+      "min": 0
+    },
+    "cest": {
+      "type": "string",
+      "maxLength": 7,
+      "description": "CEST (Código Especificador da Substituição Tributária) - 7 dígitos"
     },
     "estoque_reservado": {
       "type": "integer",

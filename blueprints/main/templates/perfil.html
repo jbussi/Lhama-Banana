@@ -414,42 +414,16 @@
                     <!-- Formulário de Dados Fiscais -->
                     <form id="fiscal-form" class="fiscal-form" style="display: none;">
                         <div class="form-group">
-                            <label for="fiscal-tipo">Tipo de Documento *</label>
-                            <div class="radio-group">
-                                <label class="radio-label">
-                                    <input type="radio" name="fiscal-tipo" value="CPF" id="fiscal-tipo-cpf" checked>
-                                    <span>CPF</span>
-                                </label>
-                                <label class="radio-label">
-                                    <input type="radio" name="fiscal-tipo" value="CNPJ" id="fiscal-tipo-cnpj">
-                                    <span>CNPJ</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="fiscal-cpf-cnpj" id="fiscal-cpf-cnpj-label">CPF *</label>
+                            <label for="fiscal-cpf-cnpj">CPF *</label>
                             <input type="text" id="fiscal-cpf-cnpj" name="fiscal-cpf-cnpj" 
-                                   placeholder="000.000.000-00" maxlength="18" required>
-                            <small class="form-text" id="fiscal-cpf-cnpj-help">Digite apenas números</small>
+                                   placeholder="000.000.000-00" maxlength="14" required>
+                            <small class="form-text">Digite apenas números</small>
                         </div>
 
                         <div class="form-group">
-                            <label for="fiscal-nome" id="fiscal-nome-label">Nome Completo *</label>
+                            <label for="fiscal-nome">Nome Completo *</label>
                             <input type="text" id="fiscal-nome" name="fiscal-nome" 
                                    placeholder="Seu nome completo" required>
-                        </div>
-
-                        <div class="form-group" id="fiscal-inscricao-estadual-group" style="display: none;">
-                            <label for="fiscal-inscricao-estadual">Inscrição Estadual</label>
-                            <input type="text" id="fiscal-inscricao-estadual" name="fiscal-inscricao-estadual" 
-                                   placeholder="ISENTO ou número da inscrição">
-                        </div>
-
-                        <div class="form-group" id="fiscal-inscricao-municipal-group" style="display: none;">
-                            <label for="fiscal-inscricao-municipal">Inscrição Municipal</label>
-                            <input type="text" id="fiscal-inscricao-municipal" name="fiscal-inscricao-municipal" 
-                                   placeholder="Opcional">
                         </div>
 
                         <div class="form-section-divider">

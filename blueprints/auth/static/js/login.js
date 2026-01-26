@@ -27,6 +27,73 @@ googleProvider.addScope('email');
 googleProvider.addScope('profile');
 
 /**
+ * Traduz códigos de erro do Firebase para mensagens amigáveis em português
+ * @param {string} errorCode - Código de erro do Firebase
+ * @param {string} defaultMessage - Mensagem padrão caso o código não seja reconhecido
+ * @returns {string} Mensagem amigável em português
+ */
+function getFriendlyErrorMessage(errorCode, defaultMessage = null) {
+    const errorMessages = {
+        // Erros de autenticação geral
+        'auth/user-not-found': 'Não encontramos uma conta com este email. Verifique se o email está correto ou crie uma nova conta.',
+        'auth/wrong-password': 'Senha incorreta. Verifique sua senha e tente novamente.',
+        'auth/invalid-email': 'O formato do email é inválido. Por favor, verifique e tente novamente.',
+        'auth/user-disabled': 'Esta conta foi desativada. Entre em contato com o suporte para mais informações.',
+        'auth/email-already-in-use': 'Este email já está cadastrado. Tente fazer login ou use outro email.',
+        'auth/weak-password': 'A senha é muito fraca. Use pelo menos 6 caracteres e combine letras, números e símbolos.',
+        'auth/operation-not-allowed': 'Este método de autenticação não está habilitado. Entre em contato com o suporte.',
+        'auth/too-many-requests': 'Muitas tentativas de login falharam. Por segurança, aguarde alguns minutos antes de tentar novamente.',
+        'auth/network-request-failed': 'Erro de conexão. Verifique sua internet e tente novamente.',
+        'auth/internal-error': 'Ocorreu um erro interno. Por favor, tente novamente em alguns instantes.',
+        'auth/invalid-credential': 'Email ou senha incorretos. Verifique suas credenciais e tente novamente.',
+        'auth/invalid-verification-code': 'Código de verificação inválido ou expirado. Solicite um novo código.',
+        'auth/invalid-verification-id': 'Link de verificação inválido ou expirado. Solicite um novo link.',
+        'auth/missing-email': 'Email é obrigatório. Por favor, preencha o campo de email.',
+        'auth/missing-password': 'Senha é obrigatória. Por favor, preencha o campo de senha.',
+        
+        // Erros de popup/redirect
+        'auth/popup-closed-by-user': 'Login cancelado. Você fechou a janela de autenticação.',
+        'auth/popup-blocked': 'A janela de login foi bloqueada pelo navegador. Permita popups para este site nas configurações do navegador.',
+        'auth/cancelled-popup-request': 'Outra solicitação de login está em andamento. Aguarde um momento.',
+        'auth/account-exists-with-different-credential': 'Já existe uma conta com este email usando outro método de login. Tente fazer login com o método original.',
+        
+        // Erros de token
+        'auth/invalid-user-token': 'Sua sessão expirou. Por favor, faça login novamente.',
+        'auth/user-token-expired': 'Sua sessão expirou. Por favor, faça login novamente.',
+        'auth/invalid-api-key': 'Erro de configuração. Entre em contato com o suporte.',
+        
+        // Erros de verificação de email
+        'auth/email-already-verified': 'Este email já foi verificado.',
+        'auth/invalid-action-code': 'O link de verificação é inválido ou expirou. Solicite um novo link.',
+        'auth/expired-action-code': 'O link de verificação expirou. Solicite um novo link.',
+        
+        // Erros de redefinição de senha
+        'auth/invalid-continue-uri': 'Link de redirecionamento inválido.',
+        'auth/missing-continue-uri': 'Link de redirecionamento não fornecido.',
+        
+        // Outros erros
+        'auth/requires-recent-login': 'Por segurança, faça login novamente antes de realizar esta ação.',
+        'auth/unauthorized-domain': 'Este domínio não está autorizado. Entre em contato com o suporte.',
+        'auth/credential-already-in-use': 'Esta credencial já está associada a outra conta.',
+        'auth/timeout': 'A operação demorou muito para responder. Tente novamente.',
+        'auth/app-deleted': 'A aplicação foi desativada. Entre em contato com o suporte.',
+        'auth/app-not-authorized': 'Aplicação não autorizada. Entre em contato com o suporte.',
+        'auth/argument-error': 'Erro nos dados fornecidos. Verifique os campos e tente novamente.',
+        'auth/invalid-app-credential': 'Credencial da aplicação inválida. Entre em contato com o suporte.',
+        'auth/invalid-app-id': 'ID da aplicação inválido. Entre em contato com o suporte.',
+        'auth/invalid-phone-number': 'Número de telefone inválido. Verifique o formato.',
+        'auth/missing-phone-number': 'Número de telefone é obrigatório.',
+        'auth/quota-exceeded': 'Limite de requisições excedido. Tente novamente mais tarde.',
+        'auth/session-cookie-expired': 'Sua sessão expirou. Por favor, faça login novamente.',
+        'auth/too-many-requests': 'Muitas tentativas. Por segurança, aguarde alguns minutos antes de tentar novamente.',
+        'auth/unverified-email': 'Email não verificado. Verifique sua caixa de entrada e confirme seu email.',
+        'auth/web-storage-unsupported': 'Seu navegador não suporta armazenamento local. Atualize seu navegador ou use outro dispositivo.'
+    };
+    
+    return errorMessages[errorCode] || defaultMessage || 'Ocorreu um erro inesperado. Por favor, tente novamente ou entre em contato com o suporte.';
+}
+
+/**
  * Função auxiliar para fazer requisição com retry automático em caso de clock skew
  * Implementa retry silencioso: se receber erro de clock skew, faz refresh de token e tenta novamente
  * 
@@ -63,19 +130,23 @@ async function fetchWithClockSkewRetry(requestFn, user, maxRetries = 1) {
             if (data.clock_skew_error && retryCount < maxRetries) {
                 console.log(`[CLOCK_SKEW_RETRY] Erro de clock skew detectado (diferença: ${data.time_diff}s). Fazendo refresh de token e tentando novamente...`);
                 
-                // Aguardar um pouco mais para dar tempo ao servidor sincronizar
-                // O delay aumenta com a diferença de tempo detectada
-                const delay = Math.min((data.time_diff || 2) * 1000 + 1000, 10000); // Máximo 10s
+                // Delay otimizado: apenas o tempo necessário + margem mínima
+                const timeDiff = data.time_diff || 1;
+                // Delay reduzido: diferença + 500ms (margem mínima), máximo 3s
+                const delay = Math.min(timeDiff * 1000 + 500, 3000);
+                console.log(`[CLOCK_SKEW_RETRY] Aguardando ${delay}ms antes de tentar novamente...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
                 
-                // Forçar refresh do token
+                // Forçar refresh do token apenas quando necessário
+                console.log(`[CLOCK_SKEW_RETRY] Obtendo novo token...`);
                 const newToken = await user.getIdToken(true);
                 
-                // Aguardar mais um pouco para o token ficar válido
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Delay mínimo após refresh (500ms é suficiente)
+                await new Promise(resolve => setTimeout(resolve, 500));
                 
                 // Retry com novo token (a função requestFn deve usar o novo token)
                 retryCount++;
+                console.log(`[CLOCK_SKEW_RETRY] Tentativa ${retryCount + 1}/${maxRetries + 1}...`);
                 continue;
             }
             
@@ -134,12 +205,13 @@ async function handleLogin(userCredential) {
             }
         }
         
-        // Obter token (sempre forçar refresh para evitar clock skew)
+        // Obter token (sem force refresh inicial - mais rápido)
         let id_token;
         try {
-            // Sempre forçar refresh para garantir token novo e válido
-            id_token = await user.getIdToken(true);
-            console.log("ID Token obtido (refresh):", id_token.substring(0, 50) + "...");
+            // Obter token sem forçar refresh primeiro (mais rápido)
+            // Se houver clock skew, o retry fará o refresh
+            id_token = await user.getIdToken(false);
+            console.log("ID Token obtido:", id_token.substring(0, 50) + "...");
         } catch (tokenError) {
             console.error("Erro ao obter token:", tokenError);
             throw new Error("Erro ao obter token de autenticação. Tente novamente.");
@@ -149,8 +221,8 @@ async function handleLogin(userCredential) {
         let response, data;
         try {
             const result = await fetchWithClockSkewRetry(async () => {
-                // Obter token atualizado a cada tentativa
-                const currentToken = await user.getIdToken(true);
+                // Obter token atualizado apenas se necessário (primeira tentativa usa o token já obtido)
+                const currentToken = await user.getIdToken(false);
                 return fetch("/api/auth/login", {
                     method: "POST",
                     headers: {
@@ -160,7 +232,7 @@ async function handleLogin(userCredential) {
                         id_token: currentToken
                     })
                 });
-            }, user, 2); // 2 retries adicionais para clock skew grande
+            }, user, 2); // Reduzido para 2 retries (suficiente na maioria dos casos)
             
             response = result.response;
             data = result.data;
@@ -210,19 +282,22 @@ async function handleLogin(userCredential) {
         }
         
     } catch (error) {
-    console.error("Erro no fluxo de login:", error.message);
-    const container = document.getElementById('login-messages-container') || document.body;
-    MessageHelper.showError("Erro ao logar: " + error.message, container);
+        console.error("Erro no fluxo de login:", error.message);
+        const container = document.getElementById('login-messages-container') || document.body;
+        // Se for erro do backend, usar mensagem do backend; se for erro do Firebase, traduzir
+        const errorMessage = error.code ? getFriendlyErrorMessage(error.code, error.message) : 
+                            (error.message || 'Ocorreu um erro ao fazer login. Tente novamente.');
+        MessageHelper.showError(errorMessage, container);
     }
 }
 
 // Login com email/senha
 if (submit) {
     submit.addEventListener("click", async function(event) {
-  event.preventDefault();
-
+        event.preventDefault();
+        
         const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+        const password = document.getElementById("password").value;
 
         if (!email || !password) {
             const container = document.getElementById('login-messages-container');
@@ -240,27 +315,7 @@ if (submit) {
             await handleLogin(userCredential);
         } catch (error) {
             console.error("Erro no login:", error);
-            let errorMessage = "Erro ao fazer login. ";
-            
-            switch (error.code) {
-                case 'auth/user-not-found':
-                    errorMessage = "Usuário não encontrado.";
-                    break;
-                case 'auth/wrong-password':
-                    errorMessage = "Senha incorreta.";
-                    break;
-                case 'auth/invalid-email':
-                    errorMessage = "Email inválido.";
-                    break;
-                case 'auth/user-disabled':
-                    errorMessage = "Conta desabilitada.";
-                    break;
-                case 'auth/too-many-requests':
-                    errorMessage = "Muitas tentativas. Tente novamente mais tarde.";
-                    break;
-                default:
-                    errorMessage += error.message;
-            }
+            const errorMessage = getFriendlyErrorMessage(error.code, error.message);
             
             const container = document.getElementById('login-messages-container');
             if (container) {
@@ -287,15 +342,7 @@ if (googleLoginBtn) {
             await handleLogin(userCredential);
         } catch (error) {
             console.error("Erro no login Google:", error);
-            let errorMessage = "Erro ao fazer login com Google. ";
-            
-            if (error.code === 'auth/popup-closed-by-user') {
-                errorMessage = "Login cancelado.";
-            } else if (error.code === 'auth/popup-blocked') {
-                errorMessage = "Popup bloqueado. Permita popups para este site.";
-            } else {
-                errorMessage += error.message;
-            }
+            const errorMessage = getFriendlyErrorMessage(error.code, error.message);
             
             const container = document.getElementById('login-messages-container');
             if (container) {
@@ -409,17 +456,7 @@ if (forgotPasswordForm) {
             
         } catch (error) {
             console.error("Erro ao enviar email de recuperação:", error);
-            let errorMessage = "Erro ao enviar email. ";
-            
-            if (error.code === 'auth/user-not-found') {
-                errorMessage = "Email não encontrado em nossa base de dados.";
-            } else if (error.code === 'auth/invalid-email') {
-                errorMessage = "Email inválido. Verifique o formato.";
-            } else if (error.code === 'auth/too-many-requests') {
-                errorMessage = "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.";
-            } else {
-                errorMessage += error.message;
-            }
+            const errorMessage = getFriendlyErrorMessage(error.code, error.message);
             
             messageDiv.innerHTML = `<div class="error-message"><i class="fas fa-exclamation-circle"></i> ${errorMessage}</div>`;
             messageDiv.style.display = "block";

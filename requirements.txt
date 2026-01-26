@@ -12,3 +12,4 @@ click==8.1.7
 blinker==1.6.2
 pyotp==2.9.0
 qrcode[pil]==7.4.2
+gunicorn==21.2.0

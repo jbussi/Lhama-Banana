@@ -171,41 +171,15 @@
                     <!-- Formulário de Dados Fiscais -->
                     <div id="fiscal-form-checkout">
                         <div class="form-group">
-                            <label for="fiscal-tipo-checkout">Tipo de Documento *</label>
-                            <div class="radio-group">
-                                <label class="radio-label">
-                                    <input type="radio" name="fiscal-tipo-checkout" value="CPF" id="fiscal-tipo-cpf-checkout" checked>
-                                    <span>CPF</span>
-                                </label>
-                                <label class="radio-label">
-                                    <input type="radio" name="fiscal-tipo-checkout" value="CNPJ" id="fiscal-tipo-cnpj-checkout">
-                                    <span>CNPJ</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="fiscal-cpf-cnpj-checkout" id="fiscal-cpf-cnpj-label-checkout">CPF *</label>
+                            <label for="fiscal-cpf-cnpj-checkout">CPF *</label>
                             <input type="text" id="fiscal-cpf-cnpj-checkout" name="fiscal-cpf-cnpj-checkout" 
-                                   placeholder="000.000.000-00" maxlength="18" required>
+                                   placeholder="000.000.000-00" maxlength="14" required>
                         </div>
 
                         <div class="form-group">
-                            <label for="fiscal-nome-checkout" id="fiscal-nome-label-checkout">Nome Completo *</label>
+                            <label for="fiscal-nome-checkout">Nome Completo *</label>
                             <input type="text" id="fiscal-nome-checkout" name="fiscal-nome-checkout" 
                                    placeholder="Seu nome completo" required>
-                        </div>
-
-                        <div class="form-group" id="fiscal-inscricao-estadual-group-checkout" style="display: none;">
-                            <label for="fiscal-inscricao-estadual-checkout">Inscrição Estadual</label>
-                            <input type="text" id="fiscal-inscricao-estadual-checkout" name="fiscal-inscricao-estadual-checkout" 
-                                   placeholder="ISENTO ou número da inscrição">
-                        </div>
-
-                        <div class="form-group" id="fiscal-inscricao-municipal-group-checkout" style="display: none;">
-                            <label for="fiscal-inscricao-municipal-checkout">Inscrição Municipal</label>
-                            <input type="text" id="fiscal-inscricao-municipal-checkout" name="fiscal-inscricao-municipal-checkout" 
-                                   placeholder="Opcional">
                         </div>
 
                         <div class="form-section-divider">
@@ -367,6 +341,19 @@
                     </div>
                 </div>
 
+                <!-- Nota sobre Políticas de Envio -->
+                <div class="politica-envio-nota" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin: 1.5rem 0; border-left: 4px solid var(--cor-principal-turquesa);">
+                    <p style="margin: 0; font-size: 0.9rem; color: #555; line-height: 1.5;">
+                        <i class="fas fa-info-circle" style="color: var(--cor-principal-turquesa); margin-right: 0.5rem;"></i>
+                        Ao finalizar a compra, você concorda com nossa <a href="{{ url_for('main.politica_envio') }}" target="_blank" style="color: var(--cor-principal-turquesa); text-decoration: underline; font-weight: 600;">Política de Envio</a> e <a href="{{ url_for('main.politica_privacidade') }}" target="_blank" style="color: var(--cor-principal-turquesa); text-decoration: underline; font-weight: 600;">Política de Privacidade</a>.
+                    </p>
+                </div>
+                
+                <!-- Container de Mensagens (Erros e Sucessos) -->
+                <div id="checkout-messages-container" class="checkout-messages-container" style="display: none;">
+                    <!-- Mensagens serão inseridas aqui via JavaScript -->
+                </div>
+                
                 <!-- Botão de Finalizar -->
                 <div class="checkout-actions">
                     <button type="submit" id="finalizarCompra" class="btn-primary btn-large btn-icon">

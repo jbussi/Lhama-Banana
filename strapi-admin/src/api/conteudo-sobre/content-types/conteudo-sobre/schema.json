@@ -1,0 +1,41 @@
+{
+  "kind": "singleType",
+  "collectionName": "conteudo_sobre",
+  "info": {
+    "singularName": "conteudo-sobre",
+    "pluralName": "conteudo-sobres",
+    "displayName": "Conteúdo Sobre",
+    "description": "Conteúdo da página sobre nós (história, valores, equipe)"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "historia_titulo": {
+      "type": "string",
+      "default": "Nossa História"
+    },
+    "historia_conteudo": {
+      "type": "richtext"
+    },
+    "valores_titulo": {
+      "type": "string",
+      "default": "Nossos Valores"
+    },
+    "valores_conteudo": {
+      "type": "json"
+    },
+    "equipe_titulo": {
+      "type": "string",
+      "default": "Nossa Equipe"
+    },
+    "equipe": {
+      "type": "json"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

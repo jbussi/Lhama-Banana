@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LhamaBanana</title>
+    <title>LhamaBanana™</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/base/reset.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/base/typhography.css') }}">
@@ -26,7 +26,7 @@
             <nav>
                 <a href="{{ url_for('main.home') }}" class="logo-container">
                     <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo LhamaBanana" id="logo">
-                    <h1>LhamaBanana</h1>
+                    <h1>LhamaBanana<span class="tm-symbol">TM</span></h1>
                 </a>
                                 
                 <ul class="nav-links">
@@ -64,10 +64,10 @@
 <footer>
     <div class="footer-container">
         <div class="footer-left">
-            <p>&copy; 2025 LhamaBanana. Todos os direitos reservados.</p>
+            <p>&copy; 2025 LhamaBanana™. <a href="{{ url_for('main.direitos_reservados') }}" class="footer-link">Todos os direitos reservados</a>.</p>
             <p>Feito por João Paulo Bussi</p>
             <p>Jundiaí - SP | Atendimento: Seg a Sex, 9h às 18h</p>
-            <p><a href="#" class="footer-link">Política de Privacidade</a></p>
+            <p><a href="{{ url_for('main.politica_privacidade') }}" class="footer-link">Política de Privacidade</a></p>
         </div>
         <div class="footer-right">
             <a href="https://www.instagram.com/lhamabanana_/" target="_blank" aria-label="Instagram">

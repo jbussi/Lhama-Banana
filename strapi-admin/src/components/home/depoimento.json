@@ -1,0 +1,29 @@
+{
+  "collectionName": "components_home_depoimento",
+  "info": {
+    "displayName": "Depoimento",
+    "description": "Depoimento de cliente"
+  },
+  "options": {},
+  "attributes": {
+    "texto": {
+      "type": "text",
+      "required": true
+    },
+    "nome": {
+      "type": "string",
+      "required": true
+    },
+    "subtitulo": {
+      "type": "string"
+    },
+    "ordem": {
+      "type": "integer",
+      "default": 0
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

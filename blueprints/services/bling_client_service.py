@@ -202,6 +202,22 @@ def map_client_to_bling_format(cliente_data: Dict) -> Dict:
     # Log para debug
     current_app.logger.info(f"🔍 Mapeando cliente: CPF/CNPJ={cpf_cnpj}, tipo_pessoa={tipo_pessoa_short}")
     
+    # IMPORTANTE: Usar endereço FISCAL (declarado) para o cliente, não endereço de entrega
+    # Priorizar campos fiscais (fiscal_rua, fiscal_cidade, etc.) sobre endereço de entrega
+    endereco_fiscal = cliente_data.get('fiscal_rua') or cliente_data.get('endereco') or cliente_data.get('rua', '')
+    numero_fiscal = cliente_data.get('fiscal_numero') or cliente_data.get('numero', '')
+    complemento_fiscal = cliente_data.get('fiscal_complemento') or cliente_data.get('complemento') or ""
+    bairro_fiscal = cliente_data.get('fiscal_bairro') or cliente_data.get('bairro', '')
+    cidade_fiscal = cliente_data.get('fiscal_cidade') or cliente_data.get('cidade', '')
+    estado_fiscal = cliente_data.get('fiscal_estado') or cliente_data.get('uf') or cliente_data.get('estado', '')
+    cep_fiscal = cliente_data.get('fiscal_cep') or cliente_data.get('cep', '')
+    cep_fiscal_clean = re.sub(r'[^0-9]', '', str(cep_fiscal))
+    
+    current_app.logger.info(
+        f"🏠 Usando endereço FISCAL para cliente: {endereco_fiscal}, {numero_fiscal}, "
+        f"{bairro_fiscal}, {cidade_fiscal}-{estado_fiscal}, CEP: {cep_fiscal_clean}"
+    )
+    
     bling_client = {
         "nome": cliente_data.get('nome', 'Cliente'),
         "tipo": tipo_pessoa_short,  # "F" ou "J" - conforme documentação oficial da API do Bling
@@ -213,13 +229,13 @@ def map_client_to_bling_format(cliente_data: Dict) -> Dict:
         "celular": cliente_data.get('celular') or cliente_data.get('telefone') or cliente_data.get('telefone_entrega', ''),
         "endereco": {
             "geral": {
-                "endereco": cliente_data.get('endereco') or cliente_data.get('rua', ''),
-                "numero": cliente_data.get('numero', ''),
-                "complemento": cliente_data.get('complemento') or "",
-                "bairro": cliente_data.get('bairro', ''),
-                "municipio": cliente_data.get('cidade', ''),
-                "uf": cliente_data.get('uf') or cliente_data.get('estado', ''),
-                "cep": cep
+                "endereco": endereco_fiscal,
+                "numero": numero_fiscal,
+                "complemento": complemento_fiscal,
+                "bairro": bairro_fiscal,
+                "municipio": cidade_fiscal,
+                "uf": estado_fiscal.upper() if estado_fiscal else '',
+                "cep": cep_fiscal_clean
             }
         }
     }
@@ -436,17 +452,27 @@ def get_client_data_from_order(venda_id: int) -> Optional[Dict]:
             current_app.logger.warning(f"⚠️ Venda {venda_id} não possui dados fiscais completos")
             return None
         
-        # Montar dados do cliente (garantir que None vire string vazia)
+        # Montar dados do cliente usando ENDEREÇO FISCAL (não endereço de entrega)
+        # IMPORTANTE: Cliente no Bling deve ter endereço fiscal, não endereço de entrega
         cliente_data = {
             'nome': (venda.get('fiscal_nome_razao_social') or venda.get('nome_recebedor') or venda.get('usuario_nome')) or '',
             'cpf_cnpj': venda.get('fiscal_cpf_cnpj') or '',
             'ie': venda.get('fiscal_inscricao_estadual') or '',
             'email': (venda.get('email_entrega') or venda.get('usuario_email')) or '',
             'celular': venda.get('telefone_entrega') or '',
-            'endereco': venda.get('rua_entrega') or '',
-            'numero': venda.get('numero_entrega') or '',
-            'complemento': venda.get('complemento_entrega') or '',
-            'bairro': venda.get('bairro_entrega') or '',
+            # Usar endereço FISCAL para o cliente
+            'fiscal_rua': venda.get('fiscal_rua') or '',
+            'fiscal_numero': venda.get('fiscal_numero') or '',
+            'fiscal_complemento': venda.get('fiscal_complemento') or '',
+            'fiscal_bairro': venda.get('fiscal_bairro') or '',
+            'fiscal_cidade': venda.get('fiscal_cidade') or '',
+            'fiscal_estado': venda.get('fiscal_estado') or '',
+            'fiscal_cep': venda.get('fiscal_cep') or '',
+            # Fallback para endereço de entrega se não tiver fiscal (compatibilidade)
+            'endereco': venda.get('fiscal_rua') or venda.get('rua_entrega') or '',
+            'numero': venda.get('fiscal_numero') or venda.get('numero_entrega') or '',
+            'complemento': venda.get('fiscal_complemento') or venda.get('complemento_entrega') or '',
+            'bairro': venda.get('fiscal_bairro') or venda.get('bairro_entrega') or '',
             'cidade': venda.get('cidade_entrega') or '',
             'uf': venda.get('estado_entrega') or '',
             'cep': venda.get('cep_entrega') or ''
