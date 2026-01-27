@@ -31,8 +31,22 @@ def init_app(app: Flask):
     # --- 1. Inicialização do Firebase Admin SDK ---
     if not _firebase_initialized:
         firebase_key_path = app.config.get('FIREBASE_ADMIN_SDK_PATH')
+        firebase_json = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON')
         
-        if not firebase_key_path:
+        if firebase_json:
+            # Usar JSON direto da variável de ambiente
+            try:
+                import json
+                cred_dict = json.loads(firebase_json)
+                cred = credentials.Certificate(cred_dict)
+                firebase_admin.initialize_app(cred)
+                print("✅ Firebase Admin SDK inicializado com sucesso via JSON!")
+                _firebase_initialized = True
+            except Exception as e:
+                print(f"❌ ERRO: Falha ao carregar Firebase JSON: {e}")
+                if not app.config.get('DEBUG', False):
+                    sys.exit(1)
+        elif not firebase_key_path:
             print("⚠️  ATENÇÃO: 'FIREBASE_ADMIN_SDK_PATH' não configurado. Firebase Admin SDK não será inicializado.")
         else:
             # Verificar se é arquivo (não diretório)

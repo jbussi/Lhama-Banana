@@ -73,10 +73,9 @@ DB_PORT=5432
 
 **No `.env`:**
 ```bash
-FIREBASE_ADMIN_SDK_PATH=/app/key.json  # Docker
-# FIREBASE_ADMIN_SDK_PATH=../key.json  # Local
-```
-
+FIREBASE_ADMIN_SDK_PATH=/app/key.json  # Docker (arquivo)
+# FIREBASE_ADMIN_SDK_PATH=../key.json  # Local (arquivo)
+# FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}  # JSON direto (mais seguro)
 ### 3. Configurar Email (Opcional)
 ```bash
 FIREBASE_EMAIL_ENABLED=true
