@@ -30,7 +30,7 @@ class Config:
     # ============================================
     # SEGURANÇA
     # ============================================
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'asdf#FGSgvasgf$5$WGT')
+    SECRET_KEY = os.environ.get('SECRET_KEY')
     
     # ============================================
     # FIREBASE (Autenticação)

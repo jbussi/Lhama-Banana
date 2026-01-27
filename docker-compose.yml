@@ -11,6 +11,8 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-far111111}
       POSTGRES_DB: ${DB_NAME:-sistema_usuarios}
       PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     # Porta NÃO exposta em produção (acesso apenas via rede Docker)
     # ports:
     #   - "${DB_PORT:-5432}:5432"
@@ -220,6 +222,8 @@ volumes:
   certbot_www:
     driver: local
   certbot_conf:
+    driver: local
+  postgres_data:
     driver: local
 
 # =====================================================
