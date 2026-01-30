@@ -1,9 +1,66 @@
+version: '3.8'
+
+# =====================================================
+# REDE E VOLUMES
+# =====================================================
+networks:
+  lhama_banana_network:
+    driver: bridge
+    name: lhama_banana_network
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  # PostgreSQL
+  postgres_data:
+    driver: local
+    name: lhama_banana_postgres_data
+  postgres_backups:
+    driver: local
+    name: lhama_banana_postgres_backups
+  
+  # Flask
+  flask_logs:
+    driver: local
+    name: lhama_banana_flask_logs
+  flask_cache:
+    driver: local
+    name: lhama_banana_flask_cache
+  
+  # Strapi
+  strapi_data:
+    driver: local
+    name: lhama_banana_strapi_data
+  strapi_uploads:
+    driver: local
+    name: lhama_banana_strapi_uploads
+  strapi_cache:
+    driver: local
+    name: lhama_banana_strapi_cache
+  
+  # Nginx
+  nginx_logs:
+    driver: local
+    name: lhama_banana_nginx_logs
+  nginx_cache:
+    driver: local
+    name: lhama_banana_nginx_cache
+  
+  # Certbot
+  certbot_www:
+    driver: local
+    name: lhama_banana_certbot_www
+  certbot_conf:
+    driver: local
+    name: lhama_banana_certbot_conf
+
 services:
   # =====================================================
   # PostgreSQL Database
   # =====================================================
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.11-alpine
     container_name: lhama_banana_postgres
     restart: unless-stopped
     environment:
@@ -11,18 +68,115 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-far111111}
       POSTGRES_DB: ${DB_NAME:-sistema_usuarios}
       PGDATA: /var/lib/postgresql/data/pgdata
+      # Configurações de performance
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=pt_BR.UTF-8"
+      # Otimizações de memória
+      shared_buffers: 256MB
+      effective_cache_size: 1GB
+      maintenance_work_mem: 128MB
+      checkpoint_completion_target: 0.9
+      wal_buffers: 16MB
+      default_statistics_target: 100
+      random_page_cost: 1.1
+      effective_io_concurrency: 200
+      work_mem: 4MB
+      min_wal_size: 1GB
+      max_wal_size: 4GB
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    # Porta NÃO exposta em produção (acesso apenas via rede Docker)
-    # ports:
-    #   - "${DB_PORT:-5432}:5432"
+      - postgres_backups:/backups
+      # Script de inicialização com schema seguro
+      - ./db/docker/init:/docker-entrypoint-initdb.d:ro
+      # Bind mount apenas para desenvolvimento (descomente se necessário)
+      # - ./db/schema.sql:/docker-entrypoint-initdb.d/99-schema.sql:ro
+    networks:
+      - lhama_banana_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-sistema_usuarios}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-sistema_usuarios} && psql -U ${DB_USER:-postgres} -d ${DB_NAME:-sistema_usuarios} -c 'SELECT 1'"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    # Backup automático via cron (container separado)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=postgres,database=postgresql"
+    # Configurações de segurança
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - wal_buffers=16MB
+      - -c
+      - default_statistics_target=100
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+      - -c
+      - work_mem=4MB
+      - -c
+      - min_wal_size=1GB
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - log_statement=all
+      - -c
+      - log_duration=on
+      - -c
+      - "log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '"
+
+  # =====================================================
+  # PostgreSQL Backup (Cron)
+  # =====================================================
+  postgres_backup:
+    image: postgres:16.11-alpine
+    container_name: lhama_banana_postgres_backup
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-far111111}
+      POSTGRES_DB: ${DB_NAME:-sistema_usuarios}
+      PGHOST: postgres
+      PGPORT: 5432
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}  # Diário às 2h
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      - postgres_backups:/backups
+      - ./scripts/backup-postgres.sh:/backup-postgres.sh:ro
     networks:
       - lhama_banana_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        chmod +x /backup-postgres.sh
+        # Instalar cron e dependências
+        apk add --no-cache dcron
+        # Configurar cron
+        echo "$${BACKUP_SCHEDULE} /backup-postgres.sh" > /etc/crontabs/root
+        # Iniciar cron em foreground
+        crond -f -l 2
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=postgres_backup"
 
   # =====================================================
   # Flask Application
@@ -31,6 +185,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: "3.11.7"
+        GUNICORN_VERSION: "21.2.0"
+    image: lhama_banana_flask:latest
     container_name: lhama_banana_flask
     restart: unless-stopped
     environment:
@@ -45,10 +203,12 @@ services:
       FLASK_ENV: ${FLASK_ENV:-production}
       FLASK_DEBUG: ${FLASK_DEBUG:-0}
       SECRET_KEY: ${SECRET_KEY}
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
       
-      # Gunicorn
+      # Gunicorn (otimizado)
       USE_GUNICORN: ${USE_GUNICORN:-true}
-      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-4}
       GUNICORN_THREADS: ${GUNICORN_THREADS:-2}
       GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-120}
       GUNICORN_GRACEFUL_TIMEOUT: ${GUNICORN_GRACEFUL_TIMEOUT:-30}
@@ -58,8 +218,12 @@ services:
       GUNICORN_BIND: ${GUNICORN_BIND:-0.0.0.0:5000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       
+      # Logs estruturados
+      LOG_FORMAT: json
+      LOG_JSON_INDENT: 0
+      
       # Firebase
-      FIREBASE_ADMIN_SDK_PATH: ${FIREBASE_ADMIN_SDK_PATH:-/app/key.json}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON}
       
       # PagBank
       PAGBANK_API_TOKEN: ${PAGBANK_API_TOKEN:-}
@@ -84,71 +248,44 @@ services:
       # Strapi
       STRAPI_URL: http://strapi:1337
       STRAPI_ENABLED: ${STRAPI_ENABLED:-true}
-    # Porta interna apenas (Nginx faz proxy)
-    # ports:
-    #   - "${FLASK_PORT:-5000}:5000"
     volumes:
-      # Código já está copiado no Dockerfile - não precisa de bind mount em produção
-      # - .:/app  # Removido para produção (melhor performance e segurança)
+      # Logs persistentes
       - flask_logs:/app/logs
-      # Montar key.json da raiz do workspace
-      # IMPORTANTE: Se houver um diretório key.json em Lhama-Banana/, remova-o primeiro
+      # Cache de dependências
+      - flask_cache:/root/.cache/pip
+      # Configurações (read-only)
+      - ./plataform_config:/app/plataform_config:ro
+      # DEV: bind-mount apenas para desenvolvimento (descomente se necessário)
+      # - ./blueprints:/app/blueprints
+      # - ./templates:/app/templates
+      # Key.json (se necessário, descomente e ajuste o caminho)
+      # - ./key.json:/app/key.json:ro
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - lhama_banana_network
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import socket; s=socket.socket(); s.connect((\"localhost\", 5000)); s.close()' || exit 1"]
+      test: ["CMD-SHELL", "python -c 'import socket; s=socket.socket(); s.settimeout(2); result = s.connect_ex((\"localhost\", 5000)); s.close(); exit(0 if result == 0 else 1)' || curl -f http://localhost:5000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-
-  # =====================================================
-  # Nginx Reverse Proxy
-  # =====================================================
-  nginx:
-    build:
-      context: .
-      dockerfile: nginx/Dockerfile
-    container_name: lhama_banana_nginx
-    restart: unless-stopped
-    ports:
-      - "${NGINX_HTTP_PORT:-80}:80"
-      - "${NGINX_HTTPS_PORT:-443}:443"
-    volumes:
-      - nginx_logs:/var/log/nginx
-      - certbot_www:/var/www/certbot:ro
-      - certbot_conf:/etc/letsencrypt:ro
-    depends_on:
-      flask:
-        condition: service_healthy
-    networks:
-      - lhama_banana_network
-    healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/health || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-
-  # =====================================================
-  # Certbot (Let's Encrypt SSL Certificates)
-  # =====================================================
-  certbot:
-    image: certbot/certbot:latest
-    container_name: lhama_banana_certbot
-    restart: unless-stopped
-    volumes:
-      - certbot_www:/var/www/certbot
-      - certbot_conf:/etc/letsencrypt
-    networks:
-      - lhama_banana_network
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-    environment:
-      - CERTBOT_EMAIL=${CERTBOT_EMAIL}
-      - CERTBOT_DOMAIN=${CERTBOT_DOMAIN:-}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        labels: "service=flask,application=flask"
+    # Limites de recursos
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   # =====================================================
   # Strapi Admin Panel
@@ -157,9 +294,15 @@ services:
     build:
       context: ./strapi-admin
       dockerfile: Dockerfile
+      args:
+        NODE_VERSION: "20.11.1"
+        STRAPI_VERSION: "5.33.1"
+    image: lhama_banana_strapi:latest
     container_name: lhama_banana_strapi
     restart: unless-stopped
     environment:
+      # Node heap (evitar "JavaScript heap out of memory")
+      NODE_OPTIONS: "--max-old-space-size=2048"
       # Database
       DATABASE_CLIENT: postgres
       DATABASE_HOST: postgres
@@ -170,7 +313,7 @@ services:
       DATABASE_SCHEMA: public
       DATABASE_SSL: "false"
       
-      # Strapi
+      # Strapi - MIGRAÇÕES DESABILITADAS
       NODE_ENV: ${NODE_ENV:-production}
       HOST: 0.0.0.0
       PORT: 1337
@@ -180,55 +323,121 @@ services:
       TRANSFER_TOKEN_SALT: ${STRAPI_TRANSFER_TOKEN_SALT:-transfer-token-salt-12345}
       JWT_SECRET: ${STRAPI_JWT_SECRET:-jwt-secret-12345}
       
-      # Public URL (para acesso local)
+      # CRÍTICO: Desabilitar migrações automáticas
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-false}
+      AUTO_RELOAD: ${AUTO_RELOAD:-false}
+      
+      # Public URL
       PUBLIC_URL: ${STRAPI_PUBLIC_URL:-http://localhost:1337}
       
-      # Flags para desabilitar banners promocionais
+      # Flags
       FLAG_NPS: ${FLAG_NPS:-false}
       FLAG_PROMOTE_EE: ${FLAG_PROMOTE_EE:-false}
       FLAG_PROMOTE_TRIAL: ${FLAG_PROMOTE_TRIAL:-false}
       FLAG_SHOW_TRIAL: ${FLAG_SHOW_TRIAL:-false}
-    # Porta NÃO exposta em produção (acesso apenas via NGINX proxy)
-    # ports:
-    #   - "${STRAPI_PORT:-1337}:1337"
     volumes:
       - strapi_data:/app/.tmp
       - strapi_uploads:/app/public/uploads
+      - strapi_cache:/app/.cache
+      # Node modules como volume nomeado (não bind mount)
       - /app/node_modules
+      # DEV: bind-mount do código fonte apenas em desenvolvimento (descomente se necessário)
+      # - ./strapi-admin/src:/app/src
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - lhama_banana_network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:1337/_health"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:1337/_health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        labels: "service=strapi,cms=strapi"
+    # Limites de recursos
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
-# =====================================================
-# Volumes
-# =====================================================
-volumes:
-  flask_logs:
-    driver: local
-  nginx_logs:
-    driver: local
-  strapi_data:
-    driver: local
-  strapi_uploads:
-    driver: local
-  certbot_www:
-    driver: local
-  certbot_conf:
-    driver: local
-  postgres_data:
-    driver: local
+  # =====================================================
+  # Nginx Reverse Proxy
+  # =====================================================
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+      args:
+        NGINX_VERSION: "1.25.5"
+    image: lhama_banana_nginx:latest
+    container_name: lhama_banana_nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      # Logs formatados
+      - nginx_logs:/var/log/nginx
+      # Cache
+      - nginx_cache:/var/cache/nginx
+      # Certificados SSL (compartilhado com Certbot)
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
+      # Configuração (read-only)
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx-ssl.conf.template:/etc/nginx/templates/nginx-ssl.conf.template:ro
+    depends_on:
+      - flask
+      - strapi
+    networks:
+      - lhama_banana_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        labels: "service=nginx,proxy=nginx"
+    # Headers de segurança e rate limiting configurados no nginx.conf
 
-# =====================================================
-# Networks
-# =====================================================
-networks:
-  lhama_banana_network:
-    driver: bridge
+  # =====================================================
+  # Certbot (Let's Encrypt SSL Certificates)
+  # =====================================================
+  certbot:
+    image: certbot/certbot:v2.9.0
+    container_name: lhama_banana_certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+    networks:
+      - lhama_banana_network
+    environment:
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL}
+      - CERTBOT_DOMAIN=${CERTBOT_DOMAIN:-}
+      - CERTBOT_STAGING=${CERTBOT_STAGING:-false}
+    # Renew automático a cada 12 horas
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet --deploy-hook \"nginx -s reload\"; sleep 12h & wait $${!}; done;'"
+    depends_on:
+      - nginx
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=certbot,ssl=certbot"

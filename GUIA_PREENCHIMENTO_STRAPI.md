@@ -523,22 +523,6 @@ Campo do tipo **JSON** que aceita um array de objetos. Cada carrossel contém it
 Campo do tipo **JSON** que aceita um array de depoimentos. Estrutura:
 
 ```json
-[
-  {
-    "texto": "A LhamaBanana transformou as noites da minha família. A qualidade dos produtos é incrível e o atendimento é excepcional!",
-    "nome": "Ana Silva",
-    "subtitulo": "Mãe e Cliente desde 2022",
-    "ordem": 1,
-    "ativo": true
-  },
-  {
-    "texto": "Produtos de excelente qualidade! Recomendo para todas as famílias.",
-    "nome": "Carlos Santos",
-    "subtitulo": "Pai e Cliente desde 2021",
-    "ordem": 2,
-    "ativo": true
-  }
-]
 ```
 
 **Campos de cada depoimento:**

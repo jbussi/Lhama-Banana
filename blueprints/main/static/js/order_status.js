@@ -39,13 +39,14 @@ document.addEventListener('DOMContentLoaded', function() {
     let lastKnownStatus = null; // Rastrear último status conhecido para detectar mudanças
     
     // Status possíveis em ordem
+    // NOTA: 'ENTREGUE' está oculto por enquanto - será implementado depois
     const statusOrder = [
         'CRIADO',
         'PENDENTE',
         'PAGO',
         'APROVADO',
         'NA TRANSPORTADORA',
-        'ENTREGUE',
+        // 'ENTREGUE', // Oculto por enquanto
         'CANCELADO',
         'EXPIRADO'
     ];
@@ -90,14 +91,58 @@ document.addEventListener('DOMContentLoaded', function() {
                 orderValue.textContent = formatCurrency(order.valor);
             }
             
-            if (orderDate && order.data_venda) {
-                const date = new Date(order.data_venda);
-                orderDate.textContent = date.toLocaleString('pt-BR');
+            // Função auxiliar para formatar data para horário de Brasília
+            function formatDateToBrasilia(dateValue) {
+                if (!dateValue) return '--';
+                
+                try {
+                    let dateStr = String(dateValue);
+                    
+                    // Se já está formatado (contém /), retornar como está
+                    if (dateStr.includes('/')) {
+                        return dateStr;
+                    }
+                    
+                    // Garantir que a string tenha timezone
+                    // Se não tem Z, + ou - no final, assumir UTC e adicionar Z
+                    if (!dateStr.match(/[Z+-]\d{2}:?\d{2}$/)) {
+                        // Se termina com número ou letra (sem timezone), adicionar Z
+                        if (dateStr.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/)) {
+                            dateStr = dateStr + 'Z';
+                        }
+                    }
+                    
+                    const date = new Date(dateStr);
+                    
+                    // Verificar se a data é válida
+                    if (isNaN(date.getTime())) {
+                        console.warn('Data inválida:', dateValue);
+                        return '--';
+                    }
+                    
+                    // Converter para horário de Brasília (UTC-3)
+                    return date.toLocaleString('pt-BR', {
+                        timeZone: 'America/Sao_Paulo',
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                } catch (e) {
+                    console.error('Erro ao formatar data:', e, dateValue);
+                    return '--';
+                }
             }
             
-            if (lastUpdate && order.atualizado_em) {
-                const date = new Date(order.atualizado_em);
-                lastUpdate.textContent = date.toLocaleString('pt-BR');
+            // Formatar data do pedido para horário de Brasília
+            if (orderDate) {
+                orderDate.textContent = formatDateToBrasilia(order.data_venda);
+            }
+            
+            // Formatar última atualização para horário de Brasília
+            if (lastUpdate) {
+                lastUpdate.textContent = formatDateToBrasilia(order.atualizado_em);
             }
             
             // Verificar se o status mudou
@@ -112,11 +157,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateStatus(order.status);
             }
             
-            // Se pedido foi entregue, mostrar mensagem e parar polling
-            if (order.status === 'ENTREGUE') {
-                showDeliveredMessage();
-                stopPolling();
-            }
+            // NOTA: Status ENTREGUE está oculto por enquanto - será implementado depois
+            // if (order.status === 'ENTREGUE') {
+            //     showDeliveredMessage();
+            //     stopPolling();
+            // }
             
             // Atualizar informações de rastreio se disponíveis
             updateTrackingInfo(order);
@@ -163,7 +208,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'PAGO': 'Pagamento Confirmado',
             'APROVADO': 'Pedido Aprovado',
             'NA TRANSPORTADORA': 'Na Transportadora',
-            'ENTREGUE': 'Entregue',
+            // 'ENTREGUE': 'Entregue', // Oculto por enquanto
             'CANCELADO': 'Pedido Cancelado',
             'EXPIRADO': 'Pedido Expirado'
         };
@@ -185,6 +230,22 @@ document.addEventListener('DOMContentLoaded', function() {
         timelineItems.forEach(item => {
             const itemStatus = item.getAttribute('data-status');
             if (!itemStatus) return;
+            
+            // Esconder status ENTREGUE por enquanto
+            if (itemStatus === 'ENTREGUE') {
+                item.style.display = 'none';
+                return;
+            }
+            
+            // Mostrar/esconder "Na Transportadora" apenas quando o status for "NA TRANSPORTADORA"
+            // Isso garante que só aparece quando o Bling estiver "Pronto para entrega" (ID 718557)
+            if (itemStatus === 'NA TRANSPORTADORA') {
+                if (currentStatus === 'NA TRANSPORTADORA') {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            }
             
             // Remover classes anteriores
             item.classList.remove('active', 'completed');

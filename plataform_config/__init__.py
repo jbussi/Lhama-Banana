@@ -30,72 +30,41 @@ def init_app(app: Flask):
 
     # --- 1. Inicialização do Firebase Admin SDK ---
     if not _firebase_initialized:
-        firebase_key_path = app.config.get('FIREBASE_ADMIN_SDK_PATH')
-        firebase_json = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON')
+        # PRIMEIRA OPÇÃO: Base64 (recomendado)
+        firebase_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON')
         
-        if firebase_json:
-            # Usar JSON direto da variável de ambiente
+        if firebase_base64:
             try:
+                import base64
                 import json
-                cred_dict = json.loads(firebase_json)
+                print(f"🔧 Inicializando Firebase via Base64 ({len(firebase_base64)} caracteres)...")
+                
+                # Decodifica Base64
+                json_bytes = base64.b64decode(firebase_base64)
+                json_str = json_bytes.decode('utf-8')
+                
+                # Carrega JSON
+                cred_dict = json.loads(json_str)
+                
+                # Inicializa Firebase
                 cred = credentials.Certificate(cred_dict)
                 firebase_admin.initialize_app(cred)
-                print("✅ Firebase Admin SDK inicializado com sucesso via JSON!")
+                
+                print("✅ Firebase Admin SDK inicializado com sucesso via Base64!")
                 _firebase_initialized = True
+                
+            except base64.binascii.Error as e:
+                print(f"❌ ERRO: Base64 inválido: {e}")
+            except json.JSONDecodeError as e:
+                print(f"❌ ERRO: JSON inválido após decodificar Base64: {e}")
             except Exception as e:
-                print(f"❌ ERRO: Falha ao carregar Firebase JSON: {e}")
-                if not app.config.get('DEBUG', False):
-                    sys.exit(1)
-        elif not firebase_key_path:
-            print("⚠️  ATENÇÃO: 'FIREBASE_ADMIN_SDK_PATH' não configurado. Firebase Admin SDK não será inicializado.")
+                print(f"❌ ERRO: Falha ao inicializar Firebase com Base64: {e}")
+        
         else:
-            # Verificar se é arquivo (não diretório)
-            firebase_path = Path(firebase_key_path)
-            
-            if not firebase_path.exists():
-                print(f"⚠️  ATENÇÃO: Arquivo de credenciais do Firebase não encontrado em: {firebase_key_path}")
-                print("   Firebase Admin SDK não será inicializado.")
-                # Em desenvolvimento, continuar sem Firebase
-                if not app.config.get('DEBUG', False):
-                    print("   Encerrando aplicação (Firebase é obrigatório em produção)")
-                    sys.exit(1)
-            elif firebase_path.is_dir():
-                print(f"⚠️  ATENÇÃO: O caminho especificado é um diretório, não um arquivo: {firebase_key_path}")
-                print("   Tentando localizar key.json na raiz do workspace...")
-                # Tentar encontrar o arquivo na raiz (subindo dois níveis: /app -> Lhama-Banana -> raiz)
-                # No Docker, /app é Lhama-Banana, então /app/.. seria a raiz
-                root_key = Path('/app/../key.json').resolve()
-                if root_key.exists() and root_key.is_file():
-                    firebase_path = root_key
-                    print(f"   ✅ Arquivo encontrado em: {firebase_path}")
-                else:
-                    print(f"   ❌ Arquivo key.json não encontrado na raiz do workspace")
-                    if not app.config.get('DEBUG', False):
-                        sys.exit(1)
-                    return  # Em desenvolvimento, continuar sem Firebase
-            
-            # Se chegou aqui, temos um arquivo válido (ou encontramos na raiz)
-            if firebase_path.exists() and firebase_path.is_file():
-                try:
-                    if not firebase_admin._apps:
-                        cred = credentials.Certificate(str(firebase_path))
-                        firebase_admin.initialize_app(cred)
-                        print("✅ Firebase Admin SDK inicializado com sucesso!")
-                        _firebase_initialized = True
-                    else:
-                        print("ℹ️  Firebase Admin SDK já está inicializado.")
-                except Exception as e:
-                    print(f"❌ ERRO FATAL: Falha ao inicializar Firebase Admin SDK: {e}")
-                    # Em desenvolvimento, apenas avisar
-                    if app.config.get('DEBUG', False):
-                        print("   Continuando em modo de desenvolvimento sem Firebase...")
-                    else:
-                        print("   Encerrando aplicação (Firebase é obrigatório em produção)")
-                        sys.exit(1)
-            else:
-                print(f"⚠️  Arquivo key.json não encontrado ou inválido em: {firebase_path}")
-                if not app.config.get('DEBUG', False):
-                    sys.exit(1)
+            print("⚠️ AVISO: Nenhuma configuração do Firebase encontrada.")
+            print("   Configurações verificadas: FIREBASE_JSON_BASE64, FIREBASE_SERVICE_ACCOUNT_JSON")
+            print("   Firebase Admin SDK não será inicializado. Defina FIREBASE_SERVICE_ACCOUNT_JSON no .env para autenticação.")
+            # Não encerrar o processo: permite subir o container para testes e configurar .env depois
     else:
         print("ℹ️  Firebase Admin SDK já está inicializado (pulando inicialização redundante).")
 

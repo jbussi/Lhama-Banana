@@ -30,15 +30,16 @@ def map_venda_status_to_order_status(venda_status: str, status_pagamento: Option
         Status mapeado para a tabela orders
     """
     # Mapeamento de status_pedido para status da tabela orders
+    # IMPORTANTE: 'pagamento_aprovado' só aparece quando situação Bling for "Em andamento" (ID 15)
     status_map = {
         # Status de pagamento
         'pendente': 'PENDENTE',
         'pendente_pagamento': 'PENDENTE',
         
         # Status de processamento
-        'pagamento_aprovado': 'PAGO',
+        'pagamento_aprovado': 'APROVADO',  # "Em andamento" no Bling (ID 15) - APROVADO só aqui
         'sincronizado_bling': 'PAGO',  # "Em aberto" no Bling - ainda não está em processamento
-        'em_processamento': 'APROVADO',  # "Em andamento" no Bling - APROVADO só aqui
+        'em_processamento': 'APROVADO',  # Outros status de processamento
         'processando_envio': 'APROVADO',
         
         # Status de NF-e
@@ -217,7 +218,7 @@ def get_order_by_token(public_token: str) -> Optional[Dict]:
                 o.criado_em,
                 o.atualizado_em,
                 v.codigo_pedido,
-                v.data_venda,
+                COALESCE(v.data_venda, v.created_at, o.criado_em) as data_venda,
                 v.status_pedido as venda_status,
                 p.status_pagamento,
                 p.forma_pagamento_tipo,
@@ -332,16 +333,52 @@ def get_order_by_token(public_token: str) -> Optional[Dict]:
                 conn.rollback()
         
         # Converter para dicionário
+        # Formatar datas para ISO string com timezone UTC explícito
+        from datetime import datetime, timezone, timedelta
+        
+        def format_datetime_to_iso_utc(dt_value):
+            """Converte datetime para ISO string com timezone UTC explícito"""
+            if not dt_value:
+                return None
+            if hasattr(dt_value, 'isoformat'):
+                # Se já tem timezone, usar diretamente
+                if dt_value.tzinfo is None:
+                    # Se não tem timezone, assumir UTC
+                    dt_value = dt_value.replace(tzinfo=timezone.utc)
+                return dt_value.isoformat()
+            elif isinstance(dt_value, str):
+                # Se já é string, verificar se tem timezone
+                if 'Z' in dt_value or '+' in dt_value or dt_value.endswith('UTC'):
+                    return dt_value
+                else:
+                    # Se não tem timezone, adicionar Z (UTC)
+                    return dt_value + 'Z' if not dt_value.endswith('Z') else dt_value
+            return None
+        
+        # Formatar data_venda para ISO string se for datetime
+        # Usar COALESCE para garantir que sempre tenha uma data (data_venda, criado_em da venda, ou criado_em do order)
+        data_venda_iso = None
+        data_venda_raw = result.get('data_venda')
+        if not data_venda_raw:
+            # Fallback para criado_em da venda ou do order
+            data_venda_raw = result.get('criado_em')
+        
+        data_venda_iso = format_datetime_to_iso_utc(data_venda_raw)
+        
+        # Formatar atualizado_em com timezone UTC explícito
+        atualizado_em_iso = format_datetime_to_iso_utc(result.get('atualizado_em'))
+        criado_em_iso = format_datetime_to_iso_utc(result.get('criado_em'))
+        
         order_data = {
             'id': str(result['id']),
             'venda_id': result['venda_id'],
             'public_token': str(result['public_token']),
             'status': status_mapped,  # Usar status mapeado (sincronizado)
             'valor': float(result['valor']),
-            'criado_em': result['criado_em'].isoformat() if result['criado_em'] else None,
-            'atualizado_em': result['atualizado_em'].isoformat() if result['atualizado_em'] else None,
+            'criado_em': criado_em_iso,
+            'atualizado_em': atualizado_em_iso,
             'codigo_pedido': result['codigo_pedido'],
-            'data_venda': result['data_venda'].isoformat() if result['data_venda'] else None,
+            'data_venda': data_venda_iso,  # Data formatada com timezone UTC explícito
             'venda_status': venda_status,  # Status original da tabela vendas
             'status_pagamento': status_pagamento,
             'forma_pagamento': result['forma_pagamento_tipo'],

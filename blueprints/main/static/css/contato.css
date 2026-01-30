@@ -63,6 +63,13 @@
     padding-right: 2rem;
 }
 
+.contact-texto-principal {
+    margin-bottom: 3rem;
+    line-height: 1.8;
+    color: #555;
+    font-size: 1.05rem;
+}
+
 .info-item {
     display: flex;
     margin-bottom: 1.5rem;

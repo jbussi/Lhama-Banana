@@ -30,9 +30,8 @@ def politica_envio():
                 ultima_atualizacao,
                 conteudo,
                 secoes
-            FROM politica_envio
-            WHERE ativo = TRUE
-            ORDER BY id DESC
+            FROM site_politica_envio
+            ORDER BY updated_at DESC
             LIMIT 1
         """)
         

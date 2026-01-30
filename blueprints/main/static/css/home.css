@@ -1123,11 +1123,18 @@ main {
         text-align: center;
     }
     
-    .contato-info .titulo-secao,
+    .contato-info .titulo-secao {
+        text-align: center !important;
+        display: block;
+        width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
     .contato-info .titulo-secao::after {
-        text-align: center;
-        left: 50%;
-        transform: translateX(-50%);
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        background-color: var(--cor-principal-turquesa);
     }
     
     .redes-sociais {
@@ -1144,6 +1151,21 @@ main {
     }
 }
 
+@media (max-width: 768px) {
+    .contato-info .titulo-secao {
+        text-align: center !important;
+        display: block;
+        width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .contato-info .titulo-secao::after {
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+    }
+}
+
 @media (max-width: 576px) {
     .newsletter {
         padding: 30px 20px;
@@ -1156,5 +1178,10 @@ main {
     .botao-rede-social {
         width: 100%;
         justify-content: center;
+    }
+    
+    .contato-info .titulo-secao {
+        text-align: center !important;
+        font-size: 1.8rem;
     }
 }

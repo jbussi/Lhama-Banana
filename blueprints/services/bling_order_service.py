@@ -417,8 +417,8 @@ def map_order_to_bling_format(venda: Dict) -> Dict:
     if pagamento:
         forma_pagamento_tipo = pagamento.get('forma_pagamento_tipo')
         num_parcelas = pagamento.get('parcelas', 1)
-        valor_total = float(venda.get('valor_total', 0))
-        valor_parcela = float(pagamento.get('valor_parcela', 0) or (valor_total / num_parcelas))
+        # Usar valor_total da venda (inclui frete e desconto)
+        valor_total = round(float(venda.get('valor_total', 0)), 2)
         
         # Buscar ID da forma de pagamento no Bling (passar número de parcelas para melhor mapeamento)
         from .bling_payment_service import map_checkout_payment_to_bling
@@ -438,6 +438,10 @@ def map_order_to_bling_format(venda: Dict) -> Dict:
                 base_date = base_date.date()
                 base_date = datetime.combine(base_date, datetime.min.time())
             
+            # Calcular valor base da parcela (arredondado para 2 casas decimais)
+            valor_parcela_base = round(valor_total / num_parcelas, 2)
+            soma_parcelas = 0.0
+            
             for i in range(num_parcelas):
                 vencimento = base_date + timedelta(days=30 * i)
                 if isinstance(vencimento, datetime):
@@ -447,12 +451,17 @@ def map_order_to_bling_format(venda: Dict) -> Dict:
                 else:
                     vencimento_str = data_parcela
                 
-                # Última parcela pode ter valor diferente por arredondamento
-                valor_parcela_final = valor_parcela if i < num_parcelas - 1 else (valor_total - (valor_parcela * (num_parcelas - 1)))
+                # Última parcela recebe a diferença para garantir que a soma seja exatamente igual ao valor_total
+                if i == num_parcelas - 1:
+                    # Última parcela: diferença para garantir soma exata
+                    valor_parcela_final = round(valor_total - soma_parcelas, 2)
+                else:
+                    valor_parcela_final = valor_parcela_base
+                    soma_parcelas += valor_parcela_final
                 
                 parcela = {
                     "dataVencimento": vencimento_str,
-                    "valor": valor_parcela_final
+                    "valor": round(valor_parcela_final, 2)  # Garantir 2 casas decimais
                 }
                 
                 # Sempre adicionar forma de pagamento se tiver ID
@@ -471,13 +480,31 @@ def map_order_to_bling_format(venda: Dict) -> Dict:
                     parcela["observacoes"] = f"Parcela {i + 1}/{num_parcelas} - {forma_pagamento_tipo} (ID não encontrado)"
                 
                 parcelas_bling.append(parcela)
-                
-            current_app.logger.info(f"💰 Criando {num_parcelas} parcelas de R$ {valor_parcela:.2f} cada")
+            
+            # Verificar soma das parcelas
+            soma_verificacao = sum([round(p.get('valor', 0), 2) for p in parcelas_bling])
+            current_app.logger.info(
+                f"💰 Criando {num_parcelas} parcelas. "
+                f"Valor total: R$ {valor_total:.2f}, Soma das parcelas: R$ {soma_verificacao:.2f}"
+            )
+            
+            if abs(soma_verificacao - valor_total) > 0.01:
+                current_app.logger.error(
+                    f"❌ ERRO: Soma das parcelas ({soma_verificacao:.2f}) difere do valor total ({valor_total:.2f})"
+                )
+                # Ajustar última parcela para garantir soma exata
+                diferenca = round(valor_total - soma_verificacao, 2)
+                if parcelas_bling:
+                    parcelas_bling[-1]['valor'] = round(parcelas_bling[-1].get('valor', 0) + diferenca, 2)
+                    current_app.logger.info(
+                        f"✅ Última parcela ajustada: R$ {parcelas_bling[-1]['valor']:.2f} "
+                        f"(diferença: R$ {diferenca:.2f})"
+                    )
         else:
             # Pagamento à vista: uma parcela
             parcela = {
                 "dataVencimento": data_parcela,
-                "valor": valor_total
+                "valor": round(valor_total, 2)  # Garantir 2 casas decimais
             }
             
             # Sempre adicionar forma de pagamento se tiver ID
@@ -496,13 +523,41 @@ def map_order_to_bling_format(venda: Dict) -> Dict:
             current_app.logger.info(f"💰 Criando 1 parcela de R$ {valor_total:.2f} ({forma_pagamento_tipo})")
     else:
         # Sem informações de pagamento: criar parcela padrão
+        valor_total_default = round(float(venda.get('valor_total', 0)), 2)
         parcela = {
             "dataVencimento": data_parcela,
-            "valor": float(venda.get('valor_total', 0)),
+            "valor": valor_total_default,
             "observacoes": ""
         }
         parcelas_bling.append(parcela)
-        current_app.logger.warning(f"⚠️ Sem informações de pagamento - criando parcela padrão")
+        current_app.logger.warning(f"⚠️ Sem informações de pagamento - criando parcela padrão de R$ {valor_total_default:.2f}")
+    
+    # Verificação final: garantir que a soma das parcelas seja exatamente igual ao valor_total
+    soma_final = sum([round(p.get('valor', 0), 2) for p in parcelas_bling])
+    valor_total_final = round(float(venda.get('valor_total', 0)), 2)
+    
+    if abs(soma_final - valor_total_final) > 0.01:
+        current_app.logger.error(
+            f"❌ ERRO CRÍTICO: Soma das parcelas ({soma_final:.2f}) difere do valor total ({valor_total_final:.2f})"
+        )
+        # Ajustar última parcela para garantir soma exata
+        if parcelas_bling:
+            diferenca = round(valor_total_final - soma_final, 2)
+            valor_anterior = parcelas_bling[-1].get('valor', 0)
+            parcelas_bling[-1]['valor'] = round(valor_anterior + diferenca, 2)
+            current_app.logger.info(
+                f"✅ Última parcela ajustada: R$ {valor_anterior:.2f} -> R$ {parcelas_bling[-1]['valor']:.2f} "
+                f"(diferença: R$ {diferenca:.2f})"
+            )
+            # Verificar novamente
+            soma_verificacao = sum([round(p.get('valor', 0), 2) for p in parcelas_bling])
+            current_app.logger.info(
+                f"✅ Soma final após ajuste: R$ {soma_verificacao:.2f} (esperado: R$ {valor_total_final:.2f})"
+            )
+    else:
+        current_app.logger.info(
+            f"✅ Soma das parcelas confere: R$ {soma_final:.2f} = R$ {valor_total_final:.2f}"
+        )
     
     # Montar pedido no formato Bling (API v3)
     # IMPORTANTE: O contato (cliente) já tem endereço fiscal
@@ -1260,6 +1315,60 @@ def update_order_situacao_to_logistica(venda_id: int) -> Dict:
         conn = get_db()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
+        # Função auxiliar para decrementar estoque quando pedido for para Logística
+        def decrementar_estoque_logistica():
+            try:
+                cur.execute("""
+                    SELECT produto_id, quantidade
+                    FROM itens_venda
+                    WHERE venda_id = %s
+                """, (venda_id,))
+                
+                itens = cur.fetchall()
+                estoque_decrementado = False
+                
+                for item in itens:
+                    produto_id = item[0]
+                    quantidade = item[1]
+                    
+                    cur.execute("""
+                        UPDATE produtos 
+                        SET estoque = estoque - %s,
+                            updated_at = NOW()
+                        WHERE id = %s AND estoque >= %s
+                    """, (quantidade, produto_id, quantidade))
+                    
+                    if cur.rowcount > 0:
+                        estoque_decrementado = True
+                        current_app.logger.info(
+                            f"✅ Estoque decrementado para produto {produto_id}: -{quantidade} unidades"
+                        )
+                    else:
+                        current_app.logger.warning(
+                            f"⚠️ Não foi possível decrementar estoque para produto {produto_id} "
+                            f"(estoque insuficiente ou produto não encontrado)"
+                        )
+                
+                if estoque_decrementado:
+                    conn.commit()
+                    current_app.logger.info(
+                        f"✅ Estoque local decrementado para pedido {venda_id} quando mudou para 'Logística'"
+                    )
+                    return True
+                else:
+                    conn.rollback()
+                    current_app.logger.warning(
+                        f"⚠️ Nenhum estoque foi decrementado para pedido {venda_id}"
+                    )
+                    return False
+            except Exception as estoque_error:
+                conn.rollback()
+                current_app.logger.error(
+                    f"❌ Erro ao decrementar estoque para pedido {venda_id}: {estoque_error}",
+                    exc_info=True
+                )
+                return False
+        
         try:
             # Buscar situação "Logística" no banco (tentar múltiplas variações)
             cur.execute("""
@@ -1570,6 +1679,10 @@ def update_order_situacao_to_logistica(venda_id: int) -> Dict:
                 bling_situacao_id=situacao_id,
                 bling_situacao_nome=situacao_nome
             )
+            
+            # IMPORTANTE: Decrementar estoque local quando pedido for para "Logística"
+            # O Bling também decrementa, mas precisamos manter sincronizado localmente
+            decrementar_estoque_logistica()
             
             return {
                 'success': True,

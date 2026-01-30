@@ -28,7 +28,20 @@
             <div class="contact-info">
                 <h2>Informações de Contato</h2>
                 {% if contato and contato.texto_principal %}
-                <p>{{ contato.texto_principal }}</p>
+                {# texto_principal pode vir:
+                   - como texto com \n
+                   - como HTML (<br>, <p>...)
+                   - como HTML escapado (&lt;br&gt;)
+                   Aqui normalizamos tudo para renderizar corretamente no frontend.
+                #}
+                <div class="contact-texto-principal">{{ (contato.texto_principal or '')
+                  |replace('&lt;br&gt;', '<br>')
+                  |replace('&lt;br/&gt;', '<br>')
+                  |replace('&lt;br /&gt;', '<br>')
+                  |replace('&lt;p&gt;', '<p>')
+                  |replace('&lt;/p&gt;', '</p>')
+                  |replace('\n', '<br>')
+                  |safe }}</div>
                 {% else %}
                 <p>Estamos à disposição para esclarecer suas dúvidas, ouvir sugestões ou receber seu feedback. Entre em contato conosco pelo formulário ou utilize um dos canais abaixo:</p>
                 {% endif %}

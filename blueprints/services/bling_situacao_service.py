@@ -8,7 +8,7 @@ from flask import current_app
 from typing import Dict, Optional, List
 from datetime import datetime
 import psycopg2.extras
-from .db import get_db
+from .db import get_db, execute_query_safely, execute_write_safely
 from .bling_api_service import make_bling_api_request
 
 
@@ -270,6 +270,10 @@ def map_bling_situacao_id_to_status(bling_situacao_id: int) -> Optional[str]:
     """
     Mapeia ID da situação do Bling para status do site
     
+    IMPORTANTE: 
+    - "pagamento_aprovado" só é retornado quando situação for "Em andamento" (ID 15)
+    - Outras situações retornam seus respectivos status
+    
     Args:
         bling_situacao_id: ID da situação no Bling
     
@@ -277,6 +281,11 @@ def map_bling_situacao_id_to_status(bling_situacao_id: int) -> Optional[str]:
         Status do site correspondente ou None se não mapeado
     """
     current_app.logger.info(f"🔍 [MAP_BLING_SITUACAO] Mapeando situação ID {bling_situacao_id} para status do site")
+    
+    # REGRA ESPECIAL: ID 15 (Em andamento) sempre retorna "pagamento_aprovado"
+    if bling_situacao_id == 15:
+        current_app.logger.info(f"✅ [MAP_BLING_SITUACAO] Situação ID 15 (Em andamento) → pagamento_aprovado")
+        return 'pagamento_aprovado'
     
     mapping = get_situacao_mapping(bling_situacao_id)
     
@@ -299,10 +308,10 @@ def map_bling_situacao_id_to_status(bling_situacao_id: int) -> Optional[str]:
     current_app.logger.info(f"🔍 [MAP_BLING_SITUACAO] Tentando mapear pelo nome: '{nome}' (lower: '{nome_lower}')")
     
     # Mapeamento padrão baseado no nome
-    # IMPORTANTE: "APROVADO" só aparece quando status do Bling for "Em andamento"
+    # IMPORTANTE: "pagamento_aprovado" só aparece quando status do Bling for "Em andamento" (ID 15)
     nome_to_status = {
         'em aberto': 'sincronizado_bling',  # Status: PAGO (não APROVADO)
-        'em andamento': 'em_processamento',  # Status: APROVADO (único que mostra APROVADO)
+        'em andamento': 'pagamento_aprovado',  # Status: APROVADO (único que mostra APROVADO) - ID 15
         'atendido': 'entregue',
         'cancelado': 'cancelado_pelo_vendedor',
         'venda agenciada': 'em_processamento',  # Status: APROVADO
@@ -310,7 +319,8 @@ def map_bling_situacao_id_to_status(bling_situacao_id: int) -> Optional[str]:
         'verificado': 'em_processamento',  # Status: APROVADO
         'venda atendimento humano': 'em_processamento',  # Status: APROVADO
         'logística': 'pronto_envio',
-        'logistica': 'pronto_envio'  # Sem acento também
+        'logistica': 'pronto_envio',  # Sem acento também
+        'pronto para entrega': 'pronto_envio'  # ID 718557
     }
     
     for key, status in nome_to_status.items():
@@ -384,17 +394,61 @@ def update_pedido_situacao(venda_id: int, bling_situacao_id: int,
     current_app.logger.info("=" * 80)
     
     conn = get_db()
-    cur = conn.cursor()
     
     try:
-        # Buscar situação atual do pedido
-        cur.execute("""
-            SELECT status_pedido, bling_situacao_id, bling_situacao_nome
-            FROM vendas
-            WHERE id = %s
-        """, (venda_id,))
+        # Verificar se as colunas bling_situacao_id e bling_situacao_nome existem
+        existing_columns_result = execute_query_safely("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'vendas' 
+            AND column_name IN ('bling_situacao_id', 'bling_situacao_nome')
+        """, fetch_mode='all')
+        existing_columns = [row[0] for row in existing_columns_result] if existing_columns_result else []
+        has_bling_situacao_id = 'bling_situacao_id' in existing_columns
+        has_bling_situacao_nome = 'bling_situacao_nome' in existing_columns
         
-        pedido_atual = cur.fetchone()
+        # Criar colunas se não existirem
+        if not has_bling_situacao_id:
+            current_app.logger.info("Coluna bling_situacao_id não existe na tabela vendas. Criando...")
+            try:
+                execute_write_safely("""
+                    ALTER TABLE vendas 
+                    ADD COLUMN bling_situacao_id INTEGER
+                """, commit=True)
+                execute_write_safely("""
+                    CREATE INDEX IF NOT EXISTS idx_vendas_bling_situacao_id ON vendas(bling_situacao_id)
+                """, commit=True)
+                has_bling_situacao_id = True
+                current_app.logger.info("Coluna bling_situacao_id criada com sucesso")
+            except Exception as alter_error:
+                current_app.logger.warning(f"Erro ao criar coluna bling_situacao_id: {alter_error}")
+        
+        if not has_bling_situacao_nome:
+            current_app.logger.info("Coluna bling_situacao_nome não existe na tabela vendas. Criando...")
+            try:
+                execute_write_safely("""
+                    ALTER TABLE vendas 
+                    ADD COLUMN bling_situacao_nome VARCHAR(255)
+                """, commit=True)
+                has_bling_situacao_nome = True
+                current_app.logger.info("Coluna bling_situacao_nome criada com sucesso")
+            except Exception as alter_error:
+                current_app.logger.warning(f"Erro ao criar coluna bling_situacao_nome: {alter_error}")
+        
+        # Buscar situação atual do pedido (ajustar query baseado nas colunas disponíveis)
+        if has_bling_situacao_id and has_bling_situacao_nome:
+            pedido_atual = execute_query_safely("""
+                SELECT status_pedido, bling_situacao_id, bling_situacao_nome
+                FROM vendas
+                WHERE id = %s
+            """, (venda_id,), fetch_mode='one')
+        else:
+            # Se as colunas não existem, buscar apenas status_pedido
+            pedido_atual = execute_query_safely("""
+                SELECT status_pedido, NULL as bling_situacao_id, NULL as bling_situacao_nome
+                FROM vendas
+                WHERE id = %s
+            """, (venda_id,), fetch_mode='one')
         if pedido_atual:
             status_atual = pedido_atual[0]
             situacao_id_atual = pedido_atual[1]
@@ -421,29 +475,39 @@ def update_pedido_situacao(venda_id: int, bling_situacao_id: int,
         current_app.logger.info(f"📊 [UPDATE_PEDIDO_SITUACAO] Resultado do mapeamento:")
         current_app.logger.info(f"   Status site: {status_site or '(sem mapeamento)'}")
         
-        # Atualizar pedido
+        # Atualizar pedido (ajustar query baseado nas colunas disponíveis)
         if status_site:
             current_app.logger.info(f"✅ [UPDATE_PEDIDO_SITUACAO] Atualizando pedido com status mapeado...")
-            cur.execute("""
-                UPDATE vendas
-                SET status_pedido = %s,
-                    bling_situacao_id = %s,
-                    bling_situacao_nome = %s
-                WHERE id = %s
-            """, (status_site, bling_situacao_id, bling_situacao_nome, venda_id))
+            if has_bling_situacao_id and has_bling_situacao_nome:
+                rowcount = execute_write_safely("""
+                    UPDATE vendas
+                    SET status_pedido = %s,
+                        bling_situacao_id = %s,
+                        bling_situacao_nome = %s
+                    WHERE id = %s
+                """, (status_site, bling_situacao_id, bling_situacao_nome, venda_id), commit=True)
+            else:
+                # Se as colunas não existem, atualizar apenas status_pedido
+                rowcount = execute_write_safely("""
+                    UPDATE vendas
+                    SET status_pedido = %s
+                    WHERE id = %s
+                """, (status_site, venda_id), commit=True)
         else:
             current_app.logger.warning(f"⚠️ [UPDATE_PEDIDO_SITUACAO] Sem mapeamento de status, atualizando apenas situação do Bling...")
-            # Se não houver mapeamento, apenas atualizar situação do Bling
-            cur.execute("""
-                UPDATE vendas
-                SET bling_situacao_id = %s,
-                    bling_situacao_nome = %s
-                WHERE id = %s
-            """, (bling_situacao_id, bling_situacao_nome, venda_id))
+            # Se não houver mapeamento, apenas atualizar situação do Bling (se as colunas existirem)
+            if has_bling_situacao_id and has_bling_situacao_nome:
+                rowcount = execute_write_safely("""
+                    UPDATE vendas
+                    SET bling_situacao_id = %s,
+                        bling_situacao_nome = %s
+                    WHERE id = %s
+                """, (bling_situacao_id, bling_situacao_nome, venda_id), commit=True)
+            else:
+                current_app.logger.warning(f"⚠️ [UPDATE_PEDIDO_SITUACAO] Colunas bling_situacao_id/bling_situacao_nome não existem e não foram criadas. Nada a atualizar.")
+                rowcount = 0
         
-        conn.commit()
-        
-        updated = cur.rowcount > 0
+        updated = rowcount and rowcount > 0
         
         if updated:
             current_app.logger.info("=" * 80)
@@ -458,10 +522,12 @@ def update_pedido_situacao(venda_id: int, bling_situacao_id: int,
         return updated
         
     except Exception as e:
-        conn.rollback()
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         current_app.logger.error(f"❌ [UPDATE_PEDIDO_SITUACAO] Erro ao atualizar situação do pedido {venda_id}: {e}")
         import traceback
         current_app.logger.error(traceback.format_exc())
         return False
-    finally:
-        cur.close()

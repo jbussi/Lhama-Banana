@@ -63,12 +63,19 @@ def get_product_for_bling_sync(produto_id: int) -> Optional[Dict]:
             pass
         # #endregion
         
+        # Fazer rollback para garantir que a conexão está limpa
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
         # Verificar primeiro se produto existe na tabela produtos (hipótese C)
         # #region agent log
         try:
-            cur.execute("SELECT id, codigo_sku, ncm, nome_produto_id, estampa_id, tamanho_id FROM produtos WHERE id = %s", (produto_id,))
+            # Não tentar acessar colunas que não existem diretamente em produtos
+            cur.execute("SELECT id, codigo_sku, ncm FROM produtos WHERE id = %s", (produto_id,))
             produto_raw = cur.fetchone()
             import os
             import json as json_module
@@ -134,10 +141,14 @@ def get_product_for_bling_sync(produto_id: int) -> Optional[Dict]:
                 e.nome as estampa_nome,
                 t.nome as tamanho_nome
             FROM produtos p
-            JOIN nome_produto np ON p.nome_produto_id = np.id
-            LEFT JOIN categorias c ON np.categoria_id = c.id
-            LEFT JOIN estampa e ON p.estampa_id = e.id
-            LEFT JOIN tamanho t ON p.tamanho_id = t.id
+            JOIN produtos_nome_produto_lnk pnp ON p.id = pnp.produto_id
+            JOIN nome_produto np ON pnp.nome_produto_id = np.id
+            LEFT JOIN nome_produto_categoria_lnk npc ON np.id = npc.nome_produto_id
+            LEFT JOIN categorias c ON npc.categoria_id = c.id
+            LEFT JOIN produtos_estampa_lnk pe ON p.id = pe.produto_id
+            LEFT JOIN estampa e ON pe.estampa_id = e.id
+            LEFT JOIN produtos_tamanho_lnk pt ON p.id = pt.produto_id
+            LEFT JOIN tamanho t ON pt.tamanho_id = t.id
             WHERE p.id = %s
         """
         
@@ -146,6 +157,12 @@ def get_product_for_bling_sync(produto_id: int) -> Optional[Dict]:
         ativo_column_exists = False
         ativo_check_error = None
         # #endregion
+        
+        # Fazer rollback antes de verificar coluna ativo
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         
         try:
             cur.execute("""
@@ -240,6 +257,12 @@ def get_product_for_bling_sync(produto_id: int) -> Optional[Dict]:
             pass
         # #endregion
         
+        # Fazer rollback antes de executar a query principal para garantir conexão limpa
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        
         cur.execute(query_base, (produto_id,))
         
         # #region agent log
@@ -310,7 +333,7 @@ def get_product_for_bling_sync(produto_id: int) -> Optional[Dict]:
             return None
         
         produto_dict = dict(produto)
-        current_app.logger.debug(f"Produto {produto_id} encontrado: SKU={produto_dict.get('codigo_sku')}, NCM={produto_dict.get('ncm')}")
+        current_app.logger.debug(f"Produto {produto_id} encontrado: SKU={produto_dict.get('codigo_sku')}, NCM={produto_dict.get('ncm')}, CEST={produto_dict.get('cest')}")
         
         # #region agent log
         import os
@@ -490,9 +513,42 @@ def map_product_to_bling_format(produto: Dict) -> Dict:
         "tipo": "P",  # P=Produto, S=Serviço, K=Kit
         "formato": "S",  # S=Simples, V=Variável, C=Composto
         "unidade": "UN",  # Unidade padrão
-        "ncm": produto.get('ncm'),  # NCM (necessário para NF-e)
         "situacao": situacao,  # A=Ativo, I=Inativo (obrigatório)
     }
+    
+    # Tributação - NCM e CEST devem estar dentro do objeto tributacao
+    tributacao = {
+        "origem": 0,  # 0 = Nacional (padrão)
+    }
+    
+    # NCM (obrigatório para NF-e) - sempre incluir se disponível
+    ncm = produto.get('ncm')
+    if ncm:
+        # Garantir que NCM seja string e tenha 8 dígitos
+        ncm_str = str(ncm).strip()
+        if len(ncm_str) == 8 and ncm_str.isdigit():
+            tributacao["ncm"] = ncm_str
+            current_app.logger.info(f"[map_product_to_bling_format] NCM incluído para produto {produto.get('codigo_sku')}: {ncm_str}")
+        else:
+            current_app.logger.warning(f"[map_product_to_bling_format] NCM inválido para produto {produto.get('codigo_sku')}: '{ncm_str}' (deve ter 8 dígitos)")
+    else:
+        current_app.logger.warning(f"[map_product_to_bling_format] NCM não informado para produto {produto.get('codigo_sku')} (obrigatório para NF-e)")
+    
+    # CEST (opcional, mas importante para produtos sujeitos a ST)
+    cest = produto.get('cest')
+    if cest:
+        # Garantir que CEST seja string e tenha 7 dígitos
+        cest_str = str(cest).strip()
+        if len(cest_str) == 7 and cest_str.isdigit():
+            tributacao["cest"] = cest_str
+            current_app.logger.info(f"[map_product_to_bling_format] CEST incluído para produto {produto.get('codigo_sku')}: {cest_str}")
+        else:
+            current_app.logger.warning(f"[map_product_to_bling_format] CEST inválido para produto {produto.get('codigo_sku')}: '{cest_str}' (deve ter 7 dígitos)")
+    else:
+        current_app.logger.debug(f"[map_product_to_bling_format] CEST não informado para produto {produto.get('codigo_sku')} (opcional)")
+    
+    # Incluir objeto tributacao no produto
+    bling_product["tributacao"] = tributacao
     
     # Estoque (essencial)
     # Garantir que estoque seja um número válido (None vira 0, mas 0 real permanece 0)
@@ -553,10 +609,7 @@ def map_product_to_bling_format(produto: Dict) -> Dict:
             f"L={dimensoes_largura}cm x A={dimensoes_altura}cm x C={dimensoes_comprimento}cm"
         )
     
-    # CEST (Código Especificador da Substituição Tributária) - opcional
-    cest = produto.get('cest')
-    if cest and len(str(cest)) == 7 and str(cest).isdigit():
-        bling_product["cest"] = str(cest)
+    # CEST já foi adicionado acima no bling_product, não precisa adicionar novamente
     
     # Descrição básica (opcional, apenas se disponível)
     if produto.get('descricao_curta'):
@@ -597,7 +650,7 @@ def sync_product_to_bling(produto_id: int, force_update: bool = False) -> Dict:
                 'error': error_msg
             }
         
-        current_app.logger.info(f"[sync_product_to_bling] Produto encontrado: SKU={produto.get('codigo_sku')}, NCM={produto.get('ncm')}, Nome={produto.get('nome')}")
+        current_app.logger.info(f"[sync_product_to_bling] Produto encontrado: SKU={produto.get('codigo_sku')}, NCM={produto.get('ncm')}, CEST={produto.get('cest')}, Nome={produto.get('nome')}")
         
         # 2. Validar produto
         validation_errors = validate_product_for_bling(produto)
@@ -2117,22 +2170,39 @@ def create_local_product_from_bling(bling_product: Dict) -> Dict:
             nome_produto_row = cur.fetchone()
             
             if not nome_produto_row:
-                # Criar nome_produto com categoria
+                # Criar nome_produto sem categoria (categoria será linkada depois)
                 cur.execute("""
-                    INSERT INTO nome_produto (nome, categoria_id, ativo)
-                    VALUES (%s, %s, TRUE)
+                    INSERT INTO nome_produto (nome, ativo)
+                    VALUES (%s, TRUE)
                     RETURNING id
-                """, (nome_base, categoria_id))
+                """, (nome_base,))
                 nome_produto_id = cur.fetchone()['id']
-            else:
-                nome_produto_id = nome_produto_row['id']
-                # Atualizar categoria se necessário
+                # Criar link com categoria se fornecida
                 if categoria_id:
                     cur.execute("""
-                        UPDATE nome_produto 
-                        SET categoria_id = %s 
-                        WHERE id = %s
-                    """, (categoria_id, nome_produto_id))
+                        INSERT INTO nome_produto_categoria_lnk (nome_produto_id, categoria_id)
+                        VALUES (%s, %s)
+                        ON CONFLICT (nome_produto_id, categoria_id) DO NOTHING
+                    """, (nome_produto_id, categoria_id))
+            else:
+                nome_produto_id = nome_produto_row['id']
+                # Atualizar categoria se necessário (usando tabela de link)
+                if categoria_id:
+                    # Verificar se já existe link
+                    cur.execute("""
+                        SELECT id FROM nome_produto_categoria_lnk 
+                        WHERE nome_produto_id = %s AND categoria_id = %s
+                    """, (nome_produto_id, categoria_id))
+                    if not cur.fetchone():
+                        # Remover links antigos e criar novo
+                        cur.execute("""
+                            DELETE FROM nome_produto_categoria_lnk 
+                            WHERE nome_produto_id = %s
+                        """, (nome_produto_id,))
+                        cur.execute("""
+                            INSERT INTO nome_produto_categoria_lnk (nome_produto_id, categoria_id)
+                            VALUES (%s, %s)
+                        """, (nome_produto_id, categoria_id))
             
             # Verificar se tem estampa e tamanho
             if not estampa_id or not tamanho_id:

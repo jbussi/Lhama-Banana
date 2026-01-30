@@ -35,9 +35,8 @@ def home():
                 estatisticas_clientes,
                 estatisticas_pecas,
                 estatisticas_anos
-            FROM conteudo_home
-            WHERE ativo = TRUE
-            ORDER BY id DESC
+            FROM site_conteudo_home
+            ORDER BY updated_at DESC
             LIMIT 1
         """)
         
@@ -90,9 +89,8 @@ def home():
                 horario_atendimento,
                 valores,
                 redes_sociais
-            FROM informacoes_empresa
-            WHERE ativo = TRUE
-            ORDER BY id DESC
+            FROM site_informacoes_empresa
+            ORDER BY updated_at DESC
             LIMIT 1
         """)
         

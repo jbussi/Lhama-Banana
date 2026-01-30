@@ -107,10 +107,14 @@ def process_checkout():
                     c.nome AS categoria_nome
                 FROM carrinho_itens ci
                 JOIN produtos p ON ci.produto_id = p.id
-                JOIN nome_produto np ON p.nome_produto_id = np.id
-                JOIN estampa e ON p.estampa_id = e.id
-                JOIN tamanho t ON p.tamanho_id = t.id
-                JOIN categorias c ON np.categoria_id = c.id
+                LEFT JOIN produtos_nome_produto_lnk pnp ON p.id = pnp.produto_id
+                LEFT JOIN nome_produto np ON pnp.nome_produto_id = np.id
+                LEFT JOIN produtos_estampa_lnk pe ON p.id = pe.produto_id
+                LEFT JOIN estampa e ON pe.estampa_id = e.id
+                LEFT JOIN produtos_tamanho_lnk pt ON p.id = pt.produto_id
+                LEFT JOIN tamanho t ON pt.tamanho_id = t.id
+                LEFT JOIN nome_produto_categoria_lnk npc ON np.id = npc.nome_produto_id
+                LEFT JOIN categorias c ON npc.categoria_id = c.id
                 WHERE ci.carrinho_id = %s
                 ORDER BY ci.id ASC
             """, (cart_id,))
@@ -238,21 +242,34 @@ def process_checkout():
                 
                 # Recuperar dados do cartão do cache temporário (uso único, será removido após)
                 # Importação lazy para evitar importação circular
+                session_id = session.get('session_id') or request.cookies.get('session', 'anonymous')
+                current_app.logger.info(f"[Checkout] Tentando recuperar dados do cartão (card_id: {card_id[:8] if card_id else 'None'}..., session: {session_id})")
                 try:
                     from ..api.pagbank import get_card_data_by_id
-                    card_data = get_card_data_by_id(card_id)
+                    card_data = get_card_data_by_id(card_id, session_id=session_id)
                 except ImportError:
                     # Fallback: tentar importar diretamente
                     import sys
                     import os
                     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
                     from blueprints.api.pagbank import get_card_data_by_id
-                    card_data = get_card_data_by_id(card_id)
+                    card_data = get_card_data_by_id(card_id, session_id=session_id)
+                except Exception as e:
+                    current_app.logger.error(f"[Checkout] Erro ao importar get_card_data_by_id: {e}")
+                    import traceback
+                    current_app.logger.error(f"[Checkout] Traceback: {traceback.format_exc()}")
+                    card_data = None
+                
                 if not card_data:
+                    current_app.logger.error(f"[Checkout] Não foi possível recuperar dados do cartão (card_id: {card_id[:8] if card_id else 'None'}..., session: {session_id})")
+                    current_app.logger.error(f"[Checkout] Possíveis causas: cache expirado, múltiplos workers, ou card_id inválido")
                     conn.rollback()
                     return jsonify({
-                        "erro": "Dados do cartão expirados ou inválidos. Por favor, tente novamente."
+                        "erro": "Dados do cartão expirados ou inválidos. Por favor, valide o cartão novamente e tente fazer o checkout.",
+                        "detalhes": "O tempo entre a validação do cartão e o checkout pode ter sido muito longo, ou houve um problema de sincronização. Tente novamente."
                     }), 400
+                
+                current_app.logger.info(f"[Checkout] Dados do cartão recuperados com sucesso (card_id: {card_id[:8]}...)")
                 
                 # Usar CPF/CNPJ do portador do cartão, ou do cliente como fallback
                 card_holder_cpf_cnpj = (
@@ -632,12 +649,15 @@ def get_cart_details():
                     np.nome AS nome_produto,
                     e.nome AS estampa_nome,
                     t.nome AS tamanho_nome,
-                    (SELECT ip.url FROM imagens_produto ip WHERE ip.produto_id = p.id ORDER BY ip.ordem ASC LIMIT 1) AS image_url
+                    (SELECT ip.url FROM imagens_produto_produto_lnk ipl JOIN imagens_produto ip ON ipl.imagem_produto_id = ip.id WHERE ipl.produto_id = p.id ORDER BY COALESCE(ipl.imagem_produto_ord, ip.ordem, 0) ASC LIMIT 1) AS image_url
                 FROM carrinho_itens ci
                 JOIN produtos p ON ci.produto_id = p.id
-                JOIN nome_produto np ON p.nome_produto_id = np.id
-                JOIN estampa e ON p.estampa_id = e.id
-                JOIN tamanho t ON p.tamanho_id = t.id
+                LEFT JOIN produtos_nome_produto_lnk pnp ON p.id = pnp.produto_id
+                LEFT JOIN nome_produto np ON pnp.nome_produto_id = np.id
+                LEFT JOIN produtos_estampa_lnk pe ON p.id = pe.produto_id
+                LEFT JOIN estampa e ON pe.estampa_id = e.id
+                LEFT JOIN produtos_tamanho_lnk pt ON p.id = pt.produto_id
+                LEFT JOIN tamanho t ON pt.tamanho_id = t.id
                 WHERE ci.carrinho_id = %s
                 ORDER BY ci.id ASC
             """, (cart_id,))

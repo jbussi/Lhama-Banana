@@ -71,17 +71,29 @@ def get_fiscal_data():
         cur = None
         try:
             cur = conn.cursor()
+            # Verificar se a tabela existe antes de consultar
             cur.execute("""
-                SELECT 
-                    id, tipo, cpf_cnpj, nome_razao_social,
-                    inscricao_estadual, inscricao_municipal,
-                    rua, numero, complemento, bairro, cidade, estado, cep,
-                    ativo, criado_em, atualizado_em
-                FROM dados_fiscais
-                WHERE usuario_id = %s AND ativo = TRUE
-            """, (user_data['id'],))
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'dados_fiscais'
+                )
+            """)
+            table_exists = cur.fetchone()[0]
             
-            fiscal_data = cur.fetchone()
+            if not table_exists:
+                fiscal_data = None
+            else:
+                cur.execute("""
+                    SELECT 
+                        id, tipo, cpf_cnpj, nome_razao_social,
+                        inscricao_estadual, inscricao_municipal,
+                        rua, numero, complemento, bairro, cidade, estado, cep,
+                        ativo, criado_em, atualizado_em
+                    FROM dados_fiscais
+                    WHERE usuario_id = %s AND ativo = TRUE
+                """, (user_data['id'],))
+                fiscal_data = cur.fetchone()
         finally:
             if cur:
                 cur.close()
@@ -178,6 +190,19 @@ def create_fiscal_data():
         try:
             cur = conn.cursor()
             
+            # Verificar se a tabela existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'dados_fiscais'
+                )
+            """)
+            table_exists = cur.fetchone()[0]
+            
+            if not table_exists:
+                return jsonify({"erro": "Tabela de dados fiscais não configurada"}), 503
+            
             # Verificar se já existe (ativo ou inativo)
             cur.execute("SELECT id, ativo FROM dados_fiscais WHERE usuario_id = %s", (user_data['id'],))
             existing = cur.fetchone()
@@ -229,8 +254,12 @@ def create_fiscal_data():
                 fiscal_id = cur.fetchone()[0]
             
             conn.commit()
+            print(f"Dados fiscais salvos com sucesso. ID: {fiscal_id}, User ID: {user_data['id']}")
         except Exception as e:
             conn.rollback()
+            print(f"Erro ao salvar dados fiscais: {e}")
+            import traceback
+            traceback.print_exc()
             raise
         finally:
             if cur:
@@ -271,6 +300,19 @@ def delete_fiscal_data():
         cur = None
         try:
             cur = conn.cursor()
+            
+            # Verificar se a tabela existe
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'dados_fiscais'
+                )
+            """)
+            table_exists = cur.fetchone()[0]
+            
+            if not table_exists:
+                return jsonify({"erro": "Tabela de dados fiscais não configurada"}), 503
             
             cur.execute("""
                 UPDATE dados_fiscais 

@@ -28,6 +28,7 @@ import re
 import psycopg2
 import psycopg2.extras
 from typing import Dict, List, Optional, Tuple
+from .db import get_db, execute_query_safely, execute_write_safely
 
 # --- Funções de interação com o banco de dados ---
 def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipping_info: Dict, 
@@ -50,33 +51,30 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
     Returns:
         Tuple com (venda_id, codigo_pedido)
     """
-    conn = g.db
-    cur = conn.cursor()
+    conn = get_db()
     
     try:
         # 1. Verificar se a coluna usuario_id existe, se não, criar
-        cur.execute("""
+        usuario_id_result = execute_query_safely("""
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_name = 'vendas' 
             AND column_name = 'usuario_id'
-        """)
-        usuario_id_exists = cur.fetchone() is not None
+        """, fetch_mode='one')
+        usuario_id_exists = usuario_id_result is not None
         
         if not usuario_id_exists:
             current_app.logger.info("Coluna usuario_id não existe na tabela vendas. Criando...")
             try:
-                cur.execute("""
+                execute_write_safely("""
                     ALTER TABLE vendas 
                     ADD COLUMN usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
-                """)
-                cur.execute("""
+                """, commit=True)
+                execute_write_safely("""
                     CREATE INDEX IF NOT EXISTS idx_vendas_usuario_id ON vendas (usuario_id)
-                """)
-                conn.commit()
+                """, commit=True)
                 current_app.logger.info("Coluna usuario_id criada com sucesso")
             except Exception as alter_error:
-                conn.rollback()
                 current_app.logger.warning(f"Erro ao criar coluna usuario_id (pode já existir): {alter_error}")
         
         # 2. Gerar um código de pedido único
@@ -148,13 +146,13 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
             codigo_pedido, usuario_id, valor_total, valor_frete, valor_desconto,
             endereco_entrega_id, nome_recebedor, rua_entrega, numero_entrega, complemento_entrega, 
             bairro_entrega, cidade_entrega, estado_entrega, cep_entrega, telefone_entrega, email_entrega,
-            status_pedido, cliente_ip, user_agent,
+            status_pedido, data_venda, cliente_ip, user_agent,
             transportadora_nome, transportadora_cnpj, transportadora_ie, transportadora_uf,
             transportadora_municipio, transportadora_endereco, transportadora_numero,
             transportadora_complemento, transportadora_bairro, transportadora_cep,
             melhor_envio_service_id, melhor_envio_service_name"""
         
-        base_values = "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s"
+        base_values = "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s"
         
         # Adicionar cupom_id se fornecido
         if cupom_id:
@@ -179,6 +177,7 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
                 shipping_info.get('cidade'), shipping_info.get('estado'), shipping_info.get('cep'),
                 shipping_info.get('telefone'), shipping_info.get('email'),
                 'pendente_pagamento',
+                # data_venda será NOW() no SQL, não precisa passar parâmetro
                 client_ip, user_agent,
                 # Dados da transportadora
                 transportadora_data.get('nome'),
@@ -215,6 +214,7 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
                 shipping_info.get('cidade'), shipping_info.get('estado'), shipping_info.get('cep'),
                 shipping_info.get('telefone'), shipping_info.get('email'),
                 'pendente_pagamento',
+                # data_venda será NOW() no SQL, não precisa passar parâmetro
                 client_ip, user_agent,
                 # Dados da transportadora
                 transportadora_data.get('nome'),
@@ -235,46 +235,45 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
                 params_list.append(cupom_id)
             params = tuple(params_list)
         
-        cur.execute(query, params)
-        venda_id = cur.fetchone()[0]
+        # 2. Criar venda usando execute_write_safely
+        result = execute_write_safely(query, params, commit=True)
+        if not result:
+            raise Exception("Falha ao criar venda")
+        venda_id = result[0]
 
         # 3. Verificar se as colunas venda_id e produto_id existem em itens_venda
-        cur.execute("""
+        existing_columns_result = execute_query_safely("""
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_name = 'itens_venda' 
             AND column_name IN ('venda_id', 'produto_id')
-        """)
-        existing_columns = [row[0] for row in cur.fetchall()]
+        """, fetch_mode='all')
+        existing_columns = [row[0] for row in existing_columns_result] if existing_columns_result else []
         has_venda_id = 'venda_id' in existing_columns
         has_produto_id = 'produto_id' in existing_columns
         
         if not has_venda_id:
             current_app.logger.info("Coluna venda_id não existe em itens_venda. Criando...")
             try:
-                cur.execute("""
+                execute_write_safely("""
                     ALTER TABLE itens_venda 
                     ADD COLUMN venda_id INTEGER REFERENCES vendas(id) ON DELETE CASCADE
-                """)
-                conn.commit()
+                """, commit=True)
                 has_venda_id = True
                 current_app.logger.info("Coluna venda_id criada com sucesso")
             except Exception as alter_error:
-                conn.rollback()
                 current_app.logger.warning(f"Erro ao criar coluna venda_id: {alter_error}")
         
         if not has_produto_id:
             current_app.logger.info("Coluna produto_id não existe em itens_venda. Criando...")
             try:
-                cur.execute("""
+                execute_write_safely("""
                     ALTER TABLE itens_venda 
                     ADD COLUMN produto_id INTEGER REFERENCES produtos(id) ON DELETE SET NULL
-                """)
-                conn.commit()
+                """, commit=True)
                 has_produto_id = True
                 current_app.logger.info("Coluna produto_id criada com sucesso")
             except Exception as alter_error:
-                conn.rollback()
                 current_app.logger.warning(f"Erro ao criar coluna produto_id: {alter_error}")
         
         # 4. Inserir na tabela 'itens_venda'
@@ -284,16 +283,15 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
         # 2. O webhook do Bling notificar mudanças de estoque (stock.updated)
         for item in cart_items:
             # Verificar estoque disponível (apenas para validação, não decrementa)
-            cur.execute("""
+            estoque_result = execute_query_safely("""
                 SELECT estoque FROM produtos WHERE id = %s
-            """, (item['produto_id'],))
+            """, (item['produto_id'],), fetch_mode='one')
             
-            estoque_atual = cur.fetchone()
-            if not estoque_atual or estoque_atual[0] < item['quantidade']:
+            if not estoque_result or estoque_result[0] < item['quantidade']:
                 raise Exception(f"Estoque insuficiente para o produto {item.get('nome_produto_snapshot', 'N/A')}")
             
-            # Inserir item da venda
-            cur.execute("""
+            # Inserir item da venda usando execute_write_safely
+            execute_write_safely("""
                 INSERT INTO itens_venda (
                     venda_id, produto_id, quantidade, preco_unitario, subtotal,
                     nome_produto_snapshot, sku_produto_snapshot, detalhes_produto_snapshot
@@ -302,58 +300,59 @@ def create_order_and_items(user_id: Optional[int], cart_items: List[Dict], shipp
                 venda_id, item['produto_id'], item['quantidade'], item['preco_unitario'], item['subtotal'],
                 item['nome_produto_snapshot'], item['sku_produto_snapshot'], 
                 json.dumps(item.get('detalhes_produto_snapshot', {}))
-            ))
+            ), commit=True)
             
-            # REMOVIDO: Decremento de estoque
-            # O Bling é a fonte de verdade para estoque e abaterá automaticamente quando o pedido for criado
+            # IMPORTANTE: Estoque NÃO é decrementado aqui
+            # O estoque será decrementado apenas quando o pedido for para "Logística" no Bling
+            # Isso garante que o estoque só seja abatido quando o pedido realmente for processado
             current_app.logger.info(
-                f"ℹ️ Item {item.get('nome_produto_snapshot')} adicionado ao pedido. "
-                f"Estoque será gerenciado pelo Bling."
+                f"✅ Item {item.get('nome_produto_snapshot')} adicionado ao pedido. "
+                f"Estoque será decrementado quando pedido for para 'Logística' no Bling."
             )
 
         # 5. Registrar uso do cupom se fornecido
         if cupom_id and user_id:
             try:
                 # Buscar CPF do usuário
-                cur.execute("SELECT cpf FROM usuarios WHERE id = %s", (user_id,))
-                user_cpf_result = cur.fetchone()
+                user_cpf_result = execute_query_safely(
+                    "SELECT cpf FROM usuarios WHERE id = %s", 
+                    (user_id,), 
+                    fetch_mode='one'
+                )
                 user_cpf = None
                 if user_cpf_result and user_cpf_result[0]:
                     # Limpar CPF (remover formatação)
                     user_cpf = re.sub(r'[^0-9]', '', user_cpf_result[0])
                 
                 # Registrar uso do cupom
-                cur.execute("""
+                execute_write_safely("""
                     INSERT INTO cupom_usado (cupom_id, usuario_id, venda_id, valor_desconto_aplicado, cpf_usuario)
                     VALUES (%s, %s, %s, %s, %s)
-                """, (cupom_id, user_id, venda_id, discount_value, user_cpf))
+                """, (cupom_id, user_id, venda_id, discount_value, user_cpf), commit=True)
                 
                 # Atualizar contador de uso do cupom
-                cur.execute("""
+                execute_write_safely("""
                     UPDATE cupom 
                     SET uso_atual = uso_atual + 1 
                     WHERE id = %s
-                """, (cupom_id,))
+                """, (cupom_id,), commit=True)
                 
-                conn.commit()
                 current_app.logger.info(f"Uso do cupom {cupom_id} registrado para venda {venda_id}")
             except Exception as cupom_error:
-                conn.rollback()
                 current_app.logger.error(f"Erro ao registrar uso do cupom: {cupom_error}")
                 # Não falhar o pedido por erro no registro do cupom
-                conn.commit()
-        else:
-            conn.commit()
         
         current_app.logger.info(f"Pedido {codigo_pedido} criado com sucesso. Venda ID: {venda_id}")
         return venda_id, codigo_pedido
         
     except Exception as e:
-        conn.rollback()
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         current_app.logger.error(f"Erro ao criar pedido: {e}")
         raise e
-    finally:
-        cur.close()
 
 def create_payment_entry(venda_id: int, payment_data: Dict, pagseguro_response: Dict) -> int:
     """
@@ -367,33 +366,30 @@ def create_payment_entry(venda_id: int, payment_data: Dict, pagseguro_response: 
     Returns:
         ID da entrada de pagamento criada
     """
-    conn = g.db
-    cur = conn.cursor()
+    conn = get_db()
     
     try:
         # Verificar se a coluna venda_id existe, se não, criar
-        cur.execute("""
+        venda_id_result = execute_query_safely("""
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_name = 'pagamentos' 
             AND column_name = 'venda_id'
-        """)
-        venda_id_exists = cur.fetchone() is not None
+        """, fetch_mode='one')
+        venda_id_exists = venda_id_result is not None
         
         if not venda_id_exists:
             current_app.logger.info("Coluna venda_id não existe na tabela pagamentos. Criando...")
             try:
-                cur.execute("""
+                execute_write_safely("""
                     ALTER TABLE pagamentos 
                     ADD COLUMN venda_id INTEGER REFERENCES vendas(id) ON DELETE CASCADE
-                """)
-                cur.execute("""
+                """, commit=True)
+                execute_write_safely("""
                     CREATE INDEX IF NOT EXISTS idx_pagamentos_venda_id ON pagamentos (venda_id)
-                """)
-                conn.commit()
+                """, commit=True)
                 current_app.logger.info("Coluna venda_id criada com sucesso na tabela pagamentos")
             except Exception as alter_error:
-                conn.rollback()
                 current_app.logger.warning(f"Erro ao criar coluna venda_id (pode já existir): {alter_error}")
         
         # Parse da resposta do PagBank
@@ -530,60 +526,56 @@ def create_payment_entry(venda_id: int, payment_data: Dict, pagseguro_response: 
                 installments = 1
 
         # Verificar se a coluna pagbank_order_id existe, se não, criar
-        cur.execute("""
+        order_id_result = execute_query_safely("""
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_name = 'pagamentos' 
             AND column_name = 'pagbank_order_id'
-        """)
-        order_id_col_exists = cur.fetchone() is not None
+        """, fetch_mode='one')
+        order_id_col_exists = order_id_result is not None
         
         if not order_id_col_exists:
             current_app.logger.info("Coluna pagbank_order_id não existe na tabela pagamentos. Criando...")
             try:
-                cur.execute("""
+                execute_write_safely("""
                     ALTER TABLE pagamentos 
                     ADD COLUMN pagbank_order_id VARCHAR(100)
-                """)
-                cur.execute("""
+                """, commit=True)
+                execute_write_safely("""
                     CREATE INDEX IF NOT EXISTS idx_pagamentos_order_id ON pagamentos (pagbank_order_id)
-                """)
-                conn.commit()
+                """, commit=True)
                 current_app.logger.info("Coluna pagbank_order_id criada com sucesso")
             except Exception as alter_error:
-                conn.rollback()
                 current_app.logger.warning(f"Erro ao criar coluna pagbank_order_id (pode já existir): {alter_error}")
         
         # Verificar se a coluna pagbank_charge_id existe, se não, criar
-        cur.execute("""
+        charge_id_result = execute_query_safely("""
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_name = 'pagamentos' 
             AND column_name = 'pagbank_charge_id'
-        """)
-        charge_id_col_exists = cur.fetchone() is not None
+        """, fetch_mode='one')
+        charge_id_col_exists = charge_id_result is not None
         
         if not charge_id_col_exists:
             current_app.logger.info("Coluna pagbank_charge_id não existe na tabela pagamentos. Criando...")
             try:
-                cur.execute("""
+                execute_write_safely("""
                     ALTER TABLE pagamentos 
                     ADD COLUMN pagbank_charge_id VARCHAR(100)
-                """)
-                cur.execute("""
+                """, commit=True)
+                execute_write_safely("""
                     CREATE INDEX IF NOT EXISTS idx_pagamentos_charge_id ON pagamentos (pagbank_charge_id)
-                """)
-                conn.commit()
+                """, commit=True)
                 current_app.logger.info("Coluna pagbank_charge_id criada com sucesso")
             except Exception as alter_error:
-                conn.rollback()
                 current_app.logger.warning(f"Erro ao criar coluna pagbank_charge_id (pode já existir): {alter_error}")
         
         # Inserir pagamento com todos os IDs do PagBank
         # pagbank_transaction_id = order_id (para compatibilidade)
         # pagbank_order_id = order_id (ID do pedido)
         # pagbank_charge_id = charge_id (ID da cobrança - usado no webhook)
-        cur.execute("""
+        result = execute_write_safely("""
             INSERT INTO pagamentos (
                 venda_id, pagbank_transaction_id, pagbank_order_id, pagbank_charge_id,
                 forma_pagamento_tipo, bandeira_cartao, parcelas, valor_pago, status_pagamento,
@@ -600,24 +592,20 @@ def create_payment_entry(venda_id: int, payment_data: Dict, pagseguro_response: 
             card_brand, installments, value, status,
             qrcode_link, qrcode_image, boleto_link,
             barcode_data, json.dumps(pagseguro_response)
-        ))
+        ), commit=True)
         
-        payment_id = cur.fetchone()[0]
-        conn.commit()
+        if not result:
+            raise Exception("Falha ao criar entrada de pagamento")
+        payment_id = result[0]
         
         current_app.logger.info(f"Pagamento {payment_id} criado para venda {venda_id}")
         return payment_id
         
     except Exception as e:
-        conn.rollback()
         current_app.logger.error(f"Erro ao criar entrada de pagamento: {e}")
         raise e
-    finally:
-        cur.close()
 
 def get_order_status(venda_id=None, codigo_pedido=None):
-    conn = g.db
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor) # Para retornar dicionários
     try:
         query = """
             SELECT
@@ -635,13 +623,22 @@ def get_order_status(venda_id=None, codigo_pedido=None):
             query += " AND v.codigo_pedido = %s"
             params.append(codigo_pedido)
         
-        cur.execute(query, params)
-        result = cur.fetchone() # Ou fetchall() se puder ter múltiplas tentativas de pagamento por venda
-        return dict(result) if result else None
+        result = execute_query_safely(query, tuple(params) if params else None, fetch_mode='one')
+        # Converter para dict se necessário
+        if result:
+            return {
+                'venda_id': result[0],
+                'codigo_pedido': result[1],
+                'valor_total': result[2],
+                'status_pedido': result[3],
+                'status_pagamento': result[4],
+                'forma_pagamento_tipo': result[5],
+                'pagbank_qrcode_link': result[6],
+                'pagbank_barcode_data': result[7]
+            }
+        return None
     except Exception as e:
         raise e
-    finally:
-        cur.close()
 
 # --- Funções de interação com o PagBank API ---
 def call_pagbank_api(endpoint_url: str, api_token: str, payload: Dict) -> Dict:
@@ -832,13 +829,17 @@ def create_pagbank_payload(cart_items: List[Dict], shipping_info: Dict,
         shipping_address = {
             "street": shipping_info.get('rua', ''),
             "number": shipping_info.get('numero', ''),
-            "complement": shipping_info.get('complemento', ''),
             "locality": shipping_info.get('bairro', ''),
             "city": shipping_info.get('cidade', ''),
             "region_code": shipping_info.get('estado', ''),
             "country": "BRA",
             "postal_code": shipping_info.get('cep', '').replace('-', '')
         }
+        
+        # Adicionar complement apenas se não estiver vazio (PagBank não aceita strings vazias)
+        complemento = shipping_info.get('complemento', '').strip()
+        if complemento:
+            shipping_address["complement"] = complemento
         
         # Preparar dados do cliente
         customer = {

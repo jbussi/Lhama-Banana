@@ -32,9 +32,8 @@ def sobre_nos():
                 valores_conteudo,
                 equipe_titulo,
                 equipe_conteudo
-            FROM conteudo_sobre
-            WHERE ativo = TRUE
-            ORDER BY id DESC
+            FROM site_conteudo_sobre
+            ORDER BY updated_at DESC
             LIMIT 1
         """)
         

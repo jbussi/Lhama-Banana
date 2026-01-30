@@ -1,4 +1,4 @@
-from .db import get_db
+from .db import get_db, execute_query_safely, execute_write_safely
 from flask import request, jsonify, g
 
 def ensure_carrinhos_table_exists(conn):
@@ -81,10 +81,7 @@ def ensure_carrinhos_table_exists(conn):
                     EXECUTE FUNCTION update_timestamp();
             """)
             
-            cur.execute("""
-                # Não criar trigger para carrinho_itens pois não tem campo atualizado_em
-                # DROP TRIGGER IF EXISTS trg_carrinho_itens_update_timestamp ON carrinho_itens;
-            """)
+            # Não criar trigger para carrinho_itens pois não tem campo atualizado_em
             
             conn.commit()
             print("✓ Tabelas 'carrinhos' e 'carrinho_itens' criadas com sucesso.")
@@ -111,39 +108,53 @@ def get_or_create_cart(user_id=None, session_id=None):
         print(f"Erro ao garantir existência das tabelas: {e}")
         # Continua mesmo se houver erro, pode ser que as tabelas já existam
     
-    cur = conn.cursor()
     carrinho_id = None
 
     try:
         if user_id:
-            # Lembre-se que usuario_id na tabela carrinhos agora referencia usuarios(id), que é INTEGER
-            cur.execute("SELECT id FROM carrinhos WHERE usuario_id = %s", (user_id,))
-            result = cur.fetchone()
+            # Buscar carrinho existente
+            result = execute_query_safely(
+                "SELECT id FROM carrinhos WHERE usuario_id = %s", 
+                (user_id,), 
+                fetch_mode='one'
+            )
             if result:
                 carrinho_id = result[0]
             else:
-                cur.execute("INSERT INTO carrinhos (usuario_id) VALUES (%s) RETURNING id", (user_id,))
-                carrinho_id = cur.fetchone()[0]
-                conn.commit()
+                # Criar novo carrinho
+                result = execute_write_safely(
+                    "INSERT INTO carrinhos (usuario_id) VALUES (%s) RETURNING id", 
+                    (user_id,), 
+                    commit=True
+                )
+                if result:
+                    carrinho_id = result[0]
         elif session_id:
-            cur.execute("SELECT id FROM carrinhos WHERE session_id = %s", (session_id,))
-            result = cur.fetchone()
+            # Buscar carrinho existente
+            result = execute_query_safely(
+                "SELECT id FROM carrinhos WHERE session_id = %s", 
+                (session_id,), 
+                fetch_mode='one'
+            )
             if result:
                 carrinho_id = result[0]
             else:
-                cur.execute("INSERT INTO carrinhos (session_id) VALUES (%s) RETURNING id", (session_id,))
-                carrinho_id = cur.fetchone()[0]
-                conn.commit()
+                # Criar novo carrinho
+                result = execute_write_safely(
+                    "INSERT INTO carrinhos (session_id) VALUES (%s) RETURNING id", 
+                    (session_id,), 
+                    commit=True
+                )
+                if result:
+                    carrinho_id = result[0]
         else:
             # Isso não deve acontecer se get_cart_owner_info for bem-sucedido
             raise ValueError("user_id ou session_id deve ser fornecido para get_or_create_cart.")
 
     except Exception as e:
-        conn.rollback() # Garante rollback em caso de erro na criação/busca
         print(f"Erro ao obter/criar carrinho: {e}")
         raise # Re-lança a exceção para que o endpoint a capture
-    finally:
-        if cur: cur.close()
+    
     return carrinho_id
 
 def get_cart_owner_info():

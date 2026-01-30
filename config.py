@@ -32,34 +32,7 @@ class Config:
     # ============================================
     SECRET_KEY = os.environ.get('SECRET_KEY')
     
-    # ============================================
-    # FIREBASE (Autenticação)
-    # ============================================
-    # Caminho do arquivo de credenciais do Firebase
-    # No Docker: /app/key.json
-    # Local: ../key.json (raiz do workspace)
-    def _get_default_firebase_path():
-        """Detecta automaticamente o caminho do key.json"""
-        # Verificar se já está definido via env
-        env_path = os.environ.get('FIREBASE_ADMIN_SDK_PATH')
-        if env_path:
-            return env_path
-        
-        # Tentar /app/key.json (Docker)
-        docker_path = Path('/app/key.json')
-        if docker_path.exists() and docker_path.is_file():
-            return str(docker_path)
-        
-        # Tentar ../key.json (raiz do workspace)
-        root_key = Path(__file__).parent.parent / 'key.json'
-        if root_key.exists() and root_key.is_file():
-            return str(root_key)
-        
-        # Fallback
-        return '/app/key.json'
-    
-    FIREBASE_ADMIN_SDK_PATH = os.environ.get('FIREBASE_ADMIN_SDK_PATH', _get_default_firebase_path())
-    
+
     # ============================================
     # BANCO DE DADOS
     # ============================================

@@ -10,7 +10,7 @@ from firebase_admin import auth
 from flask import current_app
 from typing import Dict, Optional, Tuple
 from .user_service import get_user_by_firebase_uid, insert_new_user, update_user_profile_db
-from .db import get_db
+from .db import get_db, execute_query_safely, execute_write_safely
 import logging
 import traceback
 import pyotp
@@ -181,55 +181,58 @@ def sync_user_from_firebase(decoded_token: Dict) -> Tuple[Optional[Dict], bool]:
     user_data = get_user_by_firebase_uid(uid)
     is_new_user = user_data is None
     
+    # Verificar se colunas MFA existem
+    mfa_columns_result = execute_query_safely("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'usuarios' 
+        AND column_name IN ('mfa_enabled', 'mfa_secret')
+    """, fetch_mode='all')
+    mfa_columns = [row[0] for row in mfa_columns_result] if mfa_columns_result else []
+    has_mfa_enabled = 'mfa_enabled' in mfa_columns
+    has_mfa_secret = 'mfa_secret' in mfa_columns
+    
     conn = get_db()
     cur = conn.cursor()
     
     try:
-        # Verificar se colunas MFA existem
-        cur.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'usuarios' 
-            AND column_name IN ('mfa_enabled', 'mfa_secret')
-        """)
-        mfa_columns = [row[0] for row in cur.fetchall()]
-        has_mfa_enabled = 'mfa_enabled' in mfa_columns
-        has_mfa_secret = 'mfa_secret' in mfa_columns
         
         if is_new_user:
-            # Criar novo usuário
-            cur.execute("""
+            # Criar novo usuário usando execute_write_safely
+            result = execute_write_safely("""
                 INSERT INTO usuarios (firebase_uid, nome, email, email_verificado)
                 VALUES (%s, %s, %s, %s)
-                RETURNING id, firebase_uid, nome, email, email_verificado, role, criado_em
-            """, (uid, display_name, email, email_verified))
+                RETURNING id, firebase_uid, nome, email, email_verificado, role, created_at
+            """, (uid, display_name, email, email_verified), commit=True)
             
-            result = cur.fetchone()
-            conn.commit()
+            if not result:
+                raise Exception("Falha ao criar novo usuário")
             
             # Buscar dados MFA separadamente se as colunas existirem
             mfa_enabled = False
             mfa_secret = None
             if has_mfa_enabled or has_mfa_secret:
                 if has_mfa_enabled and has_mfa_secret:
-                    cur.execute("""
+                    mfa_result = execute_query_safely("""
                         SELECT mfa_enabled, mfa_secret
                         FROM usuarios 
                         WHERE id = %s
-                    """, (result[0],))
+                    """, (result[0],), fetch_mode='one')
                 elif has_mfa_enabled:
-                    cur.execute("""
+                    mfa_result = execute_query_safely("""
                         SELECT mfa_enabled, NULL as mfa_secret
                         FROM usuarios 
                         WHERE id = %s
-                    """, (result[0],))
+                    """, (result[0],), fetch_mode='one')
                 elif has_mfa_secret:
-                    cur.execute("""
+                    mfa_result = execute_query_safely("""
                         SELECT FALSE as mfa_enabled, mfa_secret
                         FROM usuarios 
                         WHERE id = %s
-                    """, (result[0],))
-                mfa_result = cur.fetchone()
+                    """, (result[0],), fetch_mode='one')
+                else:
+                    mfa_result = None
+                    
                 if mfa_result:
                     mfa_enabled = mfa_result[0] if has_mfa_enabled else False
                     mfa_secret = mfa_result[1] if has_mfa_secret else None
@@ -241,7 +244,7 @@ def sync_user_from_firebase(decoded_token: Dict) -> Tuple[Optional[Dict], bool]:
                 'email': result[3],
                 'email_verificado': result[4],
                 'role': result[5] if len(result) > 5 else 'user',
-                'criado_em': str(result[6]) if len(result) > 6 else None,
+                'created_at': str(result[6]) if len(result) > 6 else None,
                 'mfa_enabled': mfa_enabled,
                 'mfa_secret': mfa_secret
             }
@@ -250,17 +253,14 @@ def sync_user_from_firebase(decoded_token: Dict) -> Tuple[Optional[Dict], bool]:
         else:
             # Atualizar dados existentes (especialmente email_verificado)
             # Não atualizar mfa_enabled ou mfa_secret aqui - apenas sincronizar dados do Firebase
-            cur.execute("""
+            result = execute_write_safely("""
                 UPDATE usuarios 
                 SET email_verificado = %s,
                     email = %s,
                     nome = COALESCE(NULLIF(%s, ''), nome)
                 WHERE firebase_uid = %s
-                RETURNING id, firebase_uid, nome, email, email_verificado, role, criado_em
-            """, (email_verified, email, display_name, uid))
-            
-            result = cur.fetchone()
-            conn.commit()
+                RETURNING id, firebase_uid, nome, email, email_verificado, role, created_at
+            """, (email_verified, email, display_name, uid), commit=True)
             
             if result:
                 # Buscar dados MFA separadamente se as colunas existirem
@@ -268,24 +268,26 @@ def sync_user_from_firebase(decoded_token: Dict) -> Tuple[Optional[Dict], bool]:
                 mfa_secret = None
                 if has_mfa_enabled or has_mfa_secret:
                     if has_mfa_enabled and has_mfa_secret:
-                        cur.execute("""
+                        mfa_result = execute_query_safely("""
                             SELECT mfa_enabled, mfa_secret
                             FROM usuarios 
                             WHERE id = %s
-                        """, (result[0],))
+                        """, (result[0],), fetch_mode='one')
                     elif has_mfa_enabled:
-                        cur.execute("""
+                        mfa_result = execute_query_safely("""
                             SELECT mfa_enabled, NULL as mfa_secret
                             FROM usuarios 
                             WHERE id = %s
-                        """, (result[0],))
+                        """, (result[0],), fetch_mode='one')
                     elif has_mfa_secret:
-                        cur.execute("""
+                        mfa_result = execute_query_safely("""
                             SELECT FALSE as mfa_enabled, mfa_secret
                             FROM usuarios 
                             WHERE id = %s
-                        """, (result[0],))
-                    mfa_result = cur.fetchone()
+                        """, (result[0],), fetch_mode='one')
+                    else:
+                        mfa_result = None
+                        
                     if mfa_result:
                         mfa_enabled = mfa_result[0] if has_mfa_enabled else False
                         mfa_secret = mfa_result[1] if has_mfa_secret else None
@@ -297,19 +299,28 @@ def sync_user_from_firebase(decoded_token: Dict) -> Tuple[Optional[Dict], bool]:
                     'email': result[3],
                     'email_verificado': result[4],
                     'role': result[5] if len(result) > 5 else 'user',
-                    'criado_em': str(result[6]) if len(result) > 6 else None,
+                    'created_at': str(result[6]) if len(result) > 6 else None,
                     'mfa_enabled': mfa_enabled,
                     'mfa_secret': mfa_secret
                 }
                 
                 logger.info(f"Usuário sincronizado: {email} (email_verificado: {email_verified}, mfa_enabled: {mfa_enabled})")
         
-        cur.close()
+        if cur:
+            cur.close()
         return user_data, is_new_user
         
     except Exception as e:
-        conn.rollback()
-        cur.close()
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
         logger.error(f"Erro ao sincronizar usuário: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return None, False
@@ -584,26 +595,36 @@ def enable_mfa_for_user(user_id: int, secret: str) -> bool:
         True se habilitado com sucesso
     """
     try:
-        conn = get_db()
-        cur = conn.cursor()
+        # Verificar se colunas MFA existem
+        mfa_columns_result = execute_query_safely("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'usuarios' 
+            AND column_name IN ('mfa_enabled', 'mfa_secret')
+        """, fetch_mode='all')
+        mfa_columns = [row[0] for row in mfa_columns_result] if mfa_columns_result else []
         
-        cur.execute("""
+        if 'mfa_enabled' not in mfa_columns or 'mfa_secret' not in mfa_columns:
+            logger.error("Colunas MFA não existem na tabela usuarios")
+            return False
+        
+        # Atualizar usando execute_write_safely
+        rowcount = execute_write_safely("""
             UPDATE usuarios 
             SET mfa_secret = %s, 
                 mfa_enabled = TRUE
             WHERE id = %s
-        """, (secret, user_id))
+        """, (secret, user_id), commit=True)
         
-        conn.commit()
-        cur.close()
-        
-        logger.info(f"2FA habilitado para usuário ID: {user_id}")
-        return True
+        if rowcount and rowcount > 0:
+            logger.info(f"2FA habilitado para usuário ID: {user_id}")
+            return True
+        else:
+            logger.warning(f"Nenhuma linha atualizada ao habilitar 2FA para usuário ID: {user_id}")
+            return False
         
     except Exception as e:
-        logger.error(f"Erro ao habilitar 2FA: {e}")
-        if conn:
-            conn.rollback()
+        logger.error(f"Erro ao habilitar 2FA: {e}", exc_info=True)
         return False
 
 
@@ -618,26 +639,36 @@ def disable_mfa_for_user(user_id: int) -> bool:
         True se desabilitado com sucesso
     """
     try:
-        conn = get_db()
-        cur = conn.cursor()
+        # Verificar se colunas MFA existem
+        mfa_columns_result = execute_query_safely("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'usuarios' 
+            AND column_name IN ('mfa_enabled', 'mfa_secret')
+        """, fetch_mode='all')
+        mfa_columns = [row[0] for row in mfa_columns_result] if mfa_columns_result else []
         
-        cur.execute("""
+        if 'mfa_enabled' not in mfa_columns or 'mfa_secret' not in mfa_columns:
+            logger.error("Colunas MFA não existem na tabela usuarios")
+            return False
+        
+        # Atualizar usando execute_write_safely
+        rowcount = execute_write_safely("""
             UPDATE usuarios 
             SET mfa_secret = NULL, 
                 mfa_enabled = FALSE
             WHERE id = %s
-        """, (user_id,))
+        """, (user_id,), commit=True)
         
-        conn.commit()
-        cur.close()
-        
-        logger.info(f"2FA desabilitado para usuário ID: {user_id}")
-        return True
+        if rowcount and rowcount > 0:
+            logger.info(f"2FA desabilitado para usuário ID: {user_id}")
+            return True
+        else:
+            logger.warning(f"Nenhuma linha atualizada ao desabilitar 2FA para usuário ID: {user_id}")
+            return False
         
     except Exception as e:
-        logger.error(f"Erro ao desabilitar 2FA: {e}")
-        if conn:
-            conn.rollback()
+        logger.error(f"Erro ao desabilitar 2FA: {e}", exc_info=True)
         return False
 
 

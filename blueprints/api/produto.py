@@ -1,23 +1,21 @@
 from . import api_bp
 from flask import jsonify, current_app
-from ..services import get_db
+from ..services import get_db, execute_query_safely
 import traceback
 
 @api_bp.route('/base_products/<int:nome_produto_id>', methods=['GET'])
 def get_product_details(nome_produto_id):
     """Endpoint para obter detalhes de um produto base específico (para a página de detalhes do produto)."""
-    conn = get_db() # Obtém uma conexão do pool
-    cur = conn.cursor()
     try:
         # 1. Busca os detalhes do produto base (nome_produto)
         # Usa LEFT JOIN para permitir produtos sem categoria (categoria_id NULL ou categoria deletada)
-        cur.execute("""
+        base_product_data = execute_query_safely("""
             SELECT np.id, np.nome, np.descricao, COALESCE(c.nome, 'Sem categoria') AS categoria_nome
             FROM nome_produto np
-            LEFT JOIN categorias c ON np.categoria_id = c.id
+            LEFT JOIN nome_produto_categoria_lnk npc ON np.id = npc.nome_produto_id
+            LEFT JOIN categorias c ON npc.categoria_id = c.id
             WHERE np.id = %s;
-        """, (nome_produto_id,))
-        base_product_data = cur.fetchone()
+        """, (nome_produto_id,), fetch_mode='one')
 
         if not base_product_data:
             # Se o produto base não for encontrado, retorna 404
@@ -33,7 +31,7 @@ def get_product_details(nome_produto_id):
 
         # 2. Busca TODAS as variações (tabela 'produtos') associadas a este nome_produto_id
         # Inclui estampa, tamanho, preço, estoque, SKU e TODAS as imagens por variação.
-        cur.execute("""
+        variations_data = execute_query_safely("""
             SELECT
                 p.id AS variation_id,
                 e.id AS estampa_id,
@@ -46,16 +44,21 @@ def get_product_details(nome_produto_id):
                 p.estoque,
                 p.codigo_sku,
                 -- Agrega as imagens de CADA VARIAÇÃO em um array JSON (Recurso do PostgreSQL)
-                ARRAY_AGG(JSON_BUILD_OBJECT('id', ip.id, 'url', ip.url, 'ordem', ip.ordem, 'descricao', ip.descricao, 'is_thumbnail', ip.is_thumbnail) ORDER BY ip.ordem) FILTER (WHERE ip.id IS NOT NULL) AS images_json
+                ARRAY_AGG(JSON_BUILD_OBJECT('id', ip.id, 'url', ip.url, 'ordem', COALESCE(ipl.imagem_produto_ord, ip.ordem, 0), 'descricao', ip.descricao, 'is_thumbnail', ip.is_thumbnail) ORDER BY COALESCE(ipl.imagem_produto_ord, ip.ordem, 0)) FILTER (WHERE ip.id IS NOT NULL) AS images_json
             FROM produtos p
-            JOIN estampa e ON p.estampa_id = e.id
-            JOIN tamanho t ON p.tamanho_id = t.id
-            LEFT JOIN imagens_produto ip ON p.id = ip.produto_id -- LEFT JOIN para incluir variações sem imagem
-            WHERE p.nome_produto_id = %s
+            LEFT JOIN produtos_estampa_lnk pe ON p.id = pe.produto_id
+            LEFT JOIN estampa e ON pe.estampa_id = e.id
+            LEFT JOIN produtos_tamanho_lnk pt ON p.id = pt.produto_id
+            LEFT JOIN tamanho t ON pt.tamanho_id = t.id
+            LEFT JOIN imagens_produto_produto_lnk ipl ON p.id = ipl.produto_id -- LEFT JOIN para incluir variações sem imagem
+            LEFT JOIN imagens_produto ip ON ipl.imagem_produto_id = ip.id
+            LEFT JOIN produtos_nome_produto_lnk pnp ON p.id = pnp.produto_id
+            WHERE pnp.nome_produto_id = %s
             GROUP BY p.id, e.id, t.id, p.preco_venda, p.preco_promocional, p.estoque, p.codigo_sku -- Agrupa por variação para que ARRAY_AGG funcione
             ORDER BY estampa_nome, tamanho_nome; -- Ordena para consistência
-        """, (nome_produto_id,))
-        variations_data = cur.fetchall()
+        """, (nome_produto_id,), fetch_mode='all')
+        if not variations_data:
+            variations_data = []
 
         # 3. Formata os dados das variações
         # Índices da tupla: 0=variation_id, 1=estampa_id, 2=estampa_nome, 3=estampa_imagem_url,
@@ -113,5 +116,3 @@ def get_product_details(nome_produto_id):
             "erro": "Erro interno do servidor ao carregar detalhes do produto.",
             "detalhes": error_msg if current_app.config.get('DEBUG') else None
         }), 500
-    finally:
-        if cur: cur.close() # Fecha o cursor, a conexão é retornada ao pool pelo teardown

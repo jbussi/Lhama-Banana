@@ -150,7 +150,13 @@ def create_app(config_class=None):
     return app
 
 
-app = create_app()
+try:
+    app = create_app()
+except Exception as e:
+    import traceback
+    print("Falha ao carregar a aplicação:", file=sys.stderr)
+    traceback.print_exc()
+    raise
 
 # Expor app para Gunicorn
 # Gunicorn procura por uma variável 'app' ou 'application'

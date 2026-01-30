@@ -128,25 +128,19 @@ export default {
     // Aguardar um pouco para garantir que o Strapi já criou o relacionamento na tabela de link
     await new Promise(resolve => setTimeout(resolve, 200));
     
-    // Sincronizar categoria_id da tabela de link para a coluna direta
+    // Verificar se a tabela de link foi criada corretamente
     if (result.id) {
       try {
-        // Buscar categoria_id da tabela de link
+        // Verificar categoria
         const categoriaLink = await strapi.db.connection.raw(
           `SELECT categoria_id FROM nome_produto_categoria_lnk WHERE nome_produto_id = $1 LIMIT 1`,
           [result.id]
         );
-        
         if (categoriaLink && categoriaLink.rows && categoriaLink.rows.length > 0) {
-          const categoriaId = categoriaLink.rows[0].categoria_id;
-          await strapi.db.connection.raw(
-            `UPDATE nome_produto SET categoria_id = $1 WHERE id = $2`,
-            [categoriaId, result.id]
-          );
-          strapi.log.info(`[LIFECYCLE] Nome Produto ${result.id}: categoria_id sincronizado para ${categoriaId}`);
+          strapi.log.info(`[LIFECYCLE] Nome Produto ${result.id}: Relacionamento com categoria criado`);
         }
       } catch (error) {
-        strapi.log.error('[LIFECYCLE] Erro ao sincronizar colunas diretas:', error);
+        strapi.log.error('[LIFECYCLE] Erro ao verificar relacionamento do nome_produto:', error);
       }
     }
   },
@@ -154,30 +148,12 @@ export default {
   async afterUpdate(event: any) {
     const { result } = event;
     
-    // Sincronizar categoria_id da tabela de link para a coluna direta
+    // Verificar se a tabela de link foi atualizada corretamente
     if (result.id) {
       try {
-        // Buscar categoria_id da tabela de link
-        const categoriaLink = await strapi.db.connection.raw(
-          `SELECT categoria_id FROM nome_produto_categoria_lnk WHERE nome_produto_id = $1 LIMIT 1`,
-          [result.id]
-        );
-        
-        if (categoriaLink && categoriaLink.rows && categoriaLink.rows.length > 0) {
-          const categoriaId = categoriaLink.rows[0].categoria_id;
-          await strapi.db.connection.raw(
-            `UPDATE nome_produto SET categoria_id = $1 WHERE id = $2`,
-            [categoriaId, result.id]
-          );
-        } else {
-          // Se não há link, remover categoria_id
-          await strapi.db.connection.raw(
-            `UPDATE nome_produto SET categoria_id = NULL WHERE id = $1`,
-            [result.id]
-          );
-        }
+        strapi.log.info(`[LIFECYCLE] Nome Produto ${result.id}: Atualizado com sucesso`);
       } catch (error) {
-        strapi.log.error('[LIFECYCLE] Erro ao sincronizar colunas diretas após update:', error);
+        strapi.log.error('[LIFECYCLE] Erro ao verificar atualização do nome_produto:', error);
       }
     }
   },

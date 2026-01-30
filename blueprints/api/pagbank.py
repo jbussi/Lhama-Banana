@@ -94,19 +94,42 @@ def validate_card_endpoint():
         
         # Armazenar temporariamente (apenas durante esta requisição/sessão)
         # Os dados serão usados imediatamente no checkout e depois descartados
+        timestamp = time.time()
+        session_id = session.get('session_id') or session.get('_id', 'anonymous')
+        
+        # Armazenar em cache em memória (para workers individuais)
         _card_data_cache[card_id] = {
             'data': card_data,
-            'timestamp': time.time(),
-            'session_id': session.get('session_id', 'anonymous')
+            'timestamp': timestamp,
+            'session_id': session_id
         }
         
-        # Limpar cache antigo (mais de 5 minutos)
+        # TAMBÉM armazenar na sessão do Flask (compartilhada entre workers via cookies)
+        # Isso resolve o problema de múltiplos workers do Gunicorn
+        if 'card_data_cache' not in session:
+            session['card_data_cache'] = {}
+        session['card_data_cache'][card_id] = {
+            'data': card_data,
+            'timestamp': timestamp
+        }
+        session.modified = True  # Marcar sessão como modificada
+        
+        # Limpar cache antigo (mais de 10 minutos - aumentado para dar mais tempo)
         current_time = time.time()
-        keys_to_remove = [k for k, v in _card_data_cache.items() if current_time - v['timestamp'] > 300]
+        keys_to_remove = [k for k, v in _card_data_cache.items() if current_time - v['timestamp'] > 600]  # 10 minutos
         for k in keys_to_remove:
             _card_data_cache.pop(k, None)
         
-        current_app.logger.info(f"[PagBank] Dados do cartão validados e armazenados temporariamente (ID: {card_id[:8]}...)")
+        # Limpar cache antigo da sessão também
+        if 'card_data_cache' in session:
+            session_keys_to_remove = [k for k, v in session['card_data_cache'].items() if current_time - v['timestamp'] > 600]
+            for k in session_keys_to_remove:
+                session['card_data_cache'].pop(k, None)
+            session.modified = True
+        
+        current_app.logger.info(f"[PagBank] Dados do cartão validados e armazenados temporariamente (ID: {card_id[:8]}..., timestamp: {timestamp}, session: {session_id})")
+        current_app.logger.info(f"[PagBank] Cache em memória tem {len(_card_data_cache)} entradas")
+        current_app.logger.info(f"[PagBank] Cache na sessão tem {len(session.get('card_data_cache', {}))} entradas")
         
         # Retornar APENAS o identificador (sem dados sensíveis)
         return jsonify({
@@ -123,13 +146,76 @@ def validate_card_endpoint():
         }), 500
 
 
-def get_card_data_by_id(card_id: str):
+def get_card_data_by_id(card_id: str, session_id: str = None):
     """
     Recupera dados do cartão pelo ID (apenas para uso interno no checkout).
     Remove os dados do cache após recuperar (uso único).
+    
+    Tenta primeiro o cache em memória (rápido), depois a sessão do Flask (compartilhada entre workers).
+    
+    Args:
+        card_id: ID do cartão gerado durante a validação
+        session_id: ID da sessão (opcional, para validação adicional)
     """
+    if not card_id:
+        current_app.logger.warning(f"[PagBank] get_card_data_by_id chamado com card_id vazio")
+        return None
+    
+    current_app.logger.info(f"[PagBank] Tentando recuperar dados do cartão (ID: {card_id[:8]}..., session: {session_id})")
+    current_time = time.time()
+    
+    # Limpar cache expirado antes de buscar
+    keys_to_remove = []
+    for k, v in _card_data_cache.items():
+        # Remover entradas expiradas (mais de 10 minutos)
+        if current_time - v['timestamp'] > 600:
+            keys_to_remove.append(k)
+    
+    for k in keys_to_remove:
+        _card_data_cache.pop(k, None)
+    
+    if keys_to_remove:
+        current_app.logger.info(f"[PagBank] Removidas {len(keys_to_remove)} entradas expiradas do cache em memória")
+    
+    # Tentar primeiro o cache em memória (rápido, mas não compartilhado entre workers)
     if card_id in _card_data_cache:
-        data = _card_data_cache.pop(card_id)  # Remove após uso (uso único)
-        return data['data']
+        data_entry = _card_data_cache[card_id]
+        
+        # Verificar se não expirou
+        if current_time - data_entry['timestamp'] > 600:  # 10 minutos
+            current_app.logger.warning(f"[PagBank] Card ID encontrado no cache mas expirado: {card_id[:8]}...")
+            _card_data_cache.pop(card_id, None)
+        else:
+            data = _card_data_cache.pop(card_id)  # Remove após uso (uso único)
+            current_app.logger.info(f"[PagBank] Dados do cartão recuperados do cache em memória (ID: {card_id[:8]}...)")
+            return data['data']
+    
+    # Se não encontrou no cache em memória, tentar na sessão do Flask (compartilhada entre workers)
+    try:
+        if 'card_data_cache' in session and card_id in session['card_data_cache']:
+            data_entry = session['card_data_cache'][card_id]
+            
+            # Verificar se não expirou
+            if current_time - data_entry['timestamp'] > 600:  # 10 minutos
+                current_app.logger.warning(f"[PagBank] Card ID encontrado na sessão mas expirado: {card_id[:8]}...")
+                session['card_data_cache'].pop(card_id, None)
+                session.modified = True
+            else:
+                data = session['card_data_cache'].pop(card_id, None)  # Remove após uso (uso único)
+                session.modified = True
+                current_app.logger.info(f"[PagBank] Dados do cartão recuperados da sessão Flask (ID: {card_id[:8]}...)")
+                return data['data']
+    except Exception as e:
+        current_app.logger.warning(f"[PagBank] Erro ao acessar sessão Flask: {e}")
+    
+    # Log detalhado para debug
+    current_app.logger.warning(f"[PagBank] Card ID não encontrado em nenhum cache: {card_id[:8]}...")
+    current_app.logger.warning(f"[PagBank] Cache em memória tem {len(_card_data_cache)} entradas")
+    try:
+        session_cache_size = len(session.get('card_data_cache', {}))
+        current_app.logger.warning(f"[PagBank] Cache na sessão tem {session_cache_size} entradas")
+    except:
+        pass
+    
     return None
 

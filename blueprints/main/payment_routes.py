@@ -107,24 +107,48 @@ def order_status_page():
                              token=token,
                              error=True)
     
+    # Função auxiliar para converter datetime para horário de Brasília (UTC-3)
+    def format_to_brasilia(dt_value):
+        """Converte datetime para horário de Brasília (UTC-3) e formata"""
+        from datetime import datetime, timezone, timedelta
+        try:
+            # Se for string, converter para datetime
+            if isinstance(dt_value, str):
+                dt_value = dt_value.replace('Z', '+00:00')
+                dt = datetime.fromisoformat(dt_value)
+            elif hasattr(dt_value, 'isoformat'):
+                dt = dt_value
+            else:
+                return None
+            
+            # Se não tiver timezone, assumir UTC
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            
+            # Converter para horário de Brasília (UTC-3)
+            brasilia_tz = timezone(timedelta(hours=-3))
+            dt_brasilia = dt.astimezone(brasilia_tz)
+            
+            # Formatar como DD/MM/YYYY HH:MM
+            return dt_brasilia.strftime('%d/%m/%Y %H:%M')
+        except Exception as e:
+            current_app.logger.warning(f"Erro ao formatar data para Brasília: {e}, valor: {dt_value}")
+            return None
+    
     # Formatar datas
     data_venda = order.get('data_venda', '')
     if data_venda:
-        from datetime import datetime
-        try:
-            dt = datetime.fromisoformat(data_venda.replace('Z', '+00:00'))
-            data_venda = dt.strftime('%d/%m/%Y %H:%M')
-        except:
-            data_venda = ''
+        data_venda = format_to_brasilia(data_venda) or ''
+    
+    # Se não conseguiu formatar, tentar usar criado_em como fallback
+    if not data_venda:
+        criado_em = order.get('criado_em', '')
+        if criado_em:
+            data_venda = format_to_brasilia(criado_em) or ''
     
     ultima_atualizacao = order.get('atualizado_em', '')
     if ultima_atualizacao:
-        from datetime import datetime
-        try:
-            dt = datetime.fromisoformat(ultima_atualizacao.replace('Z', '+00:00'))
-            ultima_atualizacao = dt.strftime('%d/%m/%Y %H:%M')
-        except:
-            ultima_atualizacao = ''
+        ultima_atualizacao = format_to_brasilia(ultima_atualizacao) or ''
     
     # Preparar dados para o template
     template_data = {

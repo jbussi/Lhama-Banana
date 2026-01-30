@@ -679,10 +679,13 @@ def pagbank_webhook():
                     )
             
             # Atualizar status da venda também
+            # IMPORTANTE: Quando o pagamento é confirmado, o pedido vai para "Em aberto" no Bling
+            # "Em aberto" (ID 6) mapeia para 'sincronizado_bling' que mostra como 'PAGO'
+            # Só quando mudar para "Em andamento" (ID 15) é que vira 'pagamento_aprovado' e mostra como 'APROVADO'
             venda_status_map = {
-                'PAID': 'processando_envio',
-                'AUTHORIZED': 'processando_envio',
-                'APPROVED': 'processando_envio',
+                'PAID': 'sincronizado_bling',  # Pagamento confirmado → "Em aberto" no Bling → PAGO (não APROVADO)
+                'AUTHORIZED': 'sincronizado_bling',  # Pagamento autorizado → "Em aberto" no Bling → PAGO (não APROVADO)
+                'APPROVED': 'sincronizado_bling',  # Pagamento aprovado → "Em aberto" no Bling → PAGO (não APROVADO)
                 'DECLINED': 'cancelado_pelo_vendedor',
                 'CANCELLED': 'cancelado_pelo_vendedor',
                 'REFUNDED': 'cancelado_pelo_vendedor',
@@ -707,16 +710,17 @@ def pagbank_webhook():
                 # IMPORTANTE: Estoque é gerenciado exclusivamente pelo Bling
                 # Quando o pedido for criado no Bling, o Bling abaterá o estoque automaticamente
                 # O webhook do Bling (stock.updated) atualizará o estoque do site automaticamente
-                if new_venda_status == 'processando_envio':
+                if new_venda_status == 'sincronizado_bling':
                     current_app.logger.info(
-                        f"ℹ️ Estoque será gerenciado pelo Bling quando o pedido {venda_id} "
-                        f"for criado no Bling. O webhook do Bling atualizará o estoque do site automaticamente."
+                        f"ℹ️ Pagamento confirmado. Pedido {venda_id} será criado no Bling em 'Em aberto'. "
+                        f"O webhook do Bling atualizará o estoque do site automaticamente."
                     )
                     
-                    # NF-e será emitida quando pedido mudar para "Em andamento" no Bling
+                    # NF-e será emitida quando pedido mudar para "Em andamento" no Bling (ID 15)
                     current_app.logger.info(
                         f"ℹ️ NF-e será emitida automaticamente quando pedido {venda_id} "
-                        f"mudar para 'Em andamento' no Bling (via webhook do Bling)"
+                        f"mudar para 'Em andamento' no Bling (via webhook do Bling). "
+                        f"Até lá, o status permanecerá como 'PAGO' (não 'APROVADO')."
                     )
             
             current_app.logger.info("=" * 80)
@@ -792,14 +796,34 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
         
         try:
             # Buscar pedido local pelo bling_pedido_id
+            # Verificar se coluna bling_situacao_id existe antes de usar
             cur.execute("""
-                SELECT v.id as venda_id, v.status_pedido as status_atual, 
-                       v.bling_situacao_id as situacao_atual_id,
-                       bp.bling_pedido_id
-                FROM vendas v
-                JOIN bling_pedidos bp ON v.id = bp.venda_id
-                WHERE bp.bling_pedido_id = %s
-            """, (bling_pedido_id,))
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'vendas' 
+                AND column_name = 'bling_situacao_id'
+            """)
+            has_bling_situacao_id = cur.fetchone() is not None
+            
+            if has_bling_situacao_id:
+                cur.execute("""
+                    SELECT v.id as venda_id, v.status_pedido as status_atual, 
+                           v.bling_situacao_id as situacao_atual_id,
+                           bp.bling_pedido_id
+                    FROM vendas v
+                    JOIN bling_pedidos bp ON v.id = bp.venda_id
+                    WHERE bp.bling_pedido_id = %s
+                """, (bling_pedido_id,))
+            else:
+                # Se a coluna não existe, buscar apenas status_pedido
+                cur.execute("""
+                    SELECT v.id as venda_id, v.status_pedido as status_atual, 
+                           NULL as situacao_atual_id,
+                           bp.bling_pedido_id
+                    FROM vendas v
+                    JOIN bling_pedidos bp ON v.id = bp.venda_id
+                    WHERE bp.bling_pedido_id = %s
+                """, (bling_pedido_id,))
             
             pedido_local = cur.fetchone()
             
@@ -812,7 +836,7 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
             
             venda_id = pedido_local['venda_id']
             status_atual = pedido_local['status_atual']
-            situacao_atual_id = pedido_local['situacao_atual_id']
+            situacao_atual_id = pedido_local.get('situacao_atual_id')  # Pode ser None se coluna não existe
             
             # Para eventos deleted, apenas logar
             if action == 'deleted':
@@ -902,7 +926,7 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
             
             # Se ainda não tem situação, usar situação antiga ou ignorar
             if not situacao_bling_id:
-                if situacao_atual_id:
+                if situacao_atual_id is not None:
                     current_app.logger.info(
                         f"Nenhuma situação nova no webhook para pedido {venda_id}, "
                         f"mantendo situação atual: {situacao_atual_id}"
@@ -969,7 +993,7 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
             
             # PROTEÇÃO ADICIONAL: Verificar se está tentando regredir de "Logística" (ID 716906) para outra situação
             # Se a situação atual é "Logística" e está tentando mudar para outra, bloquear
-            if situacao_atual_id == 716906 and situacao_bling_id != 716906:
+            if situacao_atual_id is not None and situacao_atual_id == 716906 and situacao_bling_id != 716906:
                 current_app.logger.warning(
                     f"🛡️ PROTEÇÃO: Tentativa de regressão detectada para pedido {venda_id}! "
                     f"Situação atual: Logística (ID 716906) → Tentando mudar para: {situacao_bling_id} ({situacao_bling_nome or 'sem nome'})"
@@ -1017,7 +1041,7 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
                 f"🔍 Verificando emissão de NF-e para pedido {venda_id}: "
                 f"situacao_id={situacao_bling_id}, situacao_nome='{situacao_bling_nome}', "
                 f"is_em_andamento={is_em_andamento}, is_em_aberto={is_em_aberto}, "
-                f"situacao_mudou={situacao_bling_id != situacao_atual_id}, "
+                f"situacao_mudou={situacao_atual_id is None or situacao_bling_id != situacao_atual_id}, "
                 f"situacao_atual_id={situacao_atual_id}"
             )
             
@@ -1114,7 +1138,7 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
                 verificar_e_emitir_nfe()
             
             # Verificar se a situação mudou
-            if situacao_bling_id == situacao_atual_id:
+            if situacao_atual_id is not None and situacao_bling_id == situacao_atual_id:
                 # Se não está em "Em andamento", apenas retornar
                 # (A emissão de NF-e já foi verificada acima se estiver em "Em andamento")
                 current_app.logger.info(
@@ -1135,6 +1159,13 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
             )
             
             if atualizado:
+                # Sincronizar status da tabela orders com o novo status da venda
+                try:
+                    sync_order_status_from_venda(venda_id)
+                    current_app.logger.info(f"✅ Status da tabela orders sincronizado para venda {venda_id}")
+                except Exception as sync_error:
+                    current_app.logger.warning(f"⚠️ Erro ao sincronizar status do order: {sync_error}")
+                
                 # Buscar novo status para log
                 cur.execute("""
                     SELECT status_pedido, bling_situacao_id, bling_situacao_nome
@@ -1148,10 +1179,74 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
                 current_app.logger.info("=" * 80)
                 current_app.logger.info(f"✅ STATUS DO PEDIDO ATUALIZADO VIA WEBHOOK BLING")
                 current_app.logger.info(f"   Venda ID: {venda_id}")
-                current_app.logger.info(f"   Situação Bling: {situacao_atual_id} → {situacao_bling_id}")
+                current_app.logger.info(f"   Situação Bling: {situacao_atual_id or '(desconhecida)'} → {situacao_bling_id}")
                 current_app.logger.info(f"   Nome Situação: {situacao_bling_nome}")
                 current_app.logger.info(f"   Status Site: {status_atual} → {novo_status}")
                 current_app.logger.info("=" * 80)
+                
+                # Verificar se mudou para "Logística" e decrementar estoque
+                situacao_nome_lower = (situacao_bling_nome or '').lower() if situacao_bling_nome else ''
+                is_logistica = (
+                    'logística' in situacao_nome_lower or 
+                    'logistica' in situacao_nome_lower or
+                    novo_status == 'pronto_envio'
+                )
+                
+                if is_logistica:
+                    current_app.logger.info(
+                        f"🚚 Pedido {venda_id} mudou para 'Logística' (ID: {situacao_bling_id}). "
+                        f"Decrementando estoque local..."
+                    )
+                    # Decrementar estoque quando pedido for para Logística
+                    try:
+                        cur.execute("""
+                            SELECT produto_id, quantidade
+                            FROM itens_venda
+                            WHERE venda_id = %s
+                        """, (venda_id,))
+                        
+                        itens = cur.fetchall()
+                        estoque_decrementado = False
+                        
+                        for item in itens:
+                            produto_id = item[0]
+                            quantidade = item[1]
+                            
+                            cur.execute("""
+                                UPDATE produtos 
+                                SET estoque = estoque - %s,
+                                    updated_at = NOW()
+                                WHERE id = %s AND estoque >= %s
+                            """, (quantidade, produto_id, quantidade))
+                            
+                            if cur.rowcount > 0:
+                                estoque_decrementado = True
+                                current_app.logger.info(
+                                    f"✅ Estoque decrementado para produto {produto_id}: -{quantidade} unidades"
+                                )
+                            else:
+                                current_app.logger.warning(
+                                    f"⚠️ Não foi possível decrementar estoque para produto {produto_id} "
+                                    f"(estoque insuficiente ou produto não encontrado)"
+                                )
+                        
+                        if estoque_decrementado:
+                            conn.commit()
+                            current_app.logger.info(
+                                f"✅ Estoque local decrementado para pedido {venda_id} quando mudou para 'Logística'"
+                            )
+                        else:
+                            conn.rollback()
+                            current_app.logger.warning(
+                                f"⚠️ Nenhum estoque foi decrementado para pedido {venda_id}"
+                            )
+                    except Exception as estoque_error:
+                        conn.rollback()
+                        current_app.logger.error(
+                            f"❌ Erro ao decrementar estoque para pedido {venda_id}: {estoque_error}",
+                            exc_info=True
+                        )
+                        # Não falhar a atualização de situação por erro no estoque
                 
                 # Se mudou para "Em andamento", verificar se precisa emitir NF-e
                 if is_em_andamento and not is_em_aberto:
@@ -1169,6 +1264,87 @@ def process_order_webhook(webhook_data: dict, event: str, event_id: str, data: d
                         f"ℹ️ Pedido {venda_id} não está em 'Em andamento' ou está em 'Em aberto'. "
                         f"is_em_andamento={is_em_andamento}, is_em_aberto={is_em_aberto}"
                     )
+                
+                # Se mudou para "Pronto para entrega" (ID 718557), atualizar transportadora
+                is_pronto_entrega = (
+                    situacao_bling_id == 718557 or
+                    'pronto para entrega' in situacao_nome_lower
+                )
+                
+                if is_pronto_entrega:
+                    current_app.logger.info(
+                        f"🚚 Pedido {venda_id} mudou para 'Pronto para entrega' (ID: {situacao_bling_id}). "
+                        f"Atualizando transportadora..."
+                    )
+                    
+                    try:
+                        # Buscar dados da transportadora do pedido no Bling
+                        from ..services.bling_order_service import get_bling_order_by_local_id
+                        from ..services.bling_api_service import make_bling_api_request
+                        
+                        bling_order = get_bling_order_by_local_id(venda_id)
+                        if bling_order:
+                            bling_pedido_id = bling_order.get('bling_pedido_id')
+                            if bling_pedido_id:
+                                # Buscar pedido completo no Bling para obter dados da transportadora
+                                response_pedido = make_bling_api_request(
+                                    'GET',
+                                    f'/pedidos/vendas/{bling_pedido_id}'
+                                )
+                                
+                                if response_pedido.status_code == 200:
+                                    pedido_data = response_pedido.json().get('data', {})
+                                    
+                                    # Extrair dados da transportadora do pedido Bling
+                                    transportadora_data = pedido_data.get('transportadora', {})
+                                    if transportadora_data:
+                                        transportadora_nome = transportadora_data.get('nome')
+                                        transportadora_cnpj = transportadora_data.get('cnpj')
+                                        
+                                        if transportadora_nome:
+                                            # Atualizar transportadora no banco local
+                                            cur.execute("""
+                                                UPDATE vendas
+                                                SET transportadora_nome = %s,
+                                                    transportadora_cnpj = %s,
+                                                    updated_at = NOW()
+                                                WHERE id = %s
+                                            """, (transportadora_nome, transportadora_cnpj, venda_id))
+                                            
+                                            conn.commit()
+                                            
+                                            current_app.logger.info(
+                                                f"✅ Transportadora atualizada para pedido {venda_id}: "
+                                                f"{transportadora_nome} (CNPJ: {transportadora_cnpj or 'N/A'})"
+                                            )
+                                        else:
+                                            current_app.logger.warning(
+                                                f"⚠️ Pedido {venda_id} em 'Pronto para entrega' mas sem nome de transportadora no Bling"
+                                            )
+                                    else:
+                                        current_app.logger.warning(
+                                            f"⚠️ Pedido {venda_id} em 'Pronto para entrega' mas sem dados de transportadora no Bling"
+                                        )
+                                else:
+                                    current_app.logger.warning(
+                                        f"⚠️ Erro ao buscar pedido {bling_pedido_id} no Bling para atualizar transportadora: "
+                                        f"HTTP {response_pedido.status_code}"
+                                    )
+                            else:
+                                current_app.logger.warning(
+                                    f"⚠️ Pedido {venda_id} não tem bling_pedido_id para buscar transportadora"
+                                )
+                        else:
+                            current_app.logger.warning(
+                                f"⚠️ Pedido {venda_id} não encontrado na tabela bling_pedidos"
+                            )
+                    except Exception as transportadora_error:
+                        conn.rollback()
+                        current_app.logger.error(
+                            f"❌ Erro ao atualizar transportadora para pedido {venda_id}: {transportadora_error}",
+                            exc_info=True
+                        )
+                        # Não falhar a atualização de situação por erro na transportadora
             else:
                 current_app.logger.warning(f"Falha ao atualizar situação do pedido {venda_id}")
             
@@ -2076,7 +2252,7 @@ def bling_webhook():
             cur.execute("""
                 UPDATE produtos
                 SET estoque = %s,
-                    atualizado_em = NOW()
+                    updated_at = NOW()
                 WHERE id = %s
             """, (estoque_novo, produto_id_local))
             

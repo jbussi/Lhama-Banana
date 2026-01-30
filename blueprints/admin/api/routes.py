@@ -174,8 +174,8 @@ def list_estoque():
                 t.nome as tamanho,
                 p.estoque,
                 p.preco_venda,
-                p.preco_custo,
-                (p.estoque * p.preco_custo) as valor_estoque,
+                p.custo as preco_custo,
+                (p.estoque * p.custo) as valor_estoque,
                 CASE 
                     WHEN p.estoque = 0 THEN 'zerado'
                     WHEN p.estoque < 10 THEN 'baixo'
@@ -183,9 +183,12 @@ def list_estoque():
                     ELSE 'alto'
                 END as status_estoque
             FROM produtos p
-            JOIN nome_produto np ON p.nome_produto_id = np.id
-            JOIN estampa e ON p.estampa_id = e.id
-            JOIN tamanho t ON p.tamanho_id = t.id
+            LEFT JOIN produtos_nome_produto_lnk pnp ON p.id = pnp.produto_id
+            LEFT JOIN nome_produto np ON pnp.nome_produto_id = np.id
+            LEFT JOIN produtos_estampa_lnk pe ON p.id = pe.produto_id
+            LEFT JOIN estampa e ON pe.estampa_id = e.id
+            LEFT JOIN produtos_tamanho_lnk pt ON p.id = pt.produto_id
+            LEFT JOIN tamanho t ON pt.tamanho_id = t.id
             ORDER BY p.estoque ASC, np.nome ASC
         """)
         

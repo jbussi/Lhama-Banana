@@ -1,17 +1,21 @@
 from . import api_bp
 from flask import jsonify, request, current_app
-from ..services import get_db
+from ..services import get_db, execute_query_safely
 
 @api_bp.route('/store/filters', methods=['GET'])
 def get_store_filters():
     """Endpoint para obter filtros disponíveis na loja (tamanhos, estampas, categorias)."""
-    conn = None
-    cur = None
-    
     try:
         conn = get_db()
         if not conn:
             return jsonify({"erro": "Erro de conexão com o banco de dados."}), 500
+        
+        # Garantir rollback antes de começar
+        try:
+            conn.rollback()
+        except Exception:
+            # Se rollback falhar, tentar obter nova conexão
+            conn = get_db()
         
         filters = {
             'categorias': [],
@@ -33,39 +37,32 @@ def get_store_filters():
         
         # Buscar categorias ativas (que têm produtos)
         try:
-            cur_cat = conn.cursor()
-            try:
-                cur_cat.execute("""
-                    SELECT DISTINCT c.id, c.nome
-                    FROM categorias c
-                    JOIN nome_produto np ON c.id = np.categoria_id
-                    JOIN produtos p ON np.id = p.nome_produto_id
-                    WHERE c.ativo = TRUE AND np.ativo = TRUE AND p.ativo = TRUE
-                    ORDER BY c.nome
-                """)
-                categorias = cur_cat.fetchall()
-                filters['categorias'] = [{'id': cat[0], 'nome': cat[1]} for cat in categorias] if categorias else []
-            finally:
-                cur_cat.close()
+            categorias = execute_query_safely("""
+                SELECT DISTINCT c.id, c.nome
+                FROM categorias c
+                JOIN nome_produto_categoria_lnk npc ON c.id = npc.categoria_id
+                JOIN nome_produto np ON npc.nome_produto_id = np.id
+                JOIN produtos_nome_produto_lnk pnp ON np.id = pnp.nome_produto_id
+                JOIN produtos p ON pnp.produto_id = p.id
+                WHERE c.ativo = TRUE AND np.ativo = TRUE AND p.ativo = TRUE
+                ORDER BY c.nome
+            """, fetch_mode='all')
+            filters['categorias'] = [{'id': cat[0], 'nome': cat[1]} for cat in categorias] if categorias else []
         except Exception as e:
             current_app.logger.error(f"Erro ao buscar categorias: {e}", exc_info=True)
             filters['categorias'] = []
         
         # Buscar tamanhos disponíveis (apenas os que têm produtos em estoque)
         try:
-            cur_tam = conn.cursor()
-            try:
-                cur_tam.execute("""
-                    SELECT DISTINCT t.id, t.nome, COALESCE(t.ordem_exibicao, 999) as ordem
-                    FROM tamanho t
-                    JOIN produtos p ON t.id = p.tamanho_id
-                    WHERE t.ativo = TRUE AND p.ativo = TRUE
-                    ORDER BY ordem, t.nome
-                """)
-                tamanhos = cur_tam.fetchall()
-                filters['tamanhos'] = [{'id': tam[0], 'nome': tam[1]} for tam in tamanhos] if tamanhos else []
-            finally:
-                cur_tam.close()
+            tamanhos = execute_query_safely("""
+                SELECT DISTINCT t.id, t.nome, COALESCE(t.ordem_exibicao, 999) as ordem
+                FROM tamanho t
+                JOIN produtos_tamanho_lnk pt ON t.id = pt.tamanho_id
+                JOIN produtos p ON pt.produto_id = p.id
+                WHERE t.ativo = TRUE AND p.ativo = TRUE
+                ORDER BY ordem, t.nome
+            """, fetch_mode='all')
+            filters['tamanhos'] = [{'id': tam[0], 'nome': tam[1]} for tam in tamanhos] if tamanhos else []
         except Exception as e:
             current_app.logger.error(f"Erro ao buscar tamanhos: {e}", exc_info=True)
             filters['tamanhos'] = []
@@ -73,20 +70,15 @@ def get_store_filters():
         # Verificar se a tabela tecidos existe
         tecidos_table_exists = False
         try:
-            cur_tec = conn.cursor()
-            try:
-                cur_tec.execute("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_schema = 'public' 
-                        AND table_name = 'tecidos'
-                    )
-                """)
-                result = cur_tec.fetchone()
-                if result:
-                    tecidos_table_exists = result[0]
-            finally:
-                cur_tec.close()
+            result = execute_query_safely("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'tecidos'
+                )
+            """, fetch_mode='one')
+            if result:
+                tecidos_table_exists = result[0]
         except Exception as e:
             current_app.logger.warning(f"Erro ao verificar existência da tabela tecidos: {e}")
             tecidos_table_exists = False
@@ -97,46 +89,40 @@ def get_store_filters():
                 # Verificar se existe tabela de relacionamento estampa_tecido_lnk
                 tecido_lnk_exists = False
                 try:
-                    cur_lnk_check = conn.cursor()
-                    try:
-                        cur_lnk_check.execute("""
-                            SELECT EXISTS (
-                                SELECT FROM information_schema.tables 
-                                WHERE table_schema = 'public' 
-                                AND table_name = 'estampa_tecido_lnk'
-                            )
-                        """)
-                        result = cur_lnk_check.fetchone()
-                        tecido_lnk_exists = result[0] if result else False
-                    finally:
-                        cur_lnk_check.close()
+                    result = execute_query_safely("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables 
+                            WHERE table_schema = 'public' 
+                            AND table_name = 'estampa_tecido_lnk'
+                        )
+                    """, fetch_mode='one')
+                    tecido_lnk_exists = result[0] if result else False
                 except Exception:
                     tecido_lnk_exists = False
                 
-                cur_est = conn.cursor()
                 try:
                     if tecido_lnk_exists:
                         # Usar tabela de relacionamento estampa_tecido_lnk
-                        cur_est.execute("""
+                        estampas = execute_query_safely("""
                             SELECT DISTINCT e.id, e.nome, e.imagem_url, t.id as tecido_id, t.nome as tecido_nome, e.sexo, COALESCE(e.ordem_exibicao, 999) as ordem
                             FROM estampa e
-                            JOIN produtos p ON e.id = p.estampa_id
+                            JOIN produtos_estampa_lnk pe ON e.id = pe.estampa_id
+                            JOIN produtos p ON pe.produto_id = p.id
                             LEFT JOIN estampa_tecido_lnk etl ON e.id = etl.estampa_id
-                            LEFT JOIN tecidos t ON etl.tecido_id = t.id OR e.tecido_id = t.id
+                            LEFT JOIN tecidos t ON etl.tecido_id = t.id
                             WHERE e.ativo = TRUE AND p.ativo = TRUE
                             ORDER BY ordem, e.nome
-                        """)
+                        """, fetch_mode='all')
                     else:
-                        # Usar campo direto tecido_id na estampa
-                        cur_est.execute("""
-                            SELECT DISTINCT e.id, e.nome, e.imagem_url, t.id as tecido_id, t.nome as tecido_nome, e.sexo, COALESCE(e.ordem_exibicao, 999) as ordem
+                        # Sem tabela de link, buscar estampas sem tecido
+                        estampas = execute_query_safely("""
+                            SELECT DISTINCT e.id, e.nome, e.imagem_url, NULL as tecido_id, NULL as tecido_nome, e.sexo, COALESCE(e.ordem_exibicao, 999) as ordem
                             FROM estampa e
-                            JOIN produtos p ON e.id = p.estampa_id
-                            LEFT JOIN tecidos t ON e.tecido_id = t.id
+                            JOIN produtos_estampa_lnk pe ON e.id = pe.estampa_id
+                            JOIN produtos p ON pe.produto_id = p.id
                             WHERE e.ativo = TRUE AND p.ativo = TRUE
                             ORDER BY ordem, e.nome
-                        """)
-                    estampas = cur_est.fetchall()
+                        """, fetch_mode='all')
                     filters['estampas'] = [{
                         'id': est[0], 
                         'nome': est[1], 
@@ -145,99 +131,66 @@ def get_store_filters():
                         'tecido': est[4] if est[4] else None, 
                         'sexo': est[5] if est[5] else 'u'
                     } for est in estampas] if estampas else []
-                finally:
-                    cur_est.close()
+                except Exception as e:
+                    current_app.logger.error(f"Erro ao buscar estampas: {e}")
+                    filters['estampas'] = []
                 
                 # Buscar tecidos únicos disponíveis
                 # Primeiro tenta buscar tecidos associados a produtos, depois todos os tecidos ativos
                 try:
-                    cur_tec_check = conn.cursor()
-                    try:
-                        cur_tec_check.execute("""
-                            SELECT EXISTS (
-                                SELECT FROM information_schema.tables 
-                                WHERE table_schema = 'public' 
-                                AND table_name = 'estampa_tecido_lnk'
-                            )
-                        """)
-                        result = cur_tec_check.fetchone()
-                        tecido_lnk_exists = result[0] if result else False
-                    finally:
-                        cur_tec_check.close()
+                    result = execute_query_safely("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables 
+                            WHERE table_schema = 'public' 
+                            AND table_name = 'estampa_tecido_lnk'
+                        )
+                    """, fetch_mode='one')
+                    tecido_lnk_exists = result[0] if result else False
                     
-                    cur_tec2 = conn.cursor()
-                    try:
-                        # Primeiro tentar buscar tecidos associados a produtos
-                        tecidos = []
-                        if tecido_lnk_exists:
-                            # Buscar tecidos tanto da tabela de relacionamento quanto do campo direto
-                            cur_tec2.execute("""
-                                SELECT DISTINCT t.id, t.nome
-                                FROM tecidos t
-                                WHERE t.ativo = TRUE
-                                AND (
-                                    EXISTS (
-                                        SELECT 1 FROM estampa_tecido_lnk etl
-                                        JOIN estampa e ON etl.estampa_id = e.id
-                                        JOIN produtos p ON e.id = p.estampa_id
-                                        WHERE etl.tecido_id = t.id
-                                        AND e.ativo = TRUE AND p.ativo = TRUE
-                                    )
-                                    OR EXISTS (
-                                        SELECT 1 FROM estampa e
-                                        JOIN produtos p ON e.id = p.estampa_id
-                                        WHERE e.tecido_id = t.id
-                                        AND e.ativo = TRUE AND p.ativo = TRUE
-                                    )
-                                )
-                                ORDER BY t.nome
-                            """)
-                            tecidos = cur_tec2.fetchall()
-                        else:
-                            # Usar campo direto tecido_id na estampa
-                            cur_tec2.execute("""
-                                SELECT DISTINCT t.id, t.nome
-                                FROM tecidos t
-                                JOIN estampa e ON t.id = e.tecido_id
-                                JOIN produtos p ON e.id = p.estampa_id
-                                WHERE t.ativo = TRUE AND e.ativo = TRUE AND p.ativo = TRUE
-                                ORDER BY t.nome
-                            """)
-                            tecidos = cur_tec2.fetchall()
-                        
-                        # Se não encontrou tecidos associados a produtos, buscar todos os tecidos ativos
-                        if not tecidos or len(tecidos) == 0:
-                            cur_tec2.close()
-                            cur_tec2 = conn.cursor()
-                            cur_tec2.execute("""
-                                SELECT id, nome
-                                FROM tecidos
-                                WHERE ativo = TRUE
-                                ORDER BY nome
-                            """)
-                            tecidos_fallback = cur_tec2.fetchall()
-                            if tecidos_fallback:
-                                tecidos = tecidos_fallback
-                        
-                        # Quando a tabela tecidos existe, usar o ID como value para filtragem
-                        filters['tecidos'] = [{'id': tec[0], 'value': str(tec[0]), 'label': tec[1]} for tec in tecidos if tec and len(tec) >= 2 and tec[1]] if tecidos else []
-                    finally:
-                        cur_tec2.close()
+                    # Primeiro tentar buscar tecidos associados a produtos
+                    tecidos = []
+                    if tecido_lnk_exists:
+                        # Buscar tecidos da tabela de relacionamento
+                        tecidos = execute_query_safely("""
+                            SELECT DISTINCT t.id, t.nome
+                            FROM tecidos t
+                            WHERE t.ativo = TRUE
+                            AND EXISTS (
+                                SELECT 1 FROM estampa_tecido_lnk etl
+                                JOIN estampa e ON etl.estampa_id = e.id
+                                JOIN produtos_estampa_lnk pe ON e.id = pe.estampa_id
+                                JOIN produtos p ON pe.produto_id = p.id
+                                WHERE etl.tecido_id = t.id
+                                AND e.ativo = TRUE AND p.ativo = TRUE
+                            )
+                            ORDER BY t.nome
+                        """, fetch_mode='all')
+                    
+                    # Se não encontrou tecidos associados a produtos, buscar todos os tecidos ativos
+                    if not tecidos or len(tecidos) == 0:
+                        tecidos = execute_query_safely("""
+                            SELECT id, nome
+                            FROM tecidos
+                            WHERE ativo = TRUE
+                            ORDER BY nome
+                        """, fetch_mode='all')
+                    
+                    # Quando a tabela tecidos existe, usar o ID como value para filtragem
+                    filters['tecidos'] = [{'id': tec[0], 'value': str(tec[0]), 'label': tec[1]} for tec in tecidos if tec and len(tec) >= 2 and tec[1]] if tecidos else []
                 except Exception as e:
                     current_app.logger.error(f"Erro ao buscar tecidos: {e}")
                     filters['tecidos'] = []
             else:
                 # Fallback: usar campo tecido VARCHAR se a tabela não existir
-                cur_est2 = conn.cursor()
                 try:
-                    cur_est2.execute("""
+                    estampas = execute_query_safely("""
                         SELECT DISTINCT e.id, e.nome, e.imagem_url, e.tecido, e.sexo, COALESCE(e.ordem_exibicao, 999) as ordem
                         FROM estampa e
-                        JOIN produtos p ON e.id = p.estampa_id
+                        JOIN produtos_estampa_lnk pe ON e.id = pe.estampa_id
+                        JOIN produtos p ON pe.produto_id = p.id
                         WHERE e.ativo = TRUE AND p.ativo = TRUE
                         ORDER BY ordem, e.nome
-                    """)
-                    estampas = cur_est2.fetchall()
+                    """, fetch_mode='all')
                     filters['estampas'] = [{
                         'id': est[0], 
                         'nome': est[1], 
@@ -246,24 +199,21 @@ def get_store_filters():
                         'tecido': est[3] if est[3] else None, 
                         'sexo': est[4] if est[4] else 'u'
                     } for est in estampas] if estampas else []
-                finally:
-                    cur_est2.close()
+                except Exception as e:
+                    current_app.logger.error(f"Erro ao buscar estampas (fallback): {e}")
+                    filters['estampas'] = []
                 
                 # Buscar tecidos únicos (campo VARCHAR)
                 try:
-                    cur_tec3 = conn.cursor()
-                    try:
-                        cur_tec3.execute("""
-                            SELECT DISTINCT e.tecido
-                            FROM estampa e
-                            JOIN produtos p ON e.id = p.estampa_id
-                            WHERE e.ativo = TRUE AND p.ativo = TRUE AND e.tecido IS NOT NULL AND e.tecido != ''
-                            ORDER BY e.tecido
-                        """)
-                        tecidos = cur_tec3.fetchall()
-                        filters['tecidos'] = [{'id': None, 'value': tec[0], 'label': tec[0]} for tec in tecidos if tec[0]] if tecidos else []
-                    finally:
-                        cur_tec3.close()
+                    tecidos = execute_query_safely("""
+                        SELECT DISTINCT e.tecido
+                        FROM estampa e
+                        JOIN produtos_estampa_lnk pe ON e.id = pe.estampa_id
+                        JOIN produtos p ON pe.produto_id = p.id
+                        WHERE e.ativo = TRUE AND p.ativo = TRUE AND e.tecido IS NOT NULL AND e.tecido != ''
+                        ORDER BY e.tecido
+                    """, fetch_mode='all')
+                    filters['tecidos'] = [{'id': None, 'value': tec[0], 'label': tec[0]} for tec in tecidos if tec[0]] if tecidos else []
                 except Exception as e:
                     current_app.logger.error(f"Erro ao buscar tecidos (VARCHAR): {e}")
                     filters['tecidos'] = []
@@ -314,15 +264,18 @@ def get_base_products():
                 COALESCE(c.nome, 'Sem categoria') AS categoria_nome,
                 c.id AS categoria_id,
                 (SELECT ip.url FROM produtos p_var
-                 JOIN imagens_produto ip ON p_var.id = ip.produto_id
-                 WHERE p_var.nome_produto_id = np.id
-                 ORDER BY ip.ordem ASC
+                 JOIN produtos_nome_produto_lnk pnp_var ON p_var.id = pnp_var.produto_id
+                 JOIN imagens_produto_produto_lnk ipl ON p_var.id = ipl.produto_id
+                 JOIN imagens_produto ip ON ipl.imagem_produto_id = ip.id
+                 WHERE pnp_var.nome_produto_id = np.id
+                 ORDER BY COALESCE(ipl.imagem_produto_ord, ip.ordem, 0) ASC
                  LIMIT 1) AS imagem_representativa_url,
-                (SELECT MIN(COALESCE(p_var.preco_promocional, p_var.preco_venda)) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.ativo = TRUE) AS preco_minimo,
-                (SELECT MIN(p_var.preco_venda) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.ativo = TRUE) AS preco_minimo_original,
-                (SELECT COUNT(*) FROM produtos p_var WHERE p_var.nome_produto_id = np.id AND p_var.ativo = TRUE) AS variacoes_em_estoque_count
+                (SELECT MIN(COALESCE(p_var.preco_promocional, p_var.preco_venda)) FROM produtos p_var JOIN produtos_nome_produto_lnk pnp_var ON p_var.id = pnp_var.produto_id WHERE pnp_var.nome_produto_id = np.id AND p_var.ativo = TRUE) AS preco_minimo,
+                (SELECT MIN(p_var.preco_venda) FROM produtos p_var JOIN produtos_nome_produto_lnk pnp_var ON p_var.id = pnp_var.produto_id WHERE pnp_var.nome_produto_id = np.id AND p_var.ativo = TRUE) AS preco_minimo_original,
+                (SELECT COUNT(*) FROM produtos p_var JOIN produtos_nome_produto_lnk pnp_var ON p_var.id = pnp_var.produto_id WHERE pnp_var.nome_produto_id = np.id AND p_var.ativo = TRUE) AS variacoes_em_estoque_count
             FROM nome_produto np
-            LEFT JOIN categorias c ON np.categoria_id = c.id
+            LEFT JOIN nome_produto_categoria_lnk npc ON np.id = npc.nome_produto_id
+            LEFT JOIN categorias c ON npc.categoria_id = c.id
             WHERE np.ativo = TRUE
         """
         
@@ -362,11 +315,11 @@ def get_base_products():
         variation_params = []
         
         if tamanho_ids:
-            variation_conditions.append("p.tamanho_id = ANY(%s)")
+            variation_conditions.append("EXISTS (SELECT 1 FROM produtos_tamanho_lnk pt WHERE pt.produto_id = p.id AND pt.tamanho_id = ANY(%s))")
             variation_params.append(tamanho_ids)
         
         if estampa_ids:
-            variation_conditions.append("p.estampa_id = ANY(%s)")
+            variation_conditions.append("EXISTS (SELECT 1 FROM produtos_estampa_lnk pe WHERE pe.produto_id = p.id AND pe.estampa_id = ANY(%s))")
             variation_params.append(estampa_ids)
         
         # Filtros de tecido e sexo (via estampa)
@@ -409,7 +362,7 @@ def get_base_products():
                 if tecido_ids:
                     # Usar IN ao invés de ANY para melhor compatibilidade
                     placeholders = ','.join(['%s'] * len(tecido_ids))
-                    variation_conditions.append(f"EXISTS (SELECT 1 FROM estampa e WHERE e.id = p.estampa_id AND e.tecido_id IN ({placeholders}))")
+                    variation_conditions.append(f"EXISTS (SELECT 1 FROM produtos_estampa_lnk pe JOIN estampa e ON pe.estampa_id = e.id JOIN estampa_tecido_lnk etl ON e.id = etl.estampa_id WHERE pe.produto_id = p.id AND etl.tecido_id IN ({placeholders}))")
                     variation_params.extend(tecido_ids)
             else:
                 # Fallback: usar campo tecido VARCHAR (se existir)
@@ -427,7 +380,7 @@ def get_base_products():
                         result = cur_tec_col.fetchone()
                         tecido_column_exists = result[0] if result else False
                         if tecido_column_exists:
-                            variation_conditions.append("EXISTS (SELECT 1 FROM estampa e WHERE e.id = p.estampa_id AND e.tecido = ANY(%s))")
+                            variation_conditions.append("EXISTS (SELECT 1 FROM produtos_estampa_lnk pe JOIN estampa e ON pe.estampa_id = e.id WHERE pe.produto_id = p.id AND e.tecido = ANY(%s))")
                             variation_params.append(tecidos)
                     finally:
                         cur_tec_col.close()
@@ -436,7 +389,7 @@ def get_base_products():
                     pass
         
         if sexos:
-            variation_conditions.append("EXISTS (SELECT 1 FROM estampa e WHERE e.id = p.estampa_id AND e.sexo = ANY(%s))")
+            variation_conditions.append("EXISTS (SELECT 1 FROM produtos_estampa_lnk pe JOIN estampa e ON pe.estampa_id = e.id WHERE pe.produto_id = p.id AND e.sexo = ANY(%s))")
             variation_params.append(sexos)
         
         if preco_min is not None:
@@ -455,7 +408,7 @@ def get_base_products():
             variation_conditions.append("p.ativo = TRUE")
             
             # Construir a subquery com placeholders
-            subquery = "EXISTS (SELECT 1 FROM produtos p WHERE p.nome_produto_id = np.id AND " + \
+            subquery = "EXISTS (SELECT 1 FROM produtos p JOIN produtos_nome_produto_lnk pnp ON p.id = pnp.produto_id WHERE pnp.nome_produto_id = np.id AND " + \
                       " AND ".join(variation_conditions) + ")"
             conditions.append(subquery)
             params.extend(variation_params)
@@ -464,7 +417,8 @@ def get_base_products():
             conditions.append("""
                 EXISTS (
                     SELECT 1 FROM produtos p
-                    WHERE p.nome_produto_id = np.id
+                    JOIN produtos_nome_produto_lnk pnp ON p.id = pnp.produto_id
+                    WHERE pnp.nome_produto_id = np.id
                     AND p.ativo = TRUE
                 )
             """)

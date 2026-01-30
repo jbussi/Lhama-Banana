@@ -231,7 +231,7 @@ def revert_stock_on_cancellation(venda_id: int, sync_to_bling: bool = True) -> D
                 cur.execute("""
                     UPDATE produtos
                     SET estoque = estoque + %s,
-                        atualizado_em = NOW()
+                        updated_at = NOW()
                     WHERE id = %s
                     RETURNING estoque
                 """, (quantidade, produto_id))
@@ -324,12 +324,10 @@ def revert_stock_on_cancellation(venda_id: int, sync_to_bling: bool = True) -> D
 
 def handle_order_status_change(venda_id: int, old_status: str, new_status: str) -> Dict:
     """
-    Gerencia mudança de status do pedido
+    Gerencia mudança de status do pedido e ajusta estoque conforme necessário
     
-    IMPORTANTE: Estoque é gerenciado exclusivamente pelo Bling.
-    O webhook do Bling (stock.updated) atualiza o estoque do site automaticamente.
-    
-    Esta função apenas registra a mudança de status.
+    Quando um pedido é cancelado, reverte o estoque localmente.
+    O Bling também atualizará via webhook quando o pedido for cancelado no Bling.
     
     Args:
         venda_id: ID da venda
@@ -339,17 +337,93 @@ def handle_order_status_change(venda_id: int, old_status: str, new_status: str) 
     Returns:
         Dict com resultado da operação
     """
+    # Status que indicam cancelamento
+    status_cancelados = ['cancelado_pelo_cliente', 'cancelado_pelo_vendedor', 'devolvido', 'reembolsado']
+    
+    # Se mudou para status cancelado, reverter estoque
+    if new_status in status_cancelados and old_status not in status_cancelados:
+        current_app.logger.info(
+            f"🔄 Pedido {venda_id} cancelado ({old_status} → {new_status}). Revertendo estoque..."
+        )
+        
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        try:
+            # Buscar itens da venda
+            cur.execute("""
+                SELECT iv.produto_id, iv.quantidade, p.codigo_sku
+                FROM itens_venda iv
+                JOIN produtos p ON iv.produto_id = p.id
+                WHERE iv.venda_id = %s
+            """, (venda_id,))
+            
+            itens = cur.fetchall()
+            
+            if itens:
+                for item in itens:
+                    produto_id = item['produto_id']
+                    quantidade = item['quantidade']
+                    
+                    # Reverter estoque (incrementar)
+                    cur.execute("""
+                        UPDATE produtos 
+                        SET estoque = estoque + %s,
+                            updated_at = NOW()
+                        WHERE id = %s
+                        RETURNING estoque
+                    """, (quantidade, produto_id))
+                    
+                    novo_estoque = cur.fetchone()[0]
+                    current_app.logger.info(
+                        f"✅ Estoque revertido: Produto {produto_id} (SKU: {item['codigo_sku']}), "
+                        f"+{quantidade} unidades. Novo estoque: {novo_estoque}"
+                    )
+                
+                conn.commit()
+                return {
+                    'success': True,
+                    'venda_id': venda_id,
+                    'message': f'Estoque revertido para {len(itens)} item(ns)',
+                    'old_status': old_status,
+                    'new_status': new_status,
+                    'itens_revertidos': len(itens)
+                }
+            else:
+                current_app.logger.warning(f"⚠️ Nenhum item encontrado para venda {venda_id}")
+                return {
+                    'success': True,
+                    'venda_id': venda_id,
+                    'message': 'Nenhum item encontrado para reverter',
+                    'old_status': old_status,
+                    'new_status': new_status
+                }
+                
+        except Exception as e:
+            conn.rollback()
+            current_app.logger.error(f"❌ Erro ao reverter estoque para venda {venda_id}: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e),
+                'venda_id': venda_id,
+                'old_status': old_status,
+                'new_status': new_status
+            }
+        finally:
+            cur.close()
+    
+    # Para outras mudanças de status, apenas registrar
     current_app.logger.info(
         f"ℹ️ Mudança de status do pedido {venda_id} ({old_status} → {new_status}). "
-        f"Estoque é gerenciado pelo Bling e será atualizado automaticamente via webhook."
+        f"Sem alteração de estoque necessária."
     )
-        return {
-            'success': True,
-            'venda_id': venda_id,
-            'message': 'Mudança de status não requer alteração de estoque',
-            'old_status': old_status,
-            'new_status': new_status
-        }
+    return {
+        'success': True,
+        'venda_id': venda_id,
+        'message': 'Mudança de status não requer alteração de estoque',
+        'old_status': old_status,
+        'new_status': new_status
+    }
 
 
 def ensure_stock_consistency(produto_id: Optional[int] = None) -> Dict:

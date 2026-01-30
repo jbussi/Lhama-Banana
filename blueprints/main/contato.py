@@ -15,6 +15,12 @@ def parse_json_field(field):
             return [] if '[' in field else {}
     return field
 
+def _is_json_array(value):
+    return isinstance(value, list)
+
+def _is_json_object(value):
+    return isinstance(value, dict)
+
 @main_bp.route('/contato', methods=['GET', 'POST'])
 def contato_page():
     """Renderiza a página de contato com conteúdo dinâmico do banco de dados"""
@@ -32,22 +38,30 @@ def contato_page():
             SELECT 
                 titulo,
                 texto_principal,
-                informacoes,
-                links
-            FROM conteudo_contato
-            WHERE ativo = TRUE
-            ORDER BY id DESC
+                informacoes_contato,
+                redes_sociais
+            FROM site_conteudo_contato
+            ORDER BY updated_at DESC
             LIMIT 1
         """)
         
         conteudo = cur.fetchone()
         
         if conteudo:
+            # Robustez: em alguns estados do banco, os campos JSON podem estar "trocados"
+            # (ex.: links indo para informacoes_contato). Vamos detectar pelo tipo.
+            raw_info = parse_json_field(conteudo.get('informacoes_contato'))
+            raw_links = parse_json_field(conteudo.get('redes_sociais'))
+
+            informacoes = raw_info if _is_json_array(raw_info) else (raw_links if _is_json_array(raw_links) else [])
+            links = raw_links if _is_json_object(raw_links) else (raw_info if _is_json_object(raw_info) else {})
+
             contato_data = {
                 'titulo': conteudo.get('titulo') or 'Entre em Contato',
                 'texto_principal': conteudo.get('texto_principal') or '',
-                'informacoes': parse_json_field(conteudo.get('informacoes')),
-                'links': parse_json_field(conteudo.get('links'))
+                # Mantém as chaves esperadas pelo template (informacoes/links)
+                'informacoes': informacoes,
+                'links': links,
             }
         else:
             contato_data = {

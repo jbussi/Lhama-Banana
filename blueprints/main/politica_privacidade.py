@@ -30,9 +30,8 @@ def politica_privacidade():
                 ultima_atualizacao,
                 conteudo,
                 secoes
-            FROM politica_privacidade
-            WHERE ativo = TRUE
-            ORDER BY id DESC
+            FROM site_politica_privacidade
+            ORDER BY updated_at DESC
             LIMIT 1
         """)
         

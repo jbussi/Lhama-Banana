@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from ..services.shipping_service import shipping_service
-from ..services import get_db, get_cart_owner_info, get_or_create_cart
+from ..services import get_db, get_cart_owner_info, get_or_create_cart, execute_query_safely
 import json
 import psycopg2.extras
 
@@ -25,18 +25,14 @@ def calculate_shipping():
         if error_response:
             return error_response
             
-        conn = get_db()
-        cur = None
         try:
-            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-            
             # Obter o ID do carrinho
             cart_id = get_or_create_cart(user_id=user_id, session_id=session_id)
             if not cart_id:
                 return jsonify({"erro": "Não foi possível identificar o carrinho"}), 500
                 
-            # Buscar itens do carrinho com peso e dimensões dos produtos
-            cur.execute("""
+            # Buscar itens do carrinho com peso e dimensões dos produtos usando execute_query_safely
+            cart_items_result = execute_query_safely("""
                 SELECT 
                     ci.quantidade,
                     p.codigo_sku,
@@ -47,11 +43,12 @@ def calculate_shipping():
                     np.nome AS product_name
                 FROM carrinho_itens ci
                 JOIN produtos p ON ci.produto_id = p.id
-                JOIN nome_produto np ON p.nome_produto_id = np.id
+                LEFT JOIN produtos_nome_produto_lnk pnp ON p.id = pnp.produto_id
+                LEFT JOIN nome_produto np ON pnp.nome_produto_id = np.id
                 WHERE ci.carrinho_id = %s
-            """, (cart_id,))
+            """, (cart_id,), fetch_mode='all')
             
-            cart_items = cur.fetchall()
+            cart_items = cart_items_result if cart_items_result else []
             
             if not cart_items:
                 return jsonify({"erro": "Carrinho vazio"}), 400
@@ -63,14 +60,15 @@ def calculate_shipping():
             soma_comprimento = 0.0
             
             for item in cart_items:
-                quantidade = item['quantidade']
-                peso_item = float(item['peso_kg'] or 0)
+                # item é uma tupla: (quantidade, codigo_sku, peso_kg, dimensoes_largura, dimensoes_altura, dimensoes_comprimento, product_name)
+                quantidade = item[0]
+                peso_item = float(item[2] or 0)  # peso_kg está no índice 2
                 peso_total += peso_item * quantidade
                 
                 # Para dimensões, usar a maior altura e largura, e somar comprimentos
-                altura_item = float(item['dimensoes_altura'] or 0)
-                largura_item = float(item['dimensoes_largura'] or 0)
-                comprimento_item = float(item['dimensoes_comprimento'] or 0)
+                altura_item = float(item[4] or 0)  # dimensoes_altura está no índice 4
+                largura_item = float(item[3] or 0)  # dimensoes_largura está no índice 3
+                comprimento_item = float(item[5] or 0)  # dimensoes_comprimento está no índice 5
                 
                 if altura_item > max_altura:
                     max_altura = altura_item
@@ -94,14 +92,13 @@ def calculate_shipping():
                 'comprimento': soma_comprimento
             }
             
-            # Calcular valor total
-            cur.execute("""
+            # Calcular valor total usando execute_query_safely
+            total_result = execute_query_safely("""
                 SELECT SUM(ci.quantidade * ci.preco_unitario_no_momento) as total
                 FROM carrinho_itens ci
                 WHERE ci.carrinho_id = %s
-            """, (cart_id,))
-            
-            valor_total = cur.fetchone()[0] or 0.0
+            """, (cart_id,), fetch_mode='one')
+            valor_total = float(total_result[0]) if total_result and total_result[0] else 0.0
             
             # Calcular opções de frete
             shipping_options = shipping_service.calculate_shipping(
@@ -127,9 +124,6 @@ def calculate_shipping():
             import traceback
             traceback.print_exc()
             return jsonify({"erro": "Erro interno ao calcular frete"}), 500
-        finally:
-            if cur:
-                cur.close()
                 
     except Exception as e:
         current_app.logger.error(f"Erro na API de frete: {e}")

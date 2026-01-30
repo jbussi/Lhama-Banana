@@ -16,17 +16,66 @@ def get_user_by_firebase_uid(firebase_uid, max_retries=2):
         cur = None
         try:
             conn = get_db()
+            # Garantir que a conexão está em um estado válido (rollback se necessário)
+            try:
+                conn.rollback()
+            except:
+                pass
+            
             cur = conn.cursor()
+            
+            # Verificar se colunas MFA existem
+            try:
+                cur.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'usuarios' 
+                    AND column_name IN ('mfa_enabled', 'mfa_secret')
+                """)
+                mfa_columns_result = cur.fetchall()
+                mfa_columns = [row[0] for row in mfa_columns_result] if mfa_columns_result else []
+            except Exception as e:
+                logger.warning(f"Erro ao verificar colunas MFA: {e}")
+                mfa_columns = []
+            has_mfa_enabled = 'mfa_enabled' in mfa_columns
+            has_mfa_secret = 'mfa_secret' in mfa_columns
+            
+            # Query principal sem MFA
             cur.execute("""
-                SELECT id, firebase_uid, nome, email, cpf, data_nascimento, criado_em, telefone, role, 
-                       mfa_enabled, mfa_secret
+                SELECT id, firebase_uid, nome, email, cpf, data_nascimento, created_at, telefone, role
                 FROM usuarios WHERE firebase_uid = %s
             """, (firebase_uid,))
             user_data = cur.fetchone()
 
             if user_data:
+                # Buscar dados MFA separadamente se as colunas existirem
+                mfa_enabled = False
+                mfa_secret = None
+                if has_mfa_enabled or has_mfa_secret:
+                    if has_mfa_enabled and has_mfa_secret:
+                        cur.execute("""
+                            SELECT mfa_enabled, mfa_secret
+                            FROM usuarios 
+                            WHERE id = %s
+                        """, (user_data[0],))
+                    elif has_mfa_enabled:
+                        cur.execute("""
+                            SELECT mfa_enabled, NULL as mfa_secret
+                            FROM usuarios 
+                            WHERE id = %s
+                        """, (user_data[0],))
+                    elif has_mfa_secret:
+                        cur.execute("""
+                            SELECT FALSE as mfa_enabled, mfa_secret
+                            FROM usuarios 
+                            WHERE id = %s
+                        """, (user_data[0],))
+                    mfa_result = cur.fetchone()
+                    if mfa_result:
+                        mfa_enabled = mfa_result[0] if has_mfa_enabled else False
+                        mfa_secret = mfa_result[1] if has_mfa_secret else None
+                
                 # Retorna um dicionário para facilitar o acesso por nome da coluna
-                # Adapte os índices conforme a ordem das colunas no seu SELECT
                 return {
                     'id': user_data[0],
                     'firebase_uid': user_data[1],
@@ -34,11 +83,11 @@ def get_user_by_firebase_uid(firebase_uid, max_retries=2):
                     'email': user_data[3],
                     'cpf': user_data[4],
                     'data_nascimento': str(user_data[5]) if user_data[5] else None,
-                    'criado_em': str(user_data[6]),
+                    'created_at': str(user_data[6]) if user_data[6] else None,
                     'telefone': user_data[7],
-                    'role': user_data[8] if len(user_data) > 8 else 'user',  # role do usuário
-                    'mfa_enabled': user_data[9] if len(user_data) > 9 else False,
-                    'mfa_secret': user_data[10] if len(user_data) > 10 else None,
+                    'role': user_data[8] if len(user_data) > 8 else 'user',
+                    'mfa_enabled': mfa_enabled,
+                    'mfa_secret': mfa_secret,
                 }
             return None
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
@@ -107,9 +156,13 @@ def update_user_profile_db(user_id, data):
             updates.append("cpf = %s")
             params.append(data['cpf'])
         if 'data_nascimento' in data:
-            updates.append("data_nascimento = %s")
-            # Converta string para date object se necessário, ex: datetime.date.fromisoformat(data['data_nascimento'])
-            params.append(data['data_nascimento']) 
+            # Converter string vazia para None (NULL no banco)
+            data_nascimento = data['data_nascimento']
+            if data_nascimento == '' or data_nascimento is None:
+                updates.append("data_nascimento = NULL")
+            else:
+                updates.append("data_nascimento = %s")
+                params.append(data_nascimento) 
         if 'telefone' in data:
             updates.append("telefone = %s")
             params.append(data['telefone'])
@@ -179,24 +232,35 @@ def get_user_addresses(user_id):
         print(f"Buscando endereços para user_id: {user_id}")
         
         # Primeiro, verificar quantos endereços existem (incluindo inativos)
-        cur.execute("SELECT COUNT(*) FROM enderecos WHERE usuario_id = %s", (user_id,))
+        cur.execute("""
+            SELECT COUNT(*) 
+            FROM enderecos e
+            JOIN enderecos_usuario_lnk eul ON e.id = eul.endereco_id
+            WHERE eul.usuario_id = %s
+        """, (user_id,))
         total_count = cur.fetchone()[0]
         print(f"Total de endereços (incluindo inativos) para user {user_id}: {total_count}")
         
         # Buscar apenas ativos
         cur.execute("""
-            SELECT id, nome_endereco, cep, rua, numero, complemento, bairro, cidade, estado, 
-                   referencia, is_default, telefone, email, criado_em, atualizado_em, ativo
-            FROM enderecos 
-            WHERE usuario_id = %s AND ativo = TRUE
-            ORDER BY is_default DESC, criado_em DESC
+            SELECT e.id, e.nome_endereco, e.cep, e.rua, e.numero, e.complemento, e.bairro, e.cidade, e.estado, 
+                   e.referencia, e.is_default, e.telefone, e.email, e.created_at, e.updated_at, e.ativo
+            FROM enderecos e
+            JOIN enderecos_usuario_lnk eul ON e.id = eul.endereco_id
+            WHERE eul.usuario_id = %s AND e.ativo = TRUE
+            ORDER BY e.is_default DESC, e.created_at DESC
         """, (user_id,))
         addresses = cur.fetchall()
         print(f"Endereços ativos encontrados: {len(addresses)}")
         
         # Se não encontrou ativos, verificar todos (para debug)
         if len(addresses) == 0:
-            cur.execute("SELECT id, nome_endereco, ativo FROM enderecos WHERE usuario_id = %s", (user_id,))
+            cur.execute("""
+                SELECT e.id, e.nome_endereco, e.ativo 
+                FROM enderecos e
+                JOIN enderecos_usuario_lnk eul ON e.id = eul.endereco_id
+                WHERE eul.usuario_id = %s
+            """, (user_id,))
             all_addresses = cur.fetchall()
             print(f"Todos os endereços (incluindo inativos) para user {user_id}: {all_addresses}")
         
@@ -236,7 +300,12 @@ def create_user_address(user_id, address_data):
     cur = conn.cursor()
     try:
         # Verificar se já tem 4 endereços ativos
-        cur.execute("SELECT COUNT(*) FROM enderecos WHERE usuario_id = %s AND ativo = TRUE", (user_id,))
+        cur.execute("""
+            SELECT COUNT(*) 
+            FROM enderecos e
+            JOIN enderecos_usuario_lnk eul ON e.id = eul.endereco_id
+            WHERE eul.usuario_id = %s AND e.ativo = TRUE
+        """, (user_id,))
         count = cur.fetchone()[0]
         if count >= 4:
             cur.close()
@@ -249,7 +318,12 @@ def create_user_address(user_id, address_data):
             is_default = address_data.get('isDefault', False)
             # Se este for definido como padrão, remover padrão dos outros
             if is_default:
-                cur.execute("UPDATE enderecos SET is_default = FALSE WHERE usuario_id = %s", (user_id,))
+                cur.execute("""
+                    UPDATE enderecos e
+                    SET is_default = FALSE
+                    FROM enderecos_usuario_lnk eul
+                    WHERE e.id = eul.endereco_id AND eul.usuario_id = %s
+                """, (user_id,))
         
         # Mapear campos do frontend para o banco
         nome_endereco_map = {
@@ -259,13 +333,13 @@ def create_user_address(user_id, address_data):
         }
         nome_endereco = nome_endereco_map.get(address_data.get('type', 'home'), 'Casa')
         
+        # Inserir endereço
         cur.execute("""
-            INSERT INTO enderecos (usuario_id, nome_endereco, cep, rua, numero, complemento, 
+            INSERT INTO enderecos (nome_endereco, cep, rua, numero, complemento, 
                                  bairro, cidade, estado, referencia, is_default, telefone, email, ativo)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
-            user_id,
             nome_endereco,
             address_data.get('zipcode', '').replace('-', '').replace(' ', '')[:8],
             address_data.get('street', ''),
@@ -282,6 +356,12 @@ def create_user_address(user_id, address_data):
         ))
         
         new_address_id = cur.fetchone()[0]
+        
+        # Criar relacionamento com usuário
+        cur.execute("""
+            INSERT INTO enderecos_usuario_lnk (endereco_id, usuario_id)
+            VALUES (%s, %s)
+        """, (new_address_id, user_id))
         conn.commit()
         print(f"Endereço criado com sucesso. ID: {new_address_id}, User ID: {user_id}")
         
@@ -309,16 +389,24 @@ def update_user_address(user_id, address_id, address_data):
     cur = conn.cursor()
     try:
         # Verificar se o endereço pertence ao usuário
-        cur.execute("SELECT id FROM enderecos WHERE id = %s AND usuario_id = %s AND ativo = TRUE", 
-                   (address_id, user_id))
+        cur.execute("""
+            SELECT e.id 
+            FROM enderecos e
+            JOIN enderecos_usuario_lnk eul ON e.id = eul.endereco_id
+            WHERE e.id = %s AND eul.usuario_id = %s AND e.ativo = TRUE
+        """, (address_id, user_id))
         if not cur.fetchone():
             cur.close()
             return False, "Endereço não encontrado ou não pertence a este usuário."
         
         # Se for definido como padrão, remover padrão dos outros
         if address_data.get('isDefault', False):
-            cur.execute("UPDATE enderecos SET is_default = FALSE WHERE usuario_id = %s AND id != %s", 
-                       (user_id, address_id))
+            cur.execute("""
+                UPDATE enderecos e
+                SET is_default = FALSE
+                FROM enderecos_usuario_lnk eul
+                WHERE e.id = eul.endereco_id AND eul.usuario_id = %s AND e.id != %s
+            """, (user_id, address_id))
         
         nome_endereco_map = {
             'home': 'Casa',
@@ -327,12 +415,23 @@ def update_user_address(user_id, address_id, address_data):
         }
         nome_endereco = nome_endereco_map.get(address_data.get('type', 'home'), 'Casa')
         
+        # Verificar se o endereço pertence ao usuário antes de atualizar
+        cur.execute("""
+            SELECT e.id 
+            FROM enderecos e
+            JOIN enderecos_usuario_lnk eul ON e.id = eul.endereco_id
+            WHERE e.id = %s AND eul.usuario_id = %s
+        """, (address_id, user_id))
+        if not cur.fetchone():
+            cur.close()
+            return False, "Endereço não encontrado ou não pertence a este usuário."
+        
         cur.execute("""
             UPDATE enderecos 
             SET nome_endereco = %s, cep = %s, rua = %s, numero = %s, complemento = %s,
                 bairro = %s, cidade = %s, estado = %s, referencia = %s, is_default = %s,
-                telefone = %s, email = %s, atualizado_em = NOW()
-            WHERE id = %s AND usuario_id = %s
+                telefone = %s, email = %s, updated_at = NOW()
+            WHERE id = %s
         """, (
             nome_endereco,
             address_data.get('zipcode', '').replace('-', '').replace(' ', '')[:8],
@@ -347,7 +446,6 @@ def update_user_address(user_id, address_id, address_data):
             address_data.get('phone', '') or None,
             address_data.get('email', '') or None,
             address_id,
-            user_id,
         ))
         
         conn.commit()
@@ -540,8 +638,12 @@ def delete_user_address(user_id, address_id):
     cur = conn.cursor()
     try:
         # Verificar se o endereço pertence ao usuário
-        cur.execute("SELECT id, is_default FROM enderecos WHERE id = %s AND usuario_id = %s AND ativo = TRUE", 
-                   (address_id, user_id))
+        cur.execute("""
+            SELECT e.id, e.is_default 
+            FROM enderecos e
+            JOIN enderecos_usuario_lnk eul ON e.id = eul.endereco_id
+            WHERE e.id = %s AND eul.usuario_id = %s AND e.ativo = TRUE
+        """, (address_id, user_id))
         addr = cur.fetchone()
         if not addr:
             cur.close()
@@ -550,17 +652,19 @@ def delete_user_address(user_id, address_id):
         # Se for o endereço padrão, definir outro como padrão
         if addr[1]:  # is_default
             cur.execute("""
-                UPDATE enderecos SET is_default = TRUE 
+                UPDATE enderecos 
+                SET is_default = TRUE
                 WHERE id = (
-                    SELECT id FROM enderecos 
-                    WHERE usuario_id = %s AND id != %s AND ativo = TRUE
+                    SELECT e2.id 
+                    FROM enderecos e2
+                    JOIN enderecos_usuario_lnk eul2 ON e2.id = eul2.endereco_id
+                    WHERE eul2.usuario_id = %s AND e2.id != %s AND e2.ativo = TRUE
                     LIMIT 1
                 )
             """, (user_id, address_id))
         
         # Desativar o endereço (soft delete)
-        cur.execute("UPDATE enderecos SET ativo = FALSE WHERE id = %s AND usuario_id = %s", 
-                   (address_id, user_id))
+        cur.execute("UPDATE enderecos SET ativo = FALSE WHERE id = %s", (address_id,))
         
         conn.commit()
         cur.close()

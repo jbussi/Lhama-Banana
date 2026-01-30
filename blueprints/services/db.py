@@ -108,6 +108,7 @@ def get_db():
     Obtém uma conexão do pool e a armazena em `g`.
     Garante que cada requisição tenha sua própria conexão.
     Verifica se a conexão está válida e reconecta se necessário.
+    Sempre faz rollback antes de retornar para garantir transação limpa.
     """
     if "db" not in g: 
         g.db = _get_new_connection()
@@ -127,7 +128,211 @@ def get_db():
             except Exception:
                 pass
             g.db = _get_new_connection()
+    
+    # Sempre fazer rollback antes de usar a conexão para garantir transação limpa
+    try:
+        g.db.rollback()
+    except (psycopg2.OperationalError, psycopg2.InterfaceError):
+        # Conexão foi fechada, obter nova
+        logger.warning("Conexão fechada durante rollback, obtendo nova")
+        try:
+            if "db" in g:
+                try:
+                    connection_pool.putconn(g.db, close=True)
+                except Exception:
+                    try:
+                        g.db.close()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        g.db = _get_new_connection()
+    except Exception:
+        # Outros erros podem ser ignorados (ex: autocommit)
+        pass
+    
     return g.db
+
+def execute_query_safely(query, params=None, max_retries=3, fetch_mode='all'):
+    """
+    Executa uma query de forma segura com retry automático e tratamento de erros.
+    
+    Args:
+        query: SQL query string
+        params: Parâmetros para a query (tupla ou dict)
+        max_retries: Número máximo de tentativas
+        fetch_mode: 'all' para fetchall(), 'one' para fetchone(), 'none' para não fetchar
+    
+    Returns:
+        Resultado da query ou None em caso de erro
+    """
+    conn = None
+    cur = None
+    
+    for attempt in range(max_retries):
+        try:
+            conn = get_db()
+            
+            # Garantir rollback antes de executar
+            try:
+                conn.rollback()
+            except Exception:
+                # Se rollback falhar, tentar obter nova conexão
+                if "db" in g:
+                    try:
+                        g.pop('db').close()
+                    except Exception:
+                        pass
+                conn = get_db()
+            
+            cur = conn.cursor()
+            cur.execute(query, params)
+            
+            if fetch_mode == 'all':
+                result = cur.fetchall()
+            elif fetch_mode == 'one':
+                result = cur.fetchone()
+            else:
+                result = None
+            
+            cur.close()
+            return result
+            
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            logger.warning(f"Erro de conexão na tentativa {attempt + 1}/{max_retries}: {e}")
+            if cur:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                # Remover conexão inválida do contexto
+                if "db" in g and g.db == conn:
+                    try:
+                        g.pop('db').close()
+                    except Exception:
+                        pass
+            
+            if attempt < max_retries - 1:
+                import time
+                time.sleep(0.1 * (attempt + 1))  # Backoff exponencial
+                continue
+            else:
+                logger.error(f"Falha ao executar query após {max_retries} tentativas")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Erro ao executar query: {e}", exc_info=True)
+            if cur:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            return None
+    
+    return None
+
+def execute_write_safely(query, params=None, max_retries=3, commit=True):
+    """
+    Executa uma query de escrita (INSERT/UPDATE/DELETE) de forma segura com retry automático.
+    
+    Args:
+        query: SQL query string
+        params: Parâmetros para a query (tupla ou dict)
+        max_retries: Número máximo de tentativas
+        commit: Se True, faz commit após sucesso. Se False, retorna a conexão sem commit.
+    
+    Returns:
+        Tupla (cursor, connection) se commit=False, ou resultado do fetchone/fetchall se commit=True e houver RETURNING
+    """
+    conn = None
+    cur = None
+    
+    for attempt in range(max_retries):
+        try:
+            conn = get_db()
+            
+            # Garantir rollback antes de executar
+            try:
+                conn.rollback()
+            except Exception:
+                # Se rollback falhar, tentar obter nova conexão
+                if "db" in g:
+                    try:
+                        g.pop('db').close()
+                    except Exception:
+                        pass
+                conn = get_db()
+            
+            cur = conn.cursor()
+            cur.execute(query, params)
+            
+            if commit:
+                conn.commit()
+                # Se a query tem RETURNING, retornar o resultado
+                if 'RETURNING' in query.upper():
+                    result = cur.fetchone()
+                    cur.close()
+                    return result
+                else:
+                    rowcount = cur.rowcount
+                    cur.close()
+                    return rowcount
+            else:
+                # Retornar cursor e conexão para commit manual
+                return cur, conn
+            
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            logger.warning(f"Erro de conexão na tentativa {attempt + 1}/{max_retries}: {e}")
+            if cur:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                # Remover conexão inválida do contexto
+                if "db" in g and g.db == conn:
+                    try:
+                        g.pop('db').close()
+                    except Exception:
+                        pass
+            
+            if attempt < max_retries - 1:
+                import time
+                time.sleep(0.1 * (attempt + 1))  # Backoff exponencial
+                continue
+            else:
+                logger.error(f"Falha ao executar query de escrita após {max_retries} tentativas")
+                raise
+                
+        except Exception as e:
+            logger.error(f"Erro ao executar query de escrita: {e}", exc_info=True)
+            if cur:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            raise
+    
+    return None
 
 def close_db_connection(exception=None):
     """

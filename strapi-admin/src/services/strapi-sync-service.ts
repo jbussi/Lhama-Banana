@@ -80,6 +80,7 @@ const processImageUrl = (image: any): string | null => {
 export const syncConteudoHomeToPostgres = async (data: any) => {
   try {
     const pool = getPostgresPool();
+    const locale = (data && typeof data.locale === 'string') ? data.locale : '';
     
     // Processar hero_imagem
     const hero_imagem_url = data.hero_imagem ? processImageUrl(data.hero_imagem) : null;
@@ -88,70 +89,42 @@ export const syncConteudoHomeToPostgres = async (data: any) => {
     const carrosseis = data.carrosseis ? JSON.stringify(data.carrosseis) : '[]';
     const depoimentos = data.depoimentos ? JSON.stringify(data.depoimentos) : '[]';
     
-    // Sempre usar o primeiro registro (ID mais antigo) ou criar se não existir
-    // Isso evita múltiplos registros duplicados
-    const checkResult = await pool.query(
-      'SELECT id FROM conteudo_home ORDER BY id ASC LIMIT 1'
-    );
-    
-    if (checkResult.rows.length > 0) {
-      // Sempre atualizar o mesmo registro (ID mais antigo)
-      // Desativar outros registros se existirem
-      await pool.query('UPDATE conteudo_home SET ativo = FALSE WHERE id != $1', [checkResult.rows[0].id]);
-      
-      await pool.query(`
-        UPDATE conteudo_home SET
-          hero_titulo = $1,
-          hero_subtitulo = $2,
-          hero_imagem_url = $3,
-          hero_texto_botao = $4,
-          carrosseis = $5::jsonb,
-          depoimentos = $6::jsonb,
-          estatisticas_clientes = $7,
-          estatisticas_pecas = $8,
-          estatisticas_anos = $9,
-          ativo = $10,
-          atualizado_em = NOW()
-        WHERE id = $11
-      `, [
-        data.hero_titulo || null,
-        data.hero_subtitulo || null,
-        hero_imagem_url,
-        data.hero_texto_botao || 'Comprar Agora',
-        carrosseis,
-        depoimentos,
-        data.estatisticas_clientes || 5000,
-        data.estatisticas_pecas || 10000,
-        data.estatisticas_anos || 5,
-        data.ativo !== false,
-        checkResult.rows[0].id
-      ]);
-      
-      strapi.log.info(`[SYNC] Conteudo Home atualizado no PostgreSQL (ID: ${checkResult.rows[0].id})`);
-    } else {
-      // Criar novo registro apenas se não existir nenhum
-      const insertResult = await pool.query(`
-        INSERT INTO conteudo_home (
-          hero_titulo, hero_subtitulo, hero_imagem_url, hero_texto_botao,
-          carrosseis, depoimentos, estatisticas_clientes, estatisticas_pecas, estatisticas_anos,
-          ativo, criado_em, atualizado_em
-        ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, NOW(), NOW())
-        RETURNING id
-      `, [
-        data.hero_titulo || null,
-        data.hero_subtitulo || null,
-        hero_imagem_url,
-        data.hero_texto_botao || 'Comprar Agora',
-        carrosseis,
-        depoimentos,
-        data.estatisticas_clientes || 5000,
-        data.estatisticas_pecas || 10000,
-        data.estatisticas_anos || 5,
-        data.ativo !== false
-      ]);
-      
-      strapi.log.info(`[SYNC] Conteudo Home criado no PostgreSQL (ID: ${insertResult.rows[0].id})`);
-    }
+    // IMPORTANTE: não escrever nas tabelas internas do Strapi (ex.: conteudo_home),
+    // senão criamos duplicação/loops. Escrevemos na tabela espelho consumida pelo Flask.
+    const upsertResult = await pool.query(`
+      INSERT INTO site_conteudo_home (
+        locale,
+        hero_titulo, hero_subtitulo, hero_imagem_url, hero_texto_botao,
+        carrosseis, depoimentos,
+        estatisticas_clientes, estatisticas_pecas, estatisticas_anos,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, NOW())
+      ON CONFLICT (locale) DO UPDATE SET
+        hero_titulo = EXCLUDED.hero_titulo,
+        hero_subtitulo = EXCLUDED.hero_subtitulo,
+        hero_imagem_url = EXCLUDED.hero_imagem_url,
+        hero_texto_botao = EXCLUDED.hero_texto_botao,
+        carrosseis = EXCLUDED.carrosseis,
+        depoimentos = EXCLUDED.depoimentos,
+        estatisticas_clientes = EXCLUDED.estatisticas_clientes,
+        estatisticas_pecas = EXCLUDED.estatisticas_pecas,
+        estatisticas_anos = EXCLUDED.estatisticas_anos,
+        updated_at = NOW()
+      RETURNING locale
+    `, [
+      locale,
+      data.hero_titulo || null,
+      data.hero_subtitulo || null,
+      hero_imagem_url,
+      data.hero_texto_botao || 'Comprar Agora',
+      carrosseis,
+      depoimentos,
+      data.estatisticas_clientes || 5000,
+      data.estatisticas_pecas || 10000,
+      data.estatisticas_anos || 5
+    ]);
+
+    strapi.log.info(`[SYNC] Conteudo Home sincronizado em site_conteudo_home (locale: ${upsertResult.rows[0]?.locale ?? locale})`);
   } catch (error) {
     strapi.log.error('[SYNC] Erro ao sincronizar Conteudo Home:', error);
     throw error;
@@ -164,57 +137,38 @@ export const syncConteudoHomeToPostgres = async (data: any) => {
 export const syncInformacoesEmpresaToPostgres = async (data: any) => {
   try {
     const pool = getPostgresPool();
+    const locale = (data && typeof data.locale === 'string') ? data.locale : '';
     
     const valores = data.valores ? JSON.stringify(data.valores) : '[]';
     const redes_sociais = data.redes_sociais ? JSON.stringify(data.redes_sociais) : '{}';
     
-    const checkResult = await pool.query(
-      'SELECT id FROM informacoes_empresa WHERE ativo = TRUE ORDER BY id DESC LIMIT 1'
-    );
-    
-    if (checkResult.rows.length > 0) {
-      await pool.query(`
-        UPDATE informacoes_empresa SET
-          email = $1,
-          telefone = $2,
-          whatsapp = $3,
-          horario_atendimento = $4,
-          valores = $5::jsonb,
-          redes_sociais = $6::jsonb,
-          ativo = $7,
-          atualizado_em = NOW()
-        WHERE id = $8
-      `, [
-        data.email || null,
-        data.telefone || null,
-        data.whatsapp || null,
-        data.horario_atendimento || null,
-        valores,
-        redes_sociais,
-        data.ativo !== false,
-        checkResult.rows[0].id
-      ]);
-      
-      strapi.log.info(`[SYNC] Informações Empresa atualizadas no PostgreSQL (ID: ${checkResult.rows[0].id})`);
-    } else {
-      const insertResult = await pool.query(`
-        INSERT INTO informacoes_empresa (
-          email, telefone, whatsapp, horario_atendimento,
-          valores, redes_sociais, ativo, criado_em, atualizado_em
-        ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, NOW(), NOW())
-        RETURNING id
-      `, [
-        data.email || null,
-        data.telefone || null,
-        data.whatsapp || null,
-        data.horario_atendimento || null,
-        valores,
-        redes_sociais,
-        data.ativo !== false
-      ]);
-      
-      strapi.log.info(`[SYNC] Informações Empresa criadas no PostgreSQL (ID: ${insertResult.rows[0].id})`);
-    }
+    const upsertResult = await pool.query(`
+      INSERT INTO site_informacoes_empresa (
+        locale,
+        email, telefone, whatsapp, horario_atendimento,
+        valores, redes_sociais,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, NOW())
+      ON CONFLICT (locale) DO UPDATE SET
+        email = EXCLUDED.email,
+        telefone = EXCLUDED.telefone,
+        whatsapp = EXCLUDED.whatsapp,
+        horario_atendimento = EXCLUDED.horario_atendimento,
+        valores = EXCLUDED.valores,
+        redes_sociais = EXCLUDED.redes_sociais,
+        updated_at = NOW()
+      RETURNING locale
+    `, [
+      locale,
+      data.email || null,
+      data.telefone || null,
+      data.whatsapp || null,
+      data.horario_atendimento || null,
+      valores,
+      redes_sociais
+    ]);
+
+    strapi.log.info(`[SYNC] Informações Empresa sincronizadas em site_informacoes_empresa (locale: ${upsertResult.rows[0]?.locale ?? locale})`);
   } catch (error) {
     strapi.log.error('[SYNC] Erro ao sincronizar Informações Empresa:', error);
     throw error;
@@ -227,6 +181,7 @@ export const syncInformacoesEmpresaToPostgres = async (data: any) => {
 export const syncConteudoSobreToPostgres = async (data: any) => {
   try {
     const pool = getPostgresPool();
+    const locale = (data && typeof data.locale === 'string') ? data.locale : '';
     
     // Converter richtext para texto simples se necessário
     const historia_conteudo = typeof data.historia_conteudo === 'string' 
@@ -234,55 +189,37 @@ export const syncConteudoSobreToPostgres = async (data: any) => {
       : (data.historia_conteudo?.text || null);
     
     const valores_conteudo = data.valores_conteudo ? JSON.stringify(data.valores_conteudo) : '[]';
+    // Strapi v5 schema usa atributo "equipe" (json). No Postgres mantemos compat:
+    // - equipe_conteudo (preferencial, usado pelo Flask)
     const equipe_conteudo = data.equipe ? JSON.stringify(data.equipe) : '[]';
     
-    const checkResult = await pool.query(
-      'SELECT id FROM conteudo_sobre WHERE ativo = TRUE ORDER BY id DESC LIMIT 1'
-    );
-    
-    if (checkResult.rows.length > 0) {
-      await pool.query(`
-        UPDATE conteudo_sobre SET
-          historia_titulo = $1,
-          historia_conteudo = $2,
-          valores_titulo = $3,
-          valores_conteudo = $4::jsonb,
-          equipe_titulo = $5,
-          equipe_conteudo = $6::jsonb,
-          ativo = $7,
-          atualizado_em = NOW()
-        WHERE id = $8
-      `, [
-        data.historia_titulo || 'Nossa História',
-        historia_conteudo,
-        data.valores_titulo || 'Nossos Valores',
-        valores_conteudo,
-        data.equipe_titulo || 'Nossa Equipe',
-        equipe_conteudo,
-        data.ativo !== false,
-        checkResult.rows[0].id
-      ]);
-      
-      strapi.log.info(`[SYNC] Conteudo Sobre atualizado no PostgreSQL (ID: ${checkResult.rows[0].id})`);
-    } else {
-      const insertResult = await pool.query(`
-        INSERT INTO conteudo_sobre (
-          historia_titulo, historia_conteudo, valores_titulo, valores_conteudo,
-          equipe_titulo, equipe_conteudo, ativo, criado_em, atualizado_em
-        ) VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, NOW(), NOW())
-        RETURNING id
-      `, [
-        data.historia_titulo || 'Nossa História',
-        historia_conteudo,
-        data.valores_titulo || 'Nossos Valores',
-        valores_conteudo,
-        data.equipe_titulo || 'Nossa Equipe',
-        equipe_conteudo,
-        data.ativo !== false
-      ]);
-      
-      strapi.log.info(`[SYNC] Conteudo Sobre criado no PostgreSQL (ID: ${insertResult.rows[0].id})`);
-    }
+    const upsertResult = await pool.query(`
+      INSERT INTO site_conteudo_sobre (
+        locale,
+        historia_titulo, historia_conteudo, valores_titulo, valores_conteudo,
+        equipe_titulo, equipe_conteudo,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, NOW())
+      ON CONFLICT (locale) DO UPDATE SET
+        historia_titulo = EXCLUDED.historia_titulo,
+        historia_conteudo = EXCLUDED.historia_conteudo,
+        valores_titulo = EXCLUDED.valores_titulo,
+        valores_conteudo = EXCLUDED.valores_conteudo,
+        equipe_titulo = EXCLUDED.equipe_titulo,
+        equipe_conteudo = EXCLUDED.equipe_conteudo,
+        updated_at = NOW()
+      RETURNING locale
+    `, [
+      locale,
+      data.historia_titulo || 'Nossa História',
+      historia_conteudo,
+      data.valores_titulo || 'Nossos Valores',
+      valores_conteudo,
+      data.equipe_titulo || 'Nossa Equipe',
+      equipe_conteudo
+    ]);
+
+    strapi.log.info(`[SYNC] Conteudo Sobre sincronizado em site_conteudo_sobre (locale: ${upsertResult.rows[0]?.locale ?? locale})`);
   } catch (error) {
     strapi.log.error('[SYNC] Erro ao sincronizar Conteudo Sobre:', error);
     throw error;
@@ -295,6 +232,7 @@ export const syncConteudoSobreToPostgres = async (data: any) => {
 export const syncConteudoContatoToPostgres = async (data: any) => {
   try {
     const pool = getPostgresPool();
+    const locale = (data && typeof data.locale === 'string') ? data.locale : '';
     
     const texto_principal = typeof data.texto_principal === 'string'
       ? data.texto_principal
@@ -303,53 +241,33 @@ export const syncConteudoContatoToPostgres = async (data: any) => {
     const informacoes = data.informacoes_contato ? JSON.stringify(data.informacoes_contato) : '[]';
     const links = data.redes_sociais ? JSON.stringify(data.redes_sociais) : '{}';
     
-    const checkResult = await pool.query(
-      'SELECT id FROM conteudo_contato WHERE ativo = TRUE ORDER BY id DESC LIMIT 1'
-    );
-    
-    if (checkResult.rows.length > 0) {
-      await pool.query(`
-        UPDATE conteudo_contato SET
-          titulo = $1,
-          texto_principal = $2,
-          informacoes = $3::jsonb,
-          links = $4::jsonb,
-          form_titulo = $5,
-          form_texto = $6,
-          ativo = $7,
-          atualizado_em = NOW()
-        WHERE id = $8
-      `, [
-        data.titulo || 'Entre em Contato',
-        texto_principal,
-        informacoes,
-        links,
-        data.form_titulo || null,
-        data.form_texto || null,
-        data.ativo !== false,
-        checkResult.rows[0].id
-      ]);
-      
-      strapi.log.info(`[SYNC] Conteudo Contato atualizado no PostgreSQL (ID: ${checkResult.rows[0].id})`);
-    } else {
-      const insertResult = await pool.query(`
-        INSERT INTO conteudo_contato (
-          titulo, texto_principal, informacoes, links,
-          form_titulo, form_texto, ativo, criado_em, atualizado_em
-        ) VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6, $7, NOW(), NOW())
-        RETURNING id
-      `, [
-        data.titulo || 'Entre em Contato',
-        texto_principal,
-        informacoes,
-        links,
-        data.form_titulo || null,
-        data.form_texto || null,
-        data.ativo !== false
-      ]);
-      
-      strapi.log.info(`[SYNC] Conteudo Contato criado no PostgreSQL (ID: ${insertResult.rows[0].id})`);
-    }
+    const upsertResult = await pool.query(`
+      INSERT INTO site_conteudo_contato (
+        locale,
+        titulo, texto_principal, informacoes_contato, redes_sociais,
+        form_titulo, form_texto,
+        updated_at
+      ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, NOW())
+      ON CONFLICT (locale) DO UPDATE SET
+        titulo = EXCLUDED.titulo,
+        texto_principal = EXCLUDED.texto_principal,
+        informacoes_contato = EXCLUDED.informacoes_contato,
+        redes_sociais = EXCLUDED.redes_sociais,
+        form_titulo = EXCLUDED.form_titulo,
+        form_texto = EXCLUDED.form_texto,
+        updated_at = NOW()
+      RETURNING locale
+    `, [
+      locale,
+      data.titulo || 'Entre em Contato',
+      texto_principal,
+      informacoes,
+      links,
+      data.form_titulo || null,
+      data.form_texto || null
+    ]);
+
+    strapi.log.info(`[SYNC] Conteudo Contato sincronizado em site_conteudo_contato (locale: ${upsertResult.rows[0]?.locale ?? locale})`);
   } catch (error) {
     strapi.log.error('[SYNC] Erro ao sincronizar Conteudo Contato:', error);
     throw error;
@@ -362,6 +280,7 @@ export const syncConteudoContatoToPostgres = async (data: any) => {
 export const syncPoliticaPrivacidadeToPostgres = async (data: any) => {
   try {
     const pool = getPostgresPool();
+    const locale = (data && typeof data.locale === 'string') ? data.locale : '';
     
     const conteudo = typeof data.conteudo === 'string'
       ? data.conteudo
@@ -369,46 +288,28 @@ export const syncPoliticaPrivacidadeToPostgres = async (data: any) => {
     
     const secoes = data.secoes ? JSON.stringify(data.secoes) : '[]';
     
-    const checkResult = await pool.query(
-      'SELECT id FROM politica_privacidade WHERE ativo = TRUE ORDER BY id DESC LIMIT 1'
-    );
-    
-    if (checkResult.rows.length > 0) {
-      await pool.query(`
-        UPDATE politica_privacidade SET
-          titulo = $1,
-          ultima_atualizacao = $2,
-          conteudo = $3,
-          secoes = $4::jsonb,
-          ativo = $5,
-          atualizado_em = NOW()
-        WHERE id = $6
-      `, [
-        data.titulo || 'Política de Privacidade',
-        data.ultima_atualizacao || null,
-        conteudo,
-        secoes,
-        data.ativo !== false,
-        checkResult.rows[0].id
-      ]);
-      
-      strapi.log.info(`[SYNC] Política de Privacidade atualizada no PostgreSQL (ID: ${checkResult.rows[0].id})`);
-    } else {
-      const insertResult = await pool.query(`
-        INSERT INTO politica_privacidade (
-          titulo, ultima_atualizacao, conteudo, secoes, ativo, criado_em, atualizado_em
-        ) VALUES ($1, $2, $3, $4::jsonb, $5, NOW(), NOW())
-        RETURNING id
-      `, [
-        data.titulo || 'Política de Privacidade',
-        data.ultima_atualizacao || null,
-        conteudo,
-        secoes,
-        data.ativo !== false
-      ]);
-      
-      strapi.log.info(`[SYNC] Política de Privacidade criada no PostgreSQL (ID: ${insertResult.rows[0].id})`);
-    }
+    const upsertResult = await pool.query(`
+      INSERT INTO site_politica_privacidade (
+        locale,
+        titulo, ultima_atualizacao, conteudo, secoes,
+        updated_at
+      ) VALUES ($1, $2, $3, $4::jsonb, $5, NOW())
+      ON CONFLICT (locale) DO UPDATE SET
+        titulo = EXCLUDED.titulo,
+        ultima_atualizacao = EXCLUDED.ultima_atualizacao,
+        conteudo = EXCLUDED.conteudo,
+        secoes = EXCLUDED.secoes,
+        updated_at = NOW()
+      RETURNING locale
+    `, [
+      locale,
+      data.titulo || 'Política de Privacidade',
+      data.ultima_atualizacao || null,
+      conteudo,
+      secoes
+    ]);
+
+    strapi.log.info(`[SYNC] Política de Privacidade sincronizada em site_politica_privacidade (locale: ${upsertResult.rows[0]?.locale ?? locale})`);
   } catch (error) {
     strapi.log.error('[SYNC] Erro ao sincronizar Política de Privacidade:', error);
     throw error;
@@ -421,6 +322,7 @@ export const syncPoliticaPrivacidadeToPostgres = async (data: any) => {
 export const syncPoliticaEnvioToPostgres = async (data: any) => {
   try {
     const pool = getPostgresPool();
+    const locale = (data && typeof data.locale === 'string') ? data.locale : '';
     
     const conteudo = typeof data.conteudo === 'string'
       ? data.conteudo
@@ -428,46 +330,28 @@ export const syncPoliticaEnvioToPostgres = async (data: any) => {
     
     const secoes = data.secoes ? JSON.stringify(data.secoes) : '[]';
     
-    const checkResult = await pool.query(
-      'SELECT id FROM politica_envio WHERE ativo = TRUE ORDER BY id DESC LIMIT 1'
-    );
-    
-    if (checkResult.rows.length > 0) {
-      await pool.query(`
-        UPDATE politica_envio SET
-          titulo = $1,
-          ultima_atualizacao = $2,
-          conteudo = $3,
-          secoes = $4::jsonb,
-          ativo = $5,
-          atualizado_em = NOW()
-        WHERE id = $6
-      `, [
-        data.titulo || 'Política de Envio',
-        data.ultima_atualizacao || null,
-        conteudo,
-        secoes,
-        data.ativo !== false,
-        checkResult.rows[0].id
-      ]);
-      
-      strapi.log.info(`[SYNC] Política de Envio atualizada no PostgreSQL (ID: ${checkResult.rows[0].id})`);
-    } else {
-      const insertResult = await pool.query(`
-        INSERT INTO politica_envio (
-          titulo, ultima_atualizacao, conteudo, secoes, ativo, criado_em, atualizado_em
-        ) VALUES ($1, $2, $3, $4::jsonb, $5, NOW(), NOW())
-        RETURNING id
-      `, [
-        data.titulo || 'Política de Envio',
-        data.ultima_atualizacao || null,
-        conteudo,
-        secoes,
-        data.ativo !== false
-      ]);
-      
-      strapi.log.info(`[SYNC] Política de Envio criada no PostgreSQL (ID: ${insertResult.rows[0].id})`);
-    }
+    const upsertResult = await pool.query(`
+      INSERT INTO site_politica_envio (
+        locale,
+        titulo, ultima_atualizacao, conteudo, secoes,
+        updated_at
+      ) VALUES ($1, $2, $3, $4::jsonb, $5, NOW())
+      ON CONFLICT (locale) DO UPDATE SET
+        titulo = EXCLUDED.titulo,
+        ultima_atualizacao = EXCLUDED.ultima_atualizacao,
+        conteudo = EXCLUDED.conteudo,
+        secoes = EXCLUDED.secoes,
+        updated_at = NOW()
+      RETURNING locale
+    `, [
+      locale,
+      data.titulo || 'Política de Envio',
+      data.ultima_atualizacao || null,
+      conteudo,
+      secoes
+    ]);
+
+    strapi.log.info(`[SYNC] Política de Envio sincronizada em site_politica_envio (locale: ${upsertResult.rows[0]?.locale ?? locale})`);
   } catch (error) {
     strapi.log.error('[SYNC] Erro ao sincronizar Política de Envio:', error);
     throw error;
@@ -480,6 +364,7 @@ export const syncPoliticaEnvioToPostgres = async (data: any) => {
 export const syncDireitosReservadosToPostgres = async (data: any) => {
   try {
     const pool = getPostgresPool();
+    const locale = (data && typeof data.locale === 'string') ? data.locale : '';
     
     const conteudo = typeof data.conteudo === 'string'
       ? data.conteudo
@@ -487,46 +372,28 @@ export const syncDireitosReservadosToPostgres = async (data: any) => {
     
     const secoes = data.secoes ? JSON.stringify(data.secoes) : '[]';
     
-    const checkResult = await pool.query(
-      'SELECT id FROM direitos_reservados WHERE ativo = TRUE ORDER BY id DESC LIMIT 1'
-    );
-    
-    if (checkResult.rows.length > 0) {
-      await pool.query(`
-        UPDATE direitos_reservados SET
-          titulo = $1,
-          ultima_atualizacao = $2,
-          conteudo = $3,
-          secoes = $4::jsonb,
-          ativo = $5,
-          atualizado_em = NOW()
-        WHERE id = $6
-      `, [
-        data.titulo || 'Todos os Direitos Reservados',
-        data.ultima_atualizacao || null,
-        conteudo,
-        secoes,
-        data.ativo !== false,
-        checkResult.rows[0].id
-      ]);
-      
-      strapi.log.info(`[SYNC] Direitos Reservados atualizado no PostgreSQL (ID: ${checkResult.rows[0].id})`);
-    } else {
-      const insertResult = await pool.query(`
-        INSERT INTO direitos_reservados (
-          titulo, ultima_atualizacao, conteudo, secoes, ativo, criado_em, atualizado_em
-        ) VALUES ($1, $2, $3, $4::jsonb, $5, NOW(), NOW())
-        RETURNING id
-      `, [
-        data.titulo || 'Todos os Direitos Reservados',
-        data.ultima_atualizacao || null,
-        conteudo,
-        secoes,
-        data.ativo !== false
-      ]);
-      
-      strapi.log.info(`[SYNC] Direitos Reservados criado no PostgreSQL (ID: ${insertResult.rows[0].id})`);
-    }
+    const upsertResult = await pool.query(`
+      INSERT INTO site_direitos_reservados (
+        locale,
+        titulo, ultima_atualizacao, conteudo, secoes,
+        updated_at
+      ) VALUES ($1, $2, $3, $4::jsonb, $5, NOW())
+      ON CONFLICT (locale) DO UPDATE SET
+        titulo = EXCLUDED.titulo,
+        ultima_atualizacao = EXCLUDED.ultima_atualizacao,
+        conteudo = EXCLUDED.conteudo,
+        secoes = EXCLUDED.secoes,
+        updated_at = NOW()
+      RETURNING locale
+    `, [
+      locale,
+      data.titulo || 'Todos os Direitos Reservados',
+      data.ultima_atualizacao || null,
+      conteudo,
+      secoes
+    ]);
+
+    strapi.log.info(`[SYNC] Direitos Reservados sincronizado em site_direitos_reservados (locale: ${upsertResult.rows[0]?.locale ?? locale})`);
   } catch (error) {
     strapi.log.error('[SYNC] Erro ao sincronizar Direitos Reservados:', error);
     throw error;

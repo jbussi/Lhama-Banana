@@ -29,7 +29,7 @@
                         {% elif status == 'PAGO' %}Pagamento Confirmado
                         {% elif status == 'APROVADO' %}Pedido Aprovado
                         {% elif status == 'NA TRANSPORTADORA' %}Na Transportadora
-                        {% elif status == 'ENTREGUE' %}Entregue
+                        {% elif status == 'ENTREGUE' %}Pedido Finalizado
                         {% elif status == 'CANCELADO' %}Pedido Cancelado
                         {% elif status == 'EXPIRADO' %}Pedido Expirado
                         {% else %}Carregando...{% endif %}
@@ -75,7 +75,7 @@
                     </div>
                 </div>
 
-                <div class="timeline-item" data-status="NA TRANSPORTADORA">
+                <div class="timeline-item" data-status="NA TRANSPORTADORA" id="timelineTransportadora" style="display: none;">
                     <div class="timeline-marker"></div>
                     <div class="timeline-content">
                         <h3>Na Transportadora</h3>
@@ -84,7 +84,8 @@
                     </div>
                 </div>
 
-                <div class="timeline-item" data-status="ENTREGUE">
+                <!-- Status ENTREGUE oculto por enquanto - será implementado depois -->
+                <div class="timeline-item" data-status="ENTREGUE" style="display: none !important;">
                     <div class="timeline-marker"></div>
                     <div class="timeline-content">
                         <h3>Entregue</h3>

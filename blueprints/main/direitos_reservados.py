@@ -30,9 +30,8 @@ def direitos_reservados():
                 ultima_atualizacao,
                 conteudo,
                 secoes
-            FROM direitos_reservados
-            WHERE ativo = TRUE
-            ORDER BY id DESC
+            FROM site_direitos_reservados
+            ORDER BY updated_at DESC
             LIMIT 1
         """)
         
